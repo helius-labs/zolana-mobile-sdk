@@ -1,0 +1,13 @@
+/target/
+/.cache/
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/ephemeral/
+**/Generated.xcconfig
+**/flutter_export_environment.sh
+**/assets/proving/*.key
+**/assets/proving/*.bin
+*.iml
+.DS_Store
