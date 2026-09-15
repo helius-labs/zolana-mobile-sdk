@@ -15,8 +15,8 @@ default = []
 flutter = ["dep:mopro-ffi", "mopro-ffi/flutter"]
 
 [dependencies]
-mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "e0c4342e72bfa02c082a22ed706558c6665e461a", optional = true }
-rust-gnark = { git = "https://github.com/sergeytimoshin/mopro", rev = "e0c4342e72bfa02c082a22ed706558c6665e461a" }
+mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b", optional = true }
+rust-gnark = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b" }
 serde_json = { workspace = true }
 solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"

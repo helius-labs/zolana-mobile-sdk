@@ -91,6 +91,15 @@ class ArtifactProvider {
               ))
           .where((element) => File(element.path).existsSync())
           .toList();
+      if (target.android != null) {
+        final gnarkLibrary = path.join(targetDir, 'libgnark.so');
+        if (File(gnarkLibrary).existsSync()) {
+          artifacts.add(Artifact(
+            path: gnarkLibrary,
+            finalFileName: 'libgnark.so',
+          ));
+        }
+      }
       result[target] = artifacts;
     }
     return result;

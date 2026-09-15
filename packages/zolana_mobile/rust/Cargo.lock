@@ -1380,7 +1380,7 @@ dependencies = [
 [[package]]
 name = "mopro-ffi"
 version = "0.3.7"
-source = "git+https://github.com/sergeytimoshin/mopro?rev=e0c4342e72bfa02c082a22ed706558c6665e461a#e0c4342e72bfa02c082a22ed706558c6665e461a"
+source = "git+https://github.com/sergeytimoshin/mopro?rev=c1071f96fa5a28dca8e567dd3944331047450a2b#c1071f96fa5a28dca8e567dd3944331047450a2b"
 dependencies = [
  "anyhow",
  "camino",
@@ -1778,7 +1778,7 @@ dependencies = [
 [[package]]
 name = "rust-gnark"
 version = "0.0.3"
-source = "git+https://github.com/sergeytimoshin/mopro?rev=e0c4342e72bfa02c082a22ed706558c6665e461a#e0c4342e72bfa02c082a22ed706558c6665e461a"
+source = "git+https://github.com/sergeytimoshin/mopro?rev=c1071f96fa5a28dca8e567dd3944331047450a2b#c1071f96fa5a28dca8e567dd3944331047450a2b"
 dependencies = [
  "anyhow",
  "bindgen",
