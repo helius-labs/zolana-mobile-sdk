@@ -1,6 +1,6 @@
 # Zolana Mobile SDK
 
-Standalone Flutter bindings for Zolana transaction construction, Poseidon
+Standalone Flutter bindings for Zolana proof-input primitives, Poseidon
 hashing, and local Mopro/gnark Groth16 proving on Android and iOS.
 
 ## Layout
@@ -10,8 +10,9 @@ hashing, and local Mopro/gnark Groth16 proving on Android and iOS.
 - `fixtures`: committed 2→3 request and flattened gnark witness fixture.
 - `scripts`: checksum-locked Mopro asset staging.
 
-The transaction API remains available from the package, while the example UI
-intentionally exposes only local proof generation.
+The package includes an offline transfer-draft helper for exercising Zolana
+proof-input types. It creates synthetic state and is not an on-chain transaction
+builder. The example UI intentionally exposes only local proof generation.
 
 The generated native library keeps Mopro's internal
 `mopro_flutter_bindings` stem. Applications import the public Dart package as
@@ -27,6 +28,15 @@ the ignored proving assets:
 cd packages/zolana_mobile/example
 flutter pub get
 flutter run
+```
+
+Android builds compile the gnark bridge from source and require an installed
+NDK. Set both variables to the NDK directory shown by Android Studio's SDK
+Manager before running Flutter, for example:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/27.1.12297006"
+export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 ```
 
 `stage-demo-assets.sh` downloads one checksum-locked packed Zolana key and

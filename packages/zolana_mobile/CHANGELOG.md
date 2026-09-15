@@ -1,3 +1,4 @@
-## 0.0.1
+## 0.1.0
 
-* TODO: Describe initial release.
+* Add Android and iOS bindings for local Mopro/gnark Groth16 proving.
+* Add Poseidon hashing, shielded-address derivation, and demo transfer-draft primitives.

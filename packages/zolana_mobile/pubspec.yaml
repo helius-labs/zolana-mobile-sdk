@@ -1,5 +1,5 @@
 name: zolana_mobile
-description: "Flutter SDK for Zolana transaction construction, Poseidon hashing, and local Groth16 proving."
+description: "Flutter SDK for Zolana proof-input primitives, Poseidon hashing, and local Groth16 proving."
 version: 0.1.0
 homepage: https://github.com/helius-labs/zolana-mobile-sdk
 
@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_rust_bridge: 2.11.1
+  flutter_rust_bridge: ^2.11.1
   plugin_platform_interface: ^2.0.2
 
 dev_dependencies:
@@ -44,12 +44,6 @@ flutter:
       android:
         ffiPlugin: true
       ios:
-        ffiPlugin: true
-      linux:
-        ffiPlugin: true
-      macos:
-        ffiPlugin: true
-      windows:
         ffiPlugin: true
 
   # To add assets to your plugin package, add an assets section, like this:

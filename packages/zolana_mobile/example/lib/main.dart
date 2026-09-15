@@ -119,7 +119,8 @@ class _DemoScreenState extends State<DemoScreen> {
         children: [
           _DemoCard(
             title: 'Local Groth16 proof',
-            subtitle: 'Prove and verify the staged 2→3 witness with Mopro/gnark.',
+            subtitle:
+                'Prove and verify the staged 2→3 witness with Mopro/gnark.',
             buttonLabel: 'Generate proof locally',
             busy: _proving,
             onPressed: _prove,
@@ -198,6 +199,7 @@ class _ProofResult extends StatelessWidget {
         _Detail(label: 'Verified', value: proof.verified ? 'yes' : 'no'),
         _Detail(label: 'Circuit', value: '${proof.inputs}→${proof.outputs}'),
         _Detail(label: 'Mopro proving', value: '${proof.proofMs} ms'),
+        _Detail(label: 'Verification', value: '${proof.verifyMs} ms'),
         _Detail(label: 'Proof JSON', value: _short(proof.proofJson)),
       ],
     );

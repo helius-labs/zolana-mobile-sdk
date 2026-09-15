@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.description      = <<-DESC
 Flutter bindings for Zolana transaction construction and local Groth16 proving.
                        DESC
-  s.homepage         = 'https://github.com/helius-labs/zolana'
+  s.homepage         = 'https://github.com/helius-labs/zolana-mobile-sdk'
   s.license          = { :file => '../LICENSE' }
   s.author           = 'Helius'
 

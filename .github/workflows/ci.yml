@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - run: ./scripts/stage-demo-assets.sh
+      - run: cargo test --workspace
+      - run: cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignored
+      - run: flutter pub get && flutter analyze && flutter test
+        working-directory: packages/zolana_mobile
+      - run: flutter pub get && flutter analyze && flutter build apk --release
+        working-directory: packages/zolana_mobile/example
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - run: ./scripts/stage-demo-assets.sh
+      - run: flutter pub get && flutter build ios --simulator
+        working-directory: packages/zolana_mobile/example

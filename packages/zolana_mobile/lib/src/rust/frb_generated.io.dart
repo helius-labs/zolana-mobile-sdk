@@ -28,9 +28,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw);
+
+  @protected
   TransferDraftRequest dco_decode_box_autoadd_transfer_draft_request(
     dynamic raw,
   );
+
+  @protected
+  GnarkProofResult dco_decode_gnark_proof_result(dynamic raw);
 
   @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
@@ -46,9 +52,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LocalProofResult dco_decode_local_proof_result(dynamic raw);
-
-  @protected
-  ProvingKeyInfo dco_decode_proving_key_info(dynamic raw);
 
   @protected
   TransferDraft dco_decode_transfer_draft(dynamic raw);
@@ -78,9 +81,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   TransferDraftRequest sse_decode_box_autoadd_transfer_draft_request(
     SseDeserializer deserializer,
   );
+
+  @protected
+  GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer);
 
   @protected
   List<Uint8List> sse_decode_list_list_prim_u_8_strict(
@@ -100,9 +111,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer);
-
-  @protected
-  ProvingKeyInfo sse_decode_proving_key_info(SseDeserializer deserializer);
 
   @protected
   TransferDraft sse_decode_transfer_draft(SseDeserializer deserializer);
@@ -139,8 +147,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_gnark_proof_result(
+    GnarkProofResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_transfer_draft_request(
     TransferDraftRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_gnark_proof_result(
+    GnarkProofResult self,
     SseSerializer serializer,
   );
 
@@ -168,12 +188,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_local_proof_result(
     LocalProofResult self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_proving_key_info(
-    ProvingKeyInfo self,
     SseSerializer serializer,
   );
 

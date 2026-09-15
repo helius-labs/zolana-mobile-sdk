@@ -1,6 +1,5 @@
 use std::{
-    fs::{self, File},
-    io::Read,
+    fs,
     path::{Path, PathBuf},
     str::FromStr,
     sync::OnceLock,
@@ -17,24 +16,13 @@ use zolana_transaction::{
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
-pub struct ProvingKeyInfo {
-    pub inputs: u32,
-    pub outputs: u32,
-    pub requires_p256: bool,
-    pub wires: u64,
-    pub public_wires: u64,
-    pub domain_size: u64,
-    pub constraint_system_offset: u64,
-}
-
-#[derive(Debug, Clone)]
 pub struct LocalProofResult {
     pub proof_json: String,
     pub verified: bool,
     pub inputs: u32,
     pub outputs: u32,
-    pub key_load_ms: u64,
     pub proof_ms: u64,
+    pub verify_ms: u64,
     pub total_ms: u64,
 }
 
@@ -98,22 +86,6 @@ pub fn poseidon_hash(inputs: Vec<Vec<u8>>) -> Result<Vec<u8>, String> {
         .map_err(|error| error.to_string())
 }
 
-pub fn inspect_proving_key(path: String) -> Result<ProvingKeyInfo, String> {
-    let mut header = [0u8; 12];
-    File::open(&path)
-        .and_then(|mut file| file.read_exact(&mut header))
-        .map_err(|error| format!("read {path}: {error}"))?;
-    Ok(ProvingKeyInfo {
-        inputs: u32::from_be_bytes(header[0..4].try_into().unwrap()),
-        outputs: u32::from_be_bytes(header[4..8].try_into().unwrap()),
-        requires_p256: u32::from_be_bytes(header[8..12].try_into().unwrap()) != 0,
-        wires: 0,
-        public_wires: 0,
-        domain_size: 0,
-        constraint_system_offset: 0,
-    })
-}
-
 pub fn generate_gnark_proof(
     r1cs_path: String,
     proving_key_path: String,
@@ -158,7 +130,9 @@ pub fn prove_assignment(
     let proof_started = Instant::now();
     let proof = generate_gnark_proof(r1cs_path.clone(), proving_key_path.clone(), witness_json)?;
     let proof_ms = elapsed_ms(proof_started);
+    let verify_started = Instant::now();
     let verified = verify_gnark_proof(r1cs_path, verifying_key_path, proof.clone())?;
+    let verify_ms = elapsed_ms(verify_started);
     let (inputs, outputs) = shape_from_path(&proving_key);
 
     Ok(LocalProofResult {
@@ -170,8 +144,8 @@ pub fn prove_assignment(
         verified,
         inputs,
         outputs,
-        key_load_ms: 0,
         proof_ms,
+        verify_ms,
         total_ms: elapsed_ms(total_started),
     })
 }
@@ -207,7 +181,8 @@ pub fn prepare_transfer(request: TransferDraftRequest) -> Result<TransferDraft, 
             .map_err(|error| error.to_string())?,
     );
     let mut blinding = [0u8; 32];
-    blinding[1..].copy_from_slice(&request.sender_seed[1..]);
+    getrandom::fill(&mut blinding[1..])
+        .map_err(|error| format!("generate input blinding: {error}"))?;
     let input = SppProofInputUtxo::new(
         Utxo {
             owner: sender.signing_pubkey(),
@@ -335,6 +310,26 @@ mod tests {
         assert_eq!(draft.outputs.len(), 2);
         assert!(draft.outputs[0].is_change);
         assert!(!draft.outputs[1].is_change);
+    }
+
+    #[test]
+    fn transfer_drafts_do_not_reuse_blinding() {
+        let recipient = shielded_address(vec![8; 32]).unwrap();
+        let request = || TransferDraftRequest {
+            sender_seed: vec![7; 32],
+            recipient: recipient.clone(),
+            input_lamports: 10,
+            transfer_lamports: 4,
+        };
+
+        let first = prepare_transfer(request()).unwrap();
+        let second = prepare_transfer(request()).unwrap();
+
+        assert_ne!(first.first_nullifier_hex, second.first_nullifier_hex);
+        assert_ne!(
+            first.outputs[0].commitment_hex,
+            second.outputs[0].commitment_hex
+        );
     }
 
     #[test]

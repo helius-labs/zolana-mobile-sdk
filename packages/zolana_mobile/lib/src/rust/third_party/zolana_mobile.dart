@@ -14,8 +14,25 @@ Future<String> sdkVersion() => RustLib.instance.api.zolanaMobileSdkVersion();
 Future<Uint8List> poseidonHash({required List<Uint8List> inputs}) =>
     RustLib.instance.api.zolanaMobilePoseidonHash(inputs: inputs);
 
-Future<ProvingKeyInfo> inspectProvingKey({required String path}) =>
-    RustLib.instance.api.zolanaMobileInspectProvingKey(path: path);
+Future<GnarkProofResult> generateGnarkProof({
+  required String r1CsPath,
+  required String provingKeyPath,
+  required String witnessJson,
+}) => RustLib.instance.api.zolanaMobileGenerateGnarkProof(
+  r1CsPath: r1CsPath,
+  provingKeyPath: provingKeyPath,
+  witnessJson: witnessJson,
+);
+
+Future<bool> verifyGnarkProof({
+  required String r1CsPath,
+  required String verifyingKeyPath,
+  required GnarkProofResult proofResult,
+}) => RustLib.instance.api.zolanaMobileVerifyGnarkProof(
+  r1CsPath: r1CsPath,
+  verifyingKeyPath: verifyingKeyPath,
+  proofResult: proofResult,
+);
 
 Future<LocalProofResult> proveAssignment({
   required String provingKeyPath,
@@ -32,13 +49,31 @@ Future<TransferDraft> prepareTransfer({
   required TransferDraftRequest request,
 }) => RustLib.instance.api.zolanaMobilePrepareTransfer(request: request);
 
+class GnarkProofResult {
+  final String proof;
+  final String publicInputs;
+
+  const GnarkProofResult({required this.proof, required this.publicInputs});
+
+  @override
+  int get hashCode => proof.hashCode ^ publicInputs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GnarkProofResult &&
+          runtimeType == other.runtimeType &&
+          proof == other.proof &&
+          publicInputs == other.publicInputs;
+}
+
 class LocalProofResult {
   final String proofJson;
   final bool verified;
   final int inputs;
   final int outputs;
-  final BigInt keyLoadMs;
   final BigInt proofMs;
+  final BigInt verifyMs;
   final BigInt totalMs;
 
   const LocalProofResult({
@@ -46,8 +81,8 @@ class LocalProofResult {
     required this.verified,
     required this.inputs,
     required this.outputs,
-    required this.keyLoadMs,
     required this.proofMs,
+    required this.verifyMs,
     required this.totalMs,
   });
 
@@ -57,8 +92,8 @@ class LocalProofResult {
       verified.hashCode ^
       inputs.hashCode ^
       outputs.hashCode ^
-      keyLoadMs.hashCode ^
       proofMs.hashCode ^
+      verifyMs.hashCode ^
       totalMs.hashCode;
 
   @override
@@ -70,52 +105,9 @@ class LocalProofResult {
           verified == other.verified &&
           inputs == other.inputs &&
           outputs == other.outputs &&
-          keyLoadMs == other.keyLoadMs &&
           proofMs == other.proofMs &&
+          verifyMs == other.verifyMs &&
           totalMs == other.totalMs;
-}
-
-class ProvingKeyInfo {
-  final int inputs;
-  final int outputs;
-  final bool requiresP256;
-  final BigInt wires;
-  final BigInt publicWires;
-  final BigInt domainSize;
-  final BigInt constraintSystemOffset;
-
-  const ProvingKeyInfo({
-    required this.inputs,
-    required this.outputs,
-    required this.requiresP256,
-    required this.wires,
-    required this.publicWires,
-    required this.domainSize,
-    required this.constraintSystemOffset,
-  });
-
-  @override
-  int get hashCode =>
-      inputs.hashCode ^
-      outputs.hashCode ^
-      requiresP256.hashCode ^
-      wires.hashCode ^
-      publicWires.hashCode ^
-      domainSize.hashCode ^
-      constraintSystemOffset.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ProvingKeyInfo &&
-          runtimeType == other.runtimeType &&
-          inputs == other.inputs &&
-          outputs == other.outputs &&
-          requiresP256 == other.requiresP256 &&
-          wires == other.wires &&
-          publicWires == other.publicWires &&
-          domainSize == other.domainSize &&
-          constraintSystemOffset == other.constraintSystemOffset;
 }
 
 class TransferDraft {

@@ -57,7 +57,9 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
       RustLibWire.fromExternalLibrary;
 
   @override
-  Future<void> executeRustInitializers() async {}
+  Future<void> executeRustInitializers() async {
+    await api.crateApiSimpleInitApp();
+  }
 
   @override
   ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig =>
@@ -67,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1586915465;
+  int get rustContentHash => 858185267;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -78,7 +80,13 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<ProvingKeyInfo> zolanaMobileInspectProvingKey({required String path});
+  Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({
+    required String r1CsPath,
+    required String provingKeyPath,
+    required String witnessJson,
+  });
+
+  Future<void> crateApiSimpleInitApp();
 
   Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs});
 
@@ -94,6 +102,12 @@ abstract class RustLibApi extends BaseApi {
   Future<String> zolanaMobileSdkVersion();
 
   Future<String> zolanaMobileShieldedAddress({required List<int> seed});
+
+  Future<bool> zolanaMobileVerifyGnarkProof({
+    required String r1CsPath,
+    required String verifyingKeyPath,
+    required GnarkProofResult proofResult,
+  });
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -105,12 +119,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<ProvingKeyInfo> zolanaMobileInspectProvingKey({required String path}) {
+  Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({
+    required String r1CsPath,
+    required String provingKeyPath,
+    required String witnessJson,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(path, serializer);
+          sse_encode_String(r1CsPath, serializer);
+          sse_encode_String(provingKeyPath, serializer);
+          sse_encode_String(witnessJson, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -119,18 +139,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_proving_key_info,
+          decodeSuccessData: sse_decode_gnark_proof_result,
           decodeErrorData: sse_decode_String,
         ),
-        constMeta: kZolanaMobileInspectProvingKeyConstMeta,
-        argValues: [path],
+        constMeta: kZolanaMobileGenerateGnarkProofConstMeta,
+        argValues: [r1CsPath, provingKeyPath, witnessJson],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kZolanaMobileInspectProvingKeyConstMeta =>
-      const TaskConstMeta(debugName: "inspect_proving_key", argNames: ["path"]);
+  TaskConstMeta get kZolanaMobileGenerateGnarkProofConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_gnark_proof",
+        argNames: ["r1CsPath", "provingKeyPath", "witnessJson"],
+      );
+
+  @override
+  Future<void> crateApiSimpleInitApp() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSimpleInitAppConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleInitAppConstMeta =>
+      const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
   Future<Uint8List> zolanaMobilePoseidonHash({
@@ -144,7 +194,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 3,
             port: port_,
           );
         },
@@ -174,7 +224,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 4,
             port: port_,
           );
         },
@@ -206,7 +256,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -236,7 +286,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -264,7 +314,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -282,6 +332,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kZolanaMobileShieldedAddressConstMeta =>
       const TaskConstMeta(debugName: "shielded_address", argNames: ["seed"]);
 
+  @override
+  Future<bool> zolanaMobileVerifyGnarkProof({
+    required String r1CsPath,
+    required String verifyingKeyPath,
+    required GnarkProofResult proofResult,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(r1CsPath, serializer);
+          sse_encode_String(verifyingKeyPath, serializer);
+          sse_encode_box_autoadd_gnark_proof_result(proofResult, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kZolanaMobileVerifyGnarkProofConstMeta,
+        argValues: [r1CsPath, verifyingKeyPath, proofResult],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileVerifyGnarkProofConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_gnark_proof",
+        argNames: ["r1CsPath", "verifyingKeyPath", "proofResult"],
+      );
+
   @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -295,11 +382,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_gnark_proof_result(raw);
+  }
+
+  @protected
   TransferDraftRequest dco_decode_box_autoadd_transfer_draft_request(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_transfer_draft_request(raw);
+  }
+
+  @protected
+  GnarkProofResult dco_decode_gnark_proof_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return GnarkProofResult(
+      proof: dco_decode_String(arr[0]),
+      publicInputs: dco_decode_String(arr[1]),
+    );
   }
 
   @protected
@@ -339,26 +444,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       verified: dco_decode_bool(arr[1]),
       inputs: dco_decode_u_32(arr[2]),
       outputs: dco_decode_u_32(arr[3]),
-      keyLoadMs: dco_decode_u_64(arr[4]),
-      proofMs: dco_decode_u_64(arr[5]),
+      proofMs: dco_decode_u_64(arr[4]),
+      verifyMs: dco_decode_u_64(arr[5]),
       totalMs: dco_decode_u_64(arr[6]),
-    );
-  }
-
-  @protected
-  ProvingKeyInfo dco_decode_proving_key_info(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
-    return ProvingKeyInfo(
-      inputs: dco_decode_u_32(arr[0]),
-      outputs: dco_decode_u_32(arr[1]),
-      requiresP256: dco_decode_bool(arr[2]),
-      wires: dco_decode_u_64(arr[3]),
-      publicWires: dco_decode_u_64(arr[4]),
-      domainSize: dco_decode_u_64(arr[5]),
-      constraintSystemOffset: dco_decode_u_64(arr[6]),
     );
   }
 
@@ -448,11 +536,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_gnark_proof_result(deserializer));
+  }
+
+  @protected
   TransferDraftRequest sse_decode_box_autoadd_transfer_draft_request(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_transfer_draft_request(deserializer));
+  }
+
+  @protected
+  GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_proof = sse_decode_String(deserializer);
+    var var_publicInputs = sse_decode_String(deserializer);
+    return GnarkProofResult(proof: var_proof, publicInputs: var_publicInputs);
   }
 
   @protected
@@ -504,38 +608,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_verified = sse_decode_bool(deserializer);
     var var_inputs = sse_decode_u_32(deserializer);
     var var_outputs = sse_decode_u_32(deserializer);
-    var var_keyLoadMs = sse_decode_u_64(deserializer);
     var var_proofMs = sse_decode_u_64(deserializer);
+    var var_verifyMs = sse_decode_u_64(deserializer);
     var var_totalMs = sse_decode_u_64(deserializer);
     return LocalProofResult(
       proofJson: var_proofJson,
       verified: var_verified,
       inputs: var_inputs,
       outputs: var_outputs,
-      keyLoadMs: var_keyLoadMs,
       proofMs: var_proofMs,
+      verifyMs: var_verifyMs,
       totalMs: var_totalMs,
-    );
-  }
-
-  @protected
-  ProvingKeyInfo sse_decode_proving_key_info(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_inputs = sse_decode_u_32(deserializer);
-    var var_outputs = sse_decode_u_32(deserializer);
-    var var_requiresP256 = sse_decode_bool(deserializer);
-    var var_wires = sse_decode_u_64(deserializer);
-    var var_publicWires = sse_decode_u_64(deserializer);
-    var var_domainSize = sse_decode_u_64(deserializer);
-    var var_constraintSystemOffset = sse_decode_u_64(deserializer);
-    return ProvingKeyInfo(
-      inputs: var_inputs,
-      outputs: var_outputs,
-      requiresP256: var_requiresP256,
-      wires: var_wires,
-      publicWires: var_publicWires,
-      domainSize: var_domainSize,
-      constraintSystemOffset: var_constraintSystemOffset,
     );
   }
 
@@ -642,12 +725,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_gnark_proof_result(
+    GnarkProofResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_gnark_proof_result(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_transfer_draft_request(
     TransferDraftRequest self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_transfer_draft_request(self, serializer);
+  }
+
+  @protected
+  void sse_encode_gnark_proof_result(
+    GnarkProofResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.proof, serializer);
+    sse_encode_String(self.publicInputs, serializer);
   }
 
   @protected
@@ -706,24 +808,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.verified, serializer);
     sse_encode_u_32(self.inputs, serializer);
     sse_encode_u_32(self.outputs, serializer);
-    sse_encode_u_64(self.keyLoadMs, serializer);
     sse_encode_u_64(self.proofMs, serializer);
+    sse_encode_u_64(self.verifyMs, serializer);
     sse_encode_u_64(self.totalMs, serializer);
-  }
-
-  @protected
-  void sse_encode_proving_key_info(
-    ProvingKeyInfo self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_u_32(self.inputs, serializer);
-    sse_encode_u_32(self.outputs, serializer);
-    sse_encode_bool(self.requiresP256, serializer);
-    sse_encode_u_64(self.wires, serializer);
-    sse_encode_u_64(self.publicWires, serializer);
-    sse_encode_u_64(self.domainSize, serializer);
-    sse_encode_u_64(self.constraintSystemOffset, serializer);
   }
 
   @protected
