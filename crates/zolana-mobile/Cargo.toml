@@ -15,14 +15,13 @@ default = []
 flutter = ["dep:mopro-ffi", "mopro-ffi/flutter"]
 
 [dependencies]
-ark-ff = { workspace = true }
-mopro-ffi = { version = "=0.3.7", optional = true }
-rand = { workspace = true }
+mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "e0c4342e72bfa02c082a22ed706558c6665e461a", optional = true }
+rust-gnark = { git = "https://github.com/sergeytimoshin/mopro", rev = "e0c4342e72bfa02c082a22ed706558c6665e461a" }
+serde_json = { workspace = true }
 solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-groth16-gnark = { path = "../zolana-groth16-gnark", features = ["parallel"] }
 zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "e6139f658c6961101d716e107a15a5ca9cecd143", features = ["std"] }
 zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "e6139f658c6961101d716e107a15a5ca9cecd143" }
 zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "e6139f658c6961101d716e107a15a5ca9cecd143" }

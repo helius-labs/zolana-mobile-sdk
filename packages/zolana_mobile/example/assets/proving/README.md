@@ -1,4 +1,4 @@
-Place the staged proving key and solved assignment in this directory.
+Place the staged Mopro gnark assets in this directory.
 
 From the repository root, run:
 
@@ -6,6 +6,6 @@ From the repository root, run:
 ./scripts/stage-demo-assets.sh
 ```
 
-The script downloads and verifies `transfer_confidential_2_3.key` when needed,
-copies the committed `assignment-2x3.bin` fixture, and stages both here. The
-staged binary assets are ignored by Git.
+The script downloads and verifies `transfer_confidential_2_3.key`, splits its
+`.pk`, `.vk`, and `.r1cs` sections at locked byte offsets, and copies the
+committed witness JSON. All staged assets are ignored by Git.

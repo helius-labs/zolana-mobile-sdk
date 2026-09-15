@@ -65,15 +65,21 @@ class _DemoScreenState extends State<DemoScreen> {
       _error = null;
     });
     try {
-      final keyPath = await _copyAssetToTemporaryFile(
-        'assets/proving/transfer_confidential_2_3.key',
+      await _copyAssetToTemporaryFile(
+        'assets/proving/transfer_confidential_2_3.r1cs',
       );
-      final assignmentPath = await _copyAssetToTemporaryFile(
-        'assets/proving/assignment-2x3.bin',
+      await _copyAssetToTemporaryFile(
+        'assets/proving/transfer_confidential_2_3.vk',
+      );
+      final provingKeyPath = await _copyAssetToTemporaryFile(
+        'assets/proving/transfer_confidential_2_3.pk',
+      );
+      final witnessPath = await _copyAssetToTemporaryFile(
+        'assets/proving/witness-2x3.json',
       );
       final proof = await proveAssignment(
-        provingKeyPath: keyPath,
-        assignmentPath: assignmentPath,
+        provingKeyPath: provingKeyPath,
+        assignmentPath: witnessPath,
       );
       if (!mounted) return;
       setState(() => _proof = proof);
@@ -113,7 +119,7 @@ class _DemoScreenState extends State<DemoScreen> {
         children: [
           _DemoCard(
             title: 'Local Groth16 proof',
-            subtitle: 'Prove and verify the staged 2→3 assignment on-device.',
+            subtitle: 'Prove and verify the staged 2→3 witness with Mopro/gnark.',
             buttonLabel: 'Generate proof locally',
             busy: _proving,
             onPressed: _prove,
@@ -191,8 +197,7 @@ class _ProofResult extends StatelessWidget {
       children: [
         _Detail(label: 'Verified', value: proof.verified ? 'yes' : 'no'),
         _Detail(label: 'Circuit', value: '${proof.inputs}→${proof.outputs}'),
-        _Detail(label: 'Key load', value: '${proof.keyLoadMs} ms'),
-        _Detail(label: 'Proving', value: '${proof.proofMs} ms'),
+        _Detail(label: 'Mopro proving', value: '${proof.proofMs} ms'),
         _Detail(label: 'Proof JSON', value: _short(proof.proofJson)),
       ],
     );

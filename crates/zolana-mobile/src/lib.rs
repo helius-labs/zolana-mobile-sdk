@@ -1,13 +1,20 @@
-use std::{fs, str::FromStr, time::Instant};
+use std::{
+    fs::{self, File},
+    io::Read,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::OnceLock,
+    time::Instant,
+};
 
-use rand::rngs::OsRng;
-use zolana_groth16_gnark::{parse_transfer_key, proof_json, prove, verify, Assignment};
 use zolana_hasher::{Hasher, Poseidon};
 use zolana_keypair::{ShieldedAddress, ShieldedKeypair, SigningKey};
 use zolana_transaction::{
     instructions::{transact::ConfidentialTransfer, types::SppProofInputUtxo},
     Address, AssetRegistry, Data, Utxo, SOL_MINT,
 };
+
+static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct ProvingKeyInfo {
@@ -29,6 +36,12 @@ pub struct LocalProofResult {
     pub key_load_ms: u64,
     pub proof_ms: u64,
     pub total_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct GnarkProofResult {
+    pub proof: String,
+    pub public_inputs: String,
 }
 
 #[derive(Debug, Clone)]
@@ -86,9 +99,50 @@ pub fn poseidon_hash(inputs: Vec<Vec<u8>>) -> Result<Vec<u8>, String> {
 }
 
 pub fn inspect_proving_key(path: String) -> Result<ProvingKeyInfo, String> {
-    let bytes = fs::read(&path).map_err(|error| format!("read {path}: {error}"))?;
-    let key = parse_transfer_key(&bytes).map_err(|error| error.to_string())?;
-    Ok(key_info(&key))
+    let mut header = [0u8; 12];
+    File::open(&path)
+        .and_then(|mut file| file.read_exact(&mut header))
+        .map_err(|error| format!("read {path}: {error}"))?;
+    Ok(ProvingKeyInfo {
+        inputs: u32::from_be_bytes(header[0..4].try_into().unwrap()),
+        outputs: u32::from_be_bytes(header[4..8].try_into().unwrap()),
+        requires_p256: u32::from_be_bytes(header[8..12].try_into().unwrap()) != 0,
+        wires: 0,
+        public_wires: 0,
+        domain_size: 0,
+        constraint_system_offset: 0,
+    })
+}
+
+pub fn generate_gnark_proof(
+    r1cs_path: String,
+    proving_key_path: String,
+    witness_json: String,
+) -> Result<GnarkProofResult, String> {
+    init_gnark()?;
+    rust_gnark::groth16_prove(&r1cs_path, &proving_key_path, &witness_json)
+        .map(|result| GnarkProofResult {
+            proof: result.proof,
+            public_inputs: result.public_inputs,
+        })
+        .map_err(|error| error.to_string())
+}
+
+pub fn verify_gnark_proof(
+    r1cs_path: String,
+    verifying_key_path: String,
+    proof_result: GnarkProofResult,
+) -> Result<bool, String> {
+    init_gnark()?;
+    rust_gnark::groth16_verify(
+        &r1cs_path,
+        &verifying_key_path,
+        &rust_gnark::Groth16ProofResult {
+            proof: proof_result.proof,
+            public_inputs: proof_result.public_inputs,
+        },
+    )
+    .map_err(|error| error.to_string())
 }
 
 pub fn prove_assignment(
@@ -96,27 +150,27 @@ pub fn prove_assignment(
     assignment_path: String,
 ) -> Result<LocalProofResult, String> {
     let total_started = Instant::now();
-    let key_started = Instant::now();
-    let key_bytes =
-        fs::read(&proving_key_path).map_err(|error| format!("read {proving_key_path}: {error}"))?;
-    let key = parse_transfer_key(&key_bytes).map_err(|error| error.to_string())?;
-    let key_load_ms = elapsed_ms(key_started);
-
-    let assignment_bytes =
-        fs::read(&assignment_path).map_err(|error| format!("read {assignment_path}: {error}"))?;
-    let assignment = Assignment::from_blob(&assignment_bytes).map_err(|error| error.to_string())?;
+    let proving_key = PathBuf::from(&proving_key_path);
+    let r1cs_path = sibling_asset(&proving_key, "r1cs")?;
+    let verifying_key_path = sibling_asset(&proving_key, "vk")?;
+    let witness_json = fs::read_to_string(&assignment_path)
+        .map_err(|error| format!("read {assignment_path}: {error}"))?;
     let proof_started = Instant::now();
-    let proof = prove(&key.pk, &assignment, &mut OsRng).map_err(|error| error.to_string())?;
+    let proof = generate_gnark_proof(r1cs_path.clone(), proving_key_path.clone(), witness_json)?;
     let proof_ms = elapsed_ms(proof_started);
-    let public_inputs = &assignment.wires[1..assignment.nb_public];
-    let verified = verify(&key.vk, &proof, public_inputs);
+    let verified = verify_gnark_proof(r1cs_path, verifying_key_path, proof.clone())?;
+    let (inputs, outputs) = shape_from_path(&proving_key);
 
     Ok(LocalProofResult {
-        proof_json: proof_json(&proof),
+        proof_json: serde_json::json!({
+            "proof": proof.proof,
+            "publicInputs": proof.public_inputs,
+        })
+        .to_string(),
         verified,
-        inputs: key.header.n_inputs,
-        outputs: key.header.n_outputs,
-        key_load_ms,
+        inputs,
+        outputs,
+        key_load_ms: 0,
         proof_ms,
         total_ms: elapsed_ms(total_started),
     })
@@ -216,15 +270,32 @@ pub fn prepare_transfer(request: TransferDraftRequest) -> Result<TransferDraft, 
     })
 }
 
-fn key_info(key: &zolana_groth16_gnark::TransferKey) -> ProvingKeyInfo {
-    ProvingKeyInfo {
-        inputs: key.header.n_inputs,
-        outputs: key.header.n_outputs,
-        requires_p256: key.header.requires_p256,
-        wires: key.pk.nb_wires as u64,
-        public_wires: key.pk.nb_public() as u64,
-        domain_size: key.pk.domain.cardinality,
-        constraint_system_offset: key.constraint_system_offset as u64,
+fn init_gnark() -> Result<(), String> {
+    GNARK_INIT
+        .get_or_init(|| rust_gnark::init().map_err(|error| error.to_string()))
+        .clone()
+}
+
+fn sibling_asset(proving_key: &Path, extension: &str) -> Result<String, String> {
+    let path = proving_key.with_extension(extension);
+    if !path.is_file() {
+        return Err(format!("missing Mopro asset: {}", path.display()));
+    }
+    Ok(path.display().to_string())
+}
+
+fn shape_from_path(path: &Path) -> (u32, u32) {
+    let parts = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem.split('_').collect::<Vec<_>>())
+        .unwrap_or_default();
+    match parts.as_slice() {
+        [.., inputs, outputs] => (
+            inputs.parse().unwrap_or_default(),
+            outputs.parse().unwrap_or_default(),
+        ),
+        _ => (0, 0),
     }
 }
 
@@ -275,17 +346,17 @@ mod tests {
 
     #[test]
     #[ignore = "requires local proving fixtures"]
-    fn proves_and_verifies_staged_assignment() {
+    fn proves_and_verifies_staged_mopro_witness() {
         let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let proving_key = std::env::var("ZOLANA_PROVING_KEY_PATH").unwrap_or_else(|_| {
             repository
-                .join("packages/zolana_mobile/example/assets/proving/transfer_confidential_2_3.key")
+                .join("packages/zolana_mobile/example/assets/proving/transfer_confidential_2_3.pk")
                 .display()
                 .to_string()
         });
         let assignment = std::env::var("ZOLANA_ASSIGNMENT_PATH").unwrap_or_else(|_| {
             repository
-                .join("fixtures/assignment-2x3.bin")
+                .join("fixtures/witness-2x3.json")
                 .display()
                 .to_string()
         });
