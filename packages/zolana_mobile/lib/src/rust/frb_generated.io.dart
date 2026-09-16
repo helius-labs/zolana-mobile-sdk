@@ -54,6 +54,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   LocalProofResult dco_decode_local_proof_result(dynamic raw);
 
   @protected
+  PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw);
+
+  @protected
   TransferDraft dco_decode_transfer_draft(dynamic raw);
 
   @protected
@@ -111,6 +114,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer);
+
+  @protected
+  PreparedProverInfo sse_decode_prepared_prover_info(
+    SseDeserializer deserializer,
+  );
 
   @protected
   TransferDraft sse_decode_transfer_draft(SseDeserializer deserializer);
@@ -188,6 +196,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_local_proof_result(
     LocalProofResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_prepared_prover_info(
+    PreparedProverInfo self,
     SseSerializer serializer,
   );
 

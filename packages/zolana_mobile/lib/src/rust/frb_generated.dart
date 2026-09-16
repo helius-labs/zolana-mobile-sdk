@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 858185267;
+  int get rustContentHash => -1309164154;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -88,6 +88,12 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSimpleInitApp();
 
+  Future<PreparedProverInfo> zolanaMobileLoadProver({
+    required String r1CsPath,
+    required String provingKeyPath,
+    required String verifyingKeyPath,
+  });
+
   Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs});
 
   Future<TransferDraft> zolanaMobilePrepareTransfer({
@@ -98,6 +104,14 @@ abstract class RustLibApi extends BaseApi {
     required String provingKeyPath,
     required String assignmentPath,
   });
+
+  Future<LocalProofResult> zolanaMobileProvePrepared({
+    required BigInt id,
+    required String inputJson,
+    required bool structuredRequest,
+  });
+
+  Future<void> zolanaMobileReleaseProver({required BigInt id});
 
   Future<String> zolanaMobileSdkVersion();
 
@@ -183,6 +197,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
+  Future<PreparedProverInfo> zolanaMobileLoadProver({
+    required String r1CsPath,
+    required String provingKeyPath,
+    required String verifyingKeyPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(r1CsPath, serializer);
+          sse_encode_String(provingKeyPath, serializer);
+          sse_encode_String(verifyingKeyPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_prepared_prover_info,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kZolanaMobileLoadProverConstMeta,
+        argValues: [r1CsPath, provingKeyPath, verifyingKeyPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileLoadProverConstMeta => const TaskConstMeta(
+    debugName: "load_prover",
+    argNames: ["r1CsPath", "provingKeyPath", "verifyingKeyPath"],
+  );
+
+  @override
   Future<Uint8List> zolanaMobilePoseidonHash({
     required List<Uint8List> inputs,
   }) {
@@ -194,7 +244,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 4,
             port: port_,
           );
         },
@@ -224,7 +274,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -256,7 +306,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -278,6 +328,70 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<LocalProofResult> zolanaMobileProvePrepared({
+    required BigInt id,
+    required String inputJson,
+    required bool structuredRequest,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(id, serializer);
+          sse_encode_String(inputJson, serializer);
+          sse_encode_bool(structuredRequest, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_local_proof_result,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kZolanaMobileProvePreparedConstMeta,
+        argValues: [id, inputJson, structuredRequest],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileProvePreparedConstMeta => const TaskConstMeta(
+    debugName: "prove_prepared",
+    argNames: ["id", "inputJson", "structuredRequest"],
+  );
+
+  @override
+  Future<void> zolanaMobileReleaseProver({required BigInt id}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kZolanaMobileReleaseProverConstMeta,
+        argValues: [id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileReleaseProverConstMeta =>
+      const TaskConstMeta(debugName: "release_prover", argNames: ["id"]);
+
+  @override
   Future<String> zolanaMobileSdkVersion() {
     return handler.executeNormal(
       NormalTask(
@@ -286,7 +400,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 9,
             port: port_,
           );
         },
@@ -314,7 +428,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 10,
             port: port_,
           );
         },
@@ -348,7 +462,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 11,
             port: port_,
           );
         },
@@ -437,16 +551,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   LocalProofResult dco_decode_local_proof_result(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return LocalProofResult(
       proofJson: dco_decode_String(arr[0]),
       verified: dco_decode_bool(arr[1]),
       inputs: dco_decode_u_32(arr[2]),
       outputs: dco_decode_u_32(arr[3]),
       proofMs: dco_decode_u_64(arr[4]),
-      verifyMs: dco_decode_u_64(arr[5]),
-      totalMs: dco_decode_u_64(arr[6]),
+      witnessMs: dco_decode_u_64(arr[5]),
+      verifyMs: dco_decode_u_64(arr[6]),
+      totalMs: dco_decode_u_64(arr[7]),
+    );
+  }
+
+  @protected
+  PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PreparedProverInfo(
+      id: dco_decode_u_64(arr[0]),
+      loadMs: dco_decode_u_64(arr[1]),
     );
   }
 
@@ -609,6 +736,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_inputs = sse_decode_u_32(deserializer);
     var var_outputs = sse_decode_u_32(deserializer);
     var var_proofMs = sse_decode_u_64(deserializer);
+    var var_witnessMs = sse_decode_u_64(deserializer);
     var var_verifyMs = sse_decode_u_64(deserializer);
     var var_totalMs = sse_decode_u_64(deserializer);
     return LocalProofResult(
@@ -617,9 +745,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputs: var_inputs,
       outputs: var_outputs,
       proofMs: var_proofMs,
+      witnessMs: var_witnessMs,
       verifyMs: var_verifyMs,
       totalMs: var_totalMs,
     );
+  }
+
+  @protected
+  PreparedProverInfo sse_decode_prepared_prover_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_u_64(deserializer);
+    var var_loadMs = sse_decode_u_64(deserializer);
+    return PreparedProverInfo(id: var_id, loadMs: var_loadMs);
   }
 
   @protected
@@ -809,8 +948,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.inputs, serializer);
     sse_encode_u_32(self.outputs, serializer);
     sse_encode_u_64(self.proofMs, serializer);
+    sse_encode_u_64(self.witnessMs, serializer);
     sse_encode_u_64(self.verifyMs, serializer);
     sse_encode_u_64(self.totalMs, serializer);
+  }
+
+  @protected
+  void sse_encode_prepared_prover_info(
+    PreparedProverInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.id, serializer);
+    sse_encode_u_64(self.loadMs, serializer);
   }
 
   @protected

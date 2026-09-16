@@ -28,9 +28,32 @@ jobs:
           cache: true
       - run: ./scripts/stage-demo-assets.sh
       - run: cargo test --workspace
+      - run: go test ./...
+        working-directory: packages/zolana_mobile/native/rust-gnark/go
+        env:
+          ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
       - run: cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignored
       - run: flutter pub get && flutter analyze && flutter test
         working-directory: packages/zolana_mobile
+      - run: bash scripts/test-consumer.sh android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
       - run: flutter pub get && flutter analyze && flutter build apk --release
         working-directory: packages/zolana_mobile/example
         env:
@@ -51,5 +74,12 @@ jobs:
           flutter-version: 3.47.4
           cache: true
       - run: ./scripts/stage-demo-assets.sh
+      - run: bash scripts/test-consumer.sh ios
+      - name: Run clean consumer on an iOS simulator
+        run: |
+          device_id="$(xcrun simctl list devices available -j | ruby -rjson -e 'device = JSON.parse(STDIN.read).fetch("devices").values.flatten.find { |entry| entry.fetch("name").start_with?("iPhone") && entry.fetch("state") == "Shutdown" }; abort("No available iPhone simulator") unless device; puts device.fetch("udid")')"
+          xcrun simctl boot "$device_id"
+          xcrun simctl bootstatus "$device_id" -b
+          ZOLANA_TEST_DEVICE="$device_id" bash scripts/test-consumer.sh device
       - run: flutter pub get && flutter build ios --simulator
         working-directory: packages/zolana_mobile/example

@@ -5,7 +5,9 @@ hashing, and local Mopro/gnark Groth16 proving on Android and iOS.
 
 ## Layout
 
-- `crates/zolana-mobile`: Zolana API plus the Mopro gnark adapter surface.
+- `packages/zolana_mobile/native/zolana-mobile`: Zolana API and native prover handles.
+- `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
+  strict witness validation, prepared keys, and the structured request adapter.
 - `packages/zolana_mobile`: generated Flutter plugin and proof-only example.
 - `fixtures`: committed 2→3 request and flattened gnark witness fixture.
 - `scripts`: checksum-locked Mopro asset staging.
@@ -65,15 +67,34 @@ cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignore
 
 ## Rust dependencies
 
-The Flutter-facing crate pins `mopro-ffi` and the Groth16-only gnark 0.15 backend
-to immutable commits on `sergeytimoshin/mopro` branch
-`feat/gnark-0.15-mobile`. Protocol crates `zolana-hasher`, `zolana-keypair`, and
+The Flutter-facing crate pins `mopro-ffi` to `sergeytimoshin/mopro` revision
+`c1071f96fa5a28dca8e567dd3944331047450a2b`. The gnark 0.15 backend from that revision
+is vendored with local fixes documented in its provenance file so the pub package
+includes its complete source build. Protocol crates `zolana-hasher`, `zolana-keypair`, and
 `zolana-transaction` are pinned to upstream revision
 `e6139f658c6961101d716e107a15a5ca9cecd143`.
 
 ## Current boundary
 
-Mopro accepts a flattened decimal witness JSON. The demo commits one witness for
-the 2→3 fixture; producing a live witness from a wallet transfer request remains
-the application integration boundary. Constraint solving, proof generation, and
-verification all run on-device.
+`LocalProver.proveRequest` accepts a structured Zolana `/prove` request and builds
+its witness on-device. It returns a locally verified canonical proof for the
+existing Zolana transaction flow. The example uses a public 2→3 request fixture,
+not live wallet funds. Obtaining real wallet state, authorizing, signing, and
+submitting transactions remains the wallet application's responsibility.
+
+See `packages/zolana_mobile/README.md` for the ownership, lock/discard, completion,
+and prepared-key lifetime contract. Closing drains work; it does not promise
+instant native cancellation or secure erasure of all Dart/Go copies.
+
+## Distribution checks
+
+```sh
+bash scripts/test-consumer.sh android
+bash scripts/test-consumer.sh ios
+ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device
+```
+
+These build a separate extracted-package consumer with fresh Dart dependency
+resolution. The device check initializes the native bridge, generates a real
+proof, checks safe errors, and closes a prover during a warm proof. CI configures
+Android emulator and iOS simulator checks as well as consumer release builds.

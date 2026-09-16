@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 858185267;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1309164154;
 
 // Section: executor
 
@@ -112,6 +112,45 @@ fn wire__crate__api__simple__init_app_impl(
                     let output_ok = Result::<_, ()>::Ok({
                         crate::api::simple::init_app();
                     })?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__zolana_mobile__load_prover_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "load_prover",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_r1cs_path = <String>::sse_decode(&mut deserializer);
+            let api_proving_key_path = <String>::sse_decode(&mut deserializer);
+            let api_verifying_key_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = zolana_mobile::load_prover(
+                        api_r1cs_path,
+                        api_proving_key_path,
+                        api_verifying_key_path,
+                    )?;
                     Ok(output_ok)
                 })())
             }
@@ -213,6 +252,78 @@ fn wire__zolana_mobile__prove_assignment_impl(
                 transform_result_sse::<_, String>((move || {
                     let output_ok =
                         zolana_mobile::prove_assignment(api_proving_key_path, api_assignment_path)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__zolana_mobile__prove_prepared_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "prove_prepared",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <u64>::sse_decode(&mut deserializer);
+            let api_input_json = <String>::sse_decode(&mut deserializer);
+            let api_structured_request = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = zolana_mobile::prove_prepared(
+                        api_id,
+                        api_input_json,
+                        api_structured_request,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__zolana_mobile__release_prover_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "release_prover",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <u64>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = zolana_mobile::release_prover(api_id)?;
                     Ok(output_ok)
                 })())
             }
@@ -340,8 +451,14 @@ const _: fn() = || {
         let _: u32 = LocalProofResult.inputs;
         let _: u32 = LocalProofResult.outputs;
         let _: u64 = LocalProofResult.proof_ms;
+        let _: u64 = LocalProofResult.witness_ms;
         let _: u64 = LocalProofResult.verify_ms;
         let _: u64 = LocalProofResult.total_ms;
+    }
+    {
+        let PreparedProverInfo = None::<zolana_mobile::PreparedProverInfo>.unwrap();
+        let _: u64 = PreparedProverInfo.id;
+        let _: u64 = PreparedProverInfo.load_ms;
     }
     {
         let TransferDraft = None::<zolana_mobile::TransferDraft>.unwrap();
@@ -447,6 +564,7 @@ impl SseDecode for zolana_mobile::LocalProofResult {
         let mut var_inputs = <u32>::sse_decode(deserializer);
         let mut var_outputs = <u32>::sse_decode(deserializer);
         let mut var_proofMs = <u64>::sse_decode(deserializer);
+        let mut var_witnessMs = <u64>::sse_decode(deserializer);
         let mut var_verifyMs = <u64>::sse_decode(deserializer);
         let mut var_totalMs = <u64>::sse_decode(deserializer);
         return zolana_mobile::LocalProofResult {
@@ -455,8 +573,21 @@ impl SseDecode for zolana_mobile::LocalProofResult {
             inputs: var_inputs,
             outputs: var_outputs,
             proof_ms: var_proofMs,
+            witness_ms: var_witnessMs,
             verify_ms: var_verifyMs,
             total_ms: var_totalMs,
+        };
+    }
+}
+
+impl SseDecode for zolana_mobile::PreparedProverInfo {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <u64>::sse_decode(deserializer);
+        let mut var_loadMs = <u64>::sse_decode(deserializer);
+        return zolana_mobile::PreparedProverInfo {
+            id: var_id,
+            load_ms: var_loadMs,
         };
     }
 }
@@ -565,12 +696,15 @@ fn pde_ffi_dispatcher_primary_impl(
     match func_id {
         1 => wire__zolana_mobile__generate_gnark_proof_impl(port, ptr, rust_vec_len, data_len),
         2 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        3 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__zolana_mobile__prepare_transfer_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__zolana_mobile__prove_assignment_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__zolana_mobile__shielded_address_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__zolana_mobile__verify_gnark_proof_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__zolana_mobile__load_prover_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__zolana_mobile__prepare_transfer_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__zolana_mobile__prove_assignment_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__zolana_mobile__prove_prepared_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__zolana_mobile__release_prover_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__zolana_mobile__shielded_address_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__zolana_mobile__verify_gnark_proof_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -619,6 +753,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::LocalProofResul
             self.0.inputs.into_into_dart().into_dart(),
             self.0.outputs.into_into_dart().into_dart(),
             self.0.proof_ms.into_into_dart().into_dart(),
+            self.0.witness_ms.into_into_dart().into_dart(),
             self.0.verify_ms.into_into_dart().into_dart(),
             self.0.total_ms.into_into_dart().into_dart(),
         ]
@@ -633,6 +768,27 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::LocalProofResul
     for zolana_mobile::LocalProofResult
 {
     fn into_into_dart(self) -> FrbWrapper<zolana_mobile::LocalProofResult> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::PreparedProverInfo> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.id.into_into_dart().into_dart(),
+            self.0.load_ms.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::PreparedProverInfo>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::PreparedProverInfo>>
+    for zolana_mobile::PreparedProverInfo
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::PreparedProverInfo> {
         self.into()
     }
 }
@@ -772,8 +928,17 @@ impl SseEncode for zolana_mobile::LocalProofResult {
         <u32>::sse_encode(self.inputs, serializer);
         <u32>::sse_encode(self.outputs, serializer);
         <u64>::sse_encode(self.proof_ms, serializer);
+        <u64>::sse_encode(self.witness_ms, serializer);
         <u64>::sse_encode(self.verify_ms, serializer);
         <u64>::sse_encode(self.total_ms, serializer);
+    }
+}
+
+impl SseEncode for zolana_mobile::PreparedProverInfo {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.id, serializer);
+        <u64>::sse_encode(self.load_ms, serializer);
     }
 }
 

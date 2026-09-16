@@ -4,7 +4,7 @@ flutter_rust_bridge = "=2.11.1"
 [dependencies.zolana-mobile]
 default-features = false
 features = ["flutter"]
-path = "../../../crates/zolana-mobile"
+path = "../native/zolana-mobile"
 version = "0.1.0"
 
 [build-dependencies]

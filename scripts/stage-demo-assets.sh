@@ -10,7 +10,8 @@ key_checksum="915ffeaf13ae754f737235c85106778a465d10711a47dd134156b7ddc2c4d2b6"
 pk_checksum="d5abbf3d961ea14545dc2d2e8e86b38ef2be59f76eca200e84771e58e45a1766"
 vk_checksum="9b39f5bd57f144fd03caf3456e26a5af3fbb6a8128f0f6c21284ee3617a3d2ba"
 r1cs_checksum="aa0ab29a7e79904a319477a5eaca08dd729d80f434eb55fff5e62ea60d2ed738"
-witness_checksum="198ac36808679a6f44cd0c87a869ab7dc4b99ebcdcea6421c06a4888d949b01d"
+witness_checksum="654945f04505441f7a18bae1da44db93f020a7f28fb984603b035ed628870a02"
+request_checksum="074f0e453ac8a50063118521e754f418f036a31f7887266fe3f7f3d8ea6d9da5"
 
 sha256() {
   if command -v shasum >/dev/null 2>&1; then
@@ -57,6 +58,7 @@ fi
 
 verify "$key" "$key_checksum"
 verify "$witness" "$witness_checksum"
+verify "$repo_root/fixtures/prove-request-2x3.json" "$request_checksum"
 
 temporary_assets="$(mktemp -d)"
 trap 'rm -rf "$temporary_assets"' EXIT
@@ -70,4 +72,5 @@ verify "$temporary_assets/transfer_confidential_2_3.r1cs" "$r1cs_checksum"
 mkdir -p "$asset_dir"
 cp "$temporary_assets"/* "$asset_dir/"
 cp "$witness" "$asset_dir/witness-2x3.json"
+cp "$repo_root/fixtures/prove-request-2x3.json" "$asset_dir/prove-request-2x3.json"
 echo "staged demo proving assets in $asset_dir"

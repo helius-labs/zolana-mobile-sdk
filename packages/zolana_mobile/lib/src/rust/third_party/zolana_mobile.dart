@@ -7,6 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ProverState`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Future<String> sdkVersion() => RustLib.instance.api.zolanaMobileSdkVersion();
@@ -32,6 +33,29 @@ Future<bool> verifyGnarkProof({
   r1CsPath: r1CsPath,
   verifyingKeyPath: verifyingKeyPath,
   proofResult: proofResult,
+);
+
+Future<PreparedProverInfo> loadProver({
+  required String r1CsPath,
+  required String provingKeyPath,
+  required String verifyingKeyPath,
+}) => RustLib.instance.api.zolanaMobileLoadProver(
+  r1CsPath: r1CsPath,
+  provingKeyPath: provingKeyPath,
+  verifyingKeyPath: verifyingKeyPath,
+);
+
+Future<void> releaseProver({required BigInt id}) =>
+    RustLib.instance.api.zolanaMobileReleaseProver(id: id);
+
+Future<LocalProofResult> provePrepared({
+  required BigInt id,
+  required String inputJson,
+  required bool structuredRequest,
+}) => RustLib.instance.api.zolanaMobileProvePrepared(
+  id: id,
+  inputJson: inputJson,
+  structuredRequest: structuredRequest,
 );
 
 Future<LocalProofResult> proveAssignment({
@@ -73,6 +97,7 @@ class LocalProofResult {
   final int inputs;
   final int outputs;
   final BigInt proofMs;
+  final BigInt witnessMs;
   final BigInt verifyMs;
   final BigInt totalMs;
 
@@ -82,6 +107,7 @@ class LocalProofResult {
     required this.inputs,
     required this.outputs,
     required this.proofMs,
+    required this.witnessMs,
     required this.verifyMs,
     required this.totalMs,
   });
@@ -93,6 +119,7 @@ class LocalProofResult {
       inputs.hashCode ^
       outputs.hashCode ^
       proofMs.hashCode ^
+      witnessMs.hashCode ^
       verifyMs.hashCode ^
       totalMs.hashCode;
 
@@ -106,8 +133,27 @@ class LocalProofResult {
           inputs == other.inputs &&
           outputs == other.outputs &&
           proofMs == other.proofMs &&
+          witnessMs == other.witnessMs &&
           verifyMs == other.verifyMs &&
           totalMs == other.totalMs;
+}
+
+class PreparedProverInfo {
+  final BigInt id;
+  final BigInt loadMs;
+
+  const PreparedProverInfo({required this.id, required this.loadMs});
+
+  @override
+  int get hashCode => id.hashCode ^ loadMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PreparedProverInfo &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          loadMs == other.loadMs;
 }
 
 class TransferDraft {

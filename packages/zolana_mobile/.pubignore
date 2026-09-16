@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+rust/target/
+native/**/target/
+example/
+test/
+pubspec.lock

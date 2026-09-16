@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -37,69 +38,159 @@ class DemoScreen extends StatefulWidget {
   State<DemoScreen> createState() => _DemoScreenState();
 }
 
-class _DemoScreenState extends State<DemoScreen> {
+class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
   String _sdk = 'loading';
   LocalProofResult? _proof;
   String? _error;
   bool _proving = false;
+  bool _locked = false;
+  bool _unlocking = false;
+  int _epoch = 0;
+  LocalProver? _prover;
+  BigInt? _loadMs;
+  Directory? _assetDirectory;
+  Future<void>? _initializing;
+  Future<void> _draining = Future.value();
 
   @override
   void initState() {
     super.initState();
-    _initialize();
+    WidgetsBinding.instance.addObserver(this);
+    _initializing = _initialize();
   }
 
   Future<void> _initialize() async {
+    final epoch = _epoch;
     try {
       final version = await sdkVersion();
-      if (!mounted) return;
-      setState(() => _sdk = version);
+      final directory = await Directory.systemTemp.createTemp('zolana-demo-');
+      _assetDirectory = directory;
+      final r1cs = await _copyAsset(
+        'transfer_confidential_2_3.r1cs',
+        directory,
+      );
+      final vk = await _copyAsset('transfer_confidential_2_3.vk', directory);
+      final pk = await _copyAsset('transfer_confidential_2_3.pk', directory);
+      final prover = await LocalProver.load(
+        r1csPath: r1cs,
+        provingKeyPath: pk,
+        verifyingKeyPath: vk,
+      );
+      if (!mounted || epoch != _epoch || _locked) {
+        await prover.close();
+        return;
+      }
+      setState(() {
+        _sdk = version;
+        _prover = prover;
+        _loadMs = prover.loadMs;
+      });
     } catch (error) {
-      _showError(error);
+      if (epoch == _epoch) _showError(error);
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && !_locked) _lock();
+  }
+
+  void _lock() {
+    _epoch++;
+    _locked = true;
+    final prover = _prover;
+    _prover = null;
+    _proof = null;
+    _proving = false;
+    final closing = prover?.close() ?? Future<void>.value();
+    _draining = Future.wait([closing, _initializing ?? Future<void>.value()])
+        .then((_) async {
+          final directory = _assetDirectory;
+          if (directory != null) await directory.delete(recursive: true);
+          _assetDirectory = null;
+        });
+    unawaited(
+      _draining.catchError((Object error) {
+        _showError(error);
+      }),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _unlock() async {
+    if (_unlocking) return;
+    setState(() => _unlocking = true);
+    try {
+      await _draining;
+      if (!mounted) return;
+      setState(() {
+        _locked = false;
+        _error = null;
+      });
+      _initializing = _initialize();
+      await _initializing;
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _unlocking = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (!_locked) {
+      _locked = true;
+      _epoch++;
+      final closing = _prover?.close() ?? Future<void>.value();
+      unawaited(
+        Future.wait([closing, _initializing ?? Future<void>.value()])
+            .then((_) async {
+              await _assetDirectory?.delete(recursive: true);
+            })
+            .catchError((Object _) {}),
+      );
+    }
+    super.dispose();
+  }
+
   Future<void> _prove() async {
+    final prover = _prover;
+    final epoch = _epoch;
+    if (prover == null || _locked) return;
     setState(() {
       _proving = true;
       _error = null;
     });
     try {
-      await _copyAssetToTemporaryFile(
-        'assets/proving/transfer_confidential_2_3.r1cs',
+      final request = await rootBundle.loadString(
+        'assets/proving/prove-request-2x3.json',
       );
-      await _copyAssetToTemporaryFile(
-        'assets/proving/transfer_confidential_2_3.vk',
-      );
-      final provingKeyPath = await _copyAssetToTemporaryFile(
-        'assets/proving/transfer_confidential_2_3.pk',
-      );
-      final witnessPath = await _copyAssetToTemporaryFile(
-        'assets/proving/witness-2x3.json',
-      );
-      final proof = await proveAssignment(
-        provingKeyPath: provingKeyPath,
-        assignmentPath: witnessPath,
-      );
-      if (!mounted) return;
+      if (!mounted || epoch != _epoch || _locked) return;
+      final proof = await prover.proveRequest(request).result;
+      if (!mounted || epoch != _epoch || _locked) return;
       setState(() => _proof = proof);
     } catch (error) {
-      _showError(error);
+      if (epoch == _epoch) _showError(error);
     } finally {
-      if (mounted) setState(() => _proving = false);
+      if (mounted && epoch == _epoch) setState(() => _proving = false);
     }
   }
 
-  Future<String> _copyAssetToTemporaryFile(String asset) async {
-    final data = await rootBundle.load(asset);
-    final file = File('${Directory.systemTemp.path}/${asset.split('/').last}');
+  Future<String> _copyAsset(String name, Directory directory) async {
+    final data = await rootBundle.load('assets/proving/$name');
+    final file = File('${directory.path}/$name');
     await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
     return file.path;
   }
 
   void _showError(Object error) {
     if (!mounted) return;
-    setState(() => _error = error.toString());
+    setState(
+      () => _error = error is ProverException
+          ? error.toString()
+          : 'The prover operation failed.',
+    );
   }
 
   @override
@@ -108,6 +199,10 @@ class _DemoScreenState extends State<DemoScreen> {
       appBar: AppBar(
         title: const Text('Zolana local prover'),
         actions: [
+          TextButton(
+            onPressed: _unlocking ? null : (_locked ? _unlock : _lock),
+            child: Text(_locked ? 'Unlock demo' : 'Lock / discard'),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(child: Text('SDK $_sdk')),
@@ -119,13 +214,14 @@ class _DemoScreenState extends State<DemoScreen> {
         children: [
           _DemoCard(
             title: 'Local Groth16 proof',
-            subtitle:
-                'Prove and verify the staged 2→3 witness with Mopro/gnark.',
+            subtitle: 'Prove a public 2→3 request fixture with Mopro/gnark. Locking discards results; native work drains before keys are released.',
             buttonLabel: 'Generate proof locally',
             busy: _proving,
-            onPressed: _prove,
+            onPressed: _locked || _prover == null ? null : _prove,
             child: _proof == null ? null : _ProofResult(proof: _proof!),
           ),
+          if (_loadMs != null)
+            Text('Key loading: $_loadMs ms (once per session)'),
           if (_error != null) ...[
             const SizedBox(height: 16),
             Text(
@@ -199,6 +295,7 @@ class _ProofResult extends StatelessWidget {
         _Detail(label: 'Verified', value: proof.verified ? 'yes' : 'no'),
         _Detail(label: 'Circuit', value: '${proof.inputs}→${proof.outputs}'),
         _Detail(label: 'Mopro proving', value: '${proof.proofMs} ms'),
+        _Detail(label: 'Witness preparation', value: '${proof.witnessMs} ms'),
         _Detail(label: 'Verification', value: '${proof.verifyMs} ms'),
         _Detail(label: 'Proof JSON', value: _short(proof.proofJson)),
       ],

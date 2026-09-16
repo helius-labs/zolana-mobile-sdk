@@ -2,9 +2,9 @@
 name = "zolana-mobile"
 version = "0.1.0"
 description = "Flutter-facing bindings for Zolana transaction construction and local proving."
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/helius-labs/zolana-mobile-sdk"
 publish = false
 
 [lib]
@@ -17,8 +17,9 @@ flutter = ["dep:mopro-ffi", "mopro-ffi/flutter"]
 [dependencies]
 getrandom = "0.3"
 mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b", optional = true }
-rust-gnark = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b" }
-serde_json = { workspace = true }
+rust-gnark = { path = "../rust-gnark" }
+serde_json = "1.0"
+zeroize = "1.9"
 solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"

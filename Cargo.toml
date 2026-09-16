@@ -1,7 +1,8 @@
 [workspace]
 members = [
-    "crates/zolana-mobile",
+    "packages/zolana_mobile/native/zolana-mobile",
 ]
+exclude = ["packages/zolana_mobile/native/rust-gnark"]
 resolver = "2"
 
 [workspace.package]
