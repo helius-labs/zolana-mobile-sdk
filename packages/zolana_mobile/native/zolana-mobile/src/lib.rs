@@ -16,6 +16,13 @@ use zolana_transaction::{
 
 mod keys;
 mod prover;
+mod wallet;
+
+pub use keys::DEFAULT_PROVING_KEYS_URL;
+pub use wallet::{
+    derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind, SyncSummary,
+    WalletConfig,
+};
 
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 static PREPARED: Mutex<ProverState> = Mutex::new(ProverState {
