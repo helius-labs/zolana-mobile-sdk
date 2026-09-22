@@ -7,6 +7,12 @@
   build without Rust or Go. Building from source stays the fallback.
 * Include the path dependencies, including the Go prover sources, in the
   cargokit crate hash.
+* Add `ZolanaWallet`: registration, deposit, sync, private transfer and
+  withdrawal, proving on the device with the Solana key held by a
+  `SolanaSigner`.
+* Download proving keys on first use, pinned by the Zolana proving-key lockfile.
+* Remove the synthetic `prepareTransfer` draft and seed-based `shieldedAddress`.
+* Sync the vendored prover, keys and request schema with Zolana `main`.
 
 ## 0.1.0
 

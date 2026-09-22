@@ -23,6 +23,56 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     required super.portManager,
   });
 
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_MobileWalletPtr => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
+
+  CrossPlatformFinalizerArg
+  get rust_arc_decrement_strong_count_PendingTransactionPtr => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
+
+  @protected
+  MobileWallet
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    dynamic raw,
+  );
+
+  @protected
+  PendingTransaction
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    dynamic raw,
+  );
+
+  @protected
+  MobileWallet
+  dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    dynamic raw,
+  );
+
+  @protected
+  MobileWallet
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    dynamic raw,
+  );
+
+  @protected
+  PendingTransaction
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    dynamic raw,
+  );
+
+  @protected
+  MobileWallet
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    dynamic raw,
+  );
+
+  @protected
+  PendingTransaction
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    dynamic raw,
+  );
+
   @protected
   String dco_decode_String(dynamic raw);
 
@@ -30,15 +80,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
-  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw);
-
-  @protected
-  TransferDraftRequest dco_decode_box_autoadd_transfer_draft_request(
+  PendingTransaction
+  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
     dynamic raw,
   );
 
   @protected
+  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw);
+
+  @protected
+  WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw);
+
+  @protected
   GnarkProofResult dco_decode_gnark_proof_result(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
 
   @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
@@ -50,22 +110,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
-  List<TransferDraftOutput> dco_decode_list_transfer_draft_output(dynamic raw);
+  LocalProofResult dco_decode_local_proof_result(dynamic raw);
 
   @protected
-  LocalProofResult dco_decode_local_proof_result(dynamic raw);
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  PendingTransaction?
+  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    dynamic raw,
+  );
+
+  @protected
+  PendingTransactionKind dco_decode_pending_transaction_kind(dynamic raw);
 
   @protected
   PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw);
 
   @protected
-  TransferDraft dco_decode_transfer_draft(dynamic raw);
-
-  @protected
-  TransferDraftOutput dco_decode_transfer_draft_output(dynamic raw);
-
-  @protected
-  TransferDraftRequest dco_decode_transfer_draft_request(dynamic raw);
+  SyncSummary dco_decode_sync_summary(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -80,10 +143,64 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  BigInt dco_decode_usize(dynamic raw);
+
+  @protected
+  WalletConfig dco_decode_wallet_config(dynamic raw);
+
+  @protected
+  MobileWallet
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PendingTransaction
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MobileWallet
+  sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MobileWallet
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PendingTransaction
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MobileWallet
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PendingTransaction
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  PendingTransaction
+  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    SseDeserializer deserializer,
+  );
 
   @protected
   GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
@@ -91,12 +208,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  TransferDraftRequest sse_decode_box_autoadd_transfer_draft_request(
+  WalletConfig sse_decode_box_autoadd_wallet_config(
     SseDeserializer deserializer,
   );
 
   @protected
   GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
   List<Uint8List> sse_decode_list_list_prim_u_8_strict(
@@ -110,12 +233,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
-  List<TransferDraftOutput> sse_decode_list_transfer_draft_output(
+  LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer);
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  PendingTransaction?
+  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
     SseDeserializer deserializer,
   );
 
   @protected
-  LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer);
+  PendingTransactionKind sse_decode_pending_transaction_kind(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PreparedProverInfo sse_decode_prepared_prover_info(
@@ -123,17 +255,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  TransferDraft sse_decode_transfer_draft(SseDeserializer deserializer);
-
-  @protected
-  TransferDraftOutput sse_decode_transfer_draft_output(
-    SseDeserializer deserializer,
-  );
-
-  @protected
-  TransferDraftRequest sse_decode_transfer_draft_request(
-    SseDeserializer deserializer,
-  );
+  SyncSummary sse_decode_sync_summary(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -148,7 +270,59 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
+  BigInt sse_decode_usize(SseDeserializer deserializer);
+
+  @protected
+  WalletConfig sse_decode_wallet_config(SseDeserializer deserializer);
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    MobileWallet self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    PendingTransaction self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    MobileWallet self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    MobileWallet self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    PendingTransaction self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    MobileWallet self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    PendingTransaction self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
@@ -157,14 +331,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void
+  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    PendingTransaction self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_gnark_proof_result(
     GnarkProofResult self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_box_autoadd_transfer_draft_request(
-    TransferDraftRequest self,
+  void sse_encode_box_autoadd_wallet_config(
+    WalletConfig self,
     SseSerializer serializer,
   );
 
@@ -173,6 +354,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     GnarkProofResult self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_list_prim_u_8_strict(
@@ -190,14 +377,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_list_transfer_draft_output(
-    List<TransferDraftOutput> self,
+  void sse_encode_local_proof_result(
+    LocalProofResult self,
     SseSerializer serializer,
   );
 
   @protected
-  void sse_encode_local_proof_result(
-    LocalProofResult self,
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void
+  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    PendingTransaction? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_pending_transaction_kind(
+    PendingTransactionKind self,
     SseSerializer serializer,
   );
 
@@ -208,19 +405,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_transfer_draft(TransferDraft self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_transfer_draft_output(
-    TransferDraftOutput self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_transfer_draft_request(
-    TransferDraftRequest self,
-    SseSerializer serializer,
-  );
+  void sse_encode_sync_summary(SyncSummary self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
@@ -235,13 +420,48 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_unit(void self, SseSerializer serializer);
 
   @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_wallet_config(WalletConfig self, SseSerializer serializer);
 }
 
 // Section: wire_class
 
 class RustLibWire implements BaseWire {
   RustLibWire.fromExternalLibrary(ExternalLibrary lib);
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+        ptr,
+      );
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+        ptr,
+      );
+
+  void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+        ptr,
+      );
+
+  void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    int ptr,
+  ) => wasmModule
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+        ptr,
+      );
 }
 
 @JS('wasm_bindgen')
@@ -249,4 +469,24 @@ external RustLibWasmModule get wasmModule;
 
 @JS()
 @anonymous
-extension type RustLibWasmModule._(JSObject _) implements JSObject {}
+extension type RustLibWasmModule._(JSObject _) implements JSObject {
+  external void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    int ptr,
+  );
+
+  external void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+    int ptr,
+  );
+
+  external void
+  rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    int ptr,
+  );
+
+  external void
+  rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    int ptr,
+  );
+}
