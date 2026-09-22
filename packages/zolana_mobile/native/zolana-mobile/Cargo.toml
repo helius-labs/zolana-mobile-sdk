@@ -24,9 +24,9 @@ solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "e6139f658c6961101d716e107a15a5ca9cecd143", features = ["std"] }
-zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "e6139f658c6961101d716e107a15a5ca9cecd143" }
-zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "e6139f658c6961101d716e107a15a5ca9cecd143" }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8", features = ["std"] }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8" }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8" }
 
 [[bin]]
 name = "flutter"

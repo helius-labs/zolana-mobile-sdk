@@ -77,12 +77,12 @@ fn main() {
     }
     if env::var_os("GOTOOLCHAIN").is_none() && !go_envs.iter().any(|(key, _)| key == "GOTOOLCHAIN")
     {
-        cmd.env("GOTOOLCHAIN", "go1.25.7");
+        cmd.env("GOTOOLCHAIN", "go1.27.1");
     }
 
     let status = cmd.status().expect(
         "Go build failed. Is Go installed? \
-         Development builds of rust-gnark require Go 1.25.7+.",
+         Development builds of rust-gnark require Go 1.27.1+.",
     );
     assert!(status.success(), "Go build failed with status: {status}");
 

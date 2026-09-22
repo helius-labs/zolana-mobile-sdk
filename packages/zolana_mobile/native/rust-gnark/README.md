@@ -1,4 +1,4 @@
-# Mopro native gnark 0.15 backend
+# Mopro native gnark backend
 
 Vendored Mopro BN254 Groth16 with strict input validation and reusable
 native proving keys. See [PROVENANCE.md](PROVENANCE.md) for pinned sources,
@@ -105,7 +105,7 @@ Source is always built; prebuilt directories and download URLs are not
 used. Cargo includes `go/**`, including the local protocol module. The
 build script tracks `crates/../go` recursively, uses `-trimpath`,
 `-buildvcs=false`, and `-mod=readonly`, and keeps Go bounds checks enabled.
-Go 1.25.7 is selected by default unless GOTOOLCHAIN is explicitly configured.
+Go 1.27.1 is selected by default unless GOTOOLCHAIN is explicitly configured.
 Pin the same compiler, SDK/NDK, target and environment for reproducible builds.
 Original Mopro Apple/Android cross-compiler selection is retained.
 

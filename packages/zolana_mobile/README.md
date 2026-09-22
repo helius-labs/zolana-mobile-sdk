@@ -1,12 +1,12 @@
 # Zolana Flutter SDK
 
-Local Groth16 proving through Mopro's gnark 0.15 native backend, with typed Dart
+Local Groth16 proving through Mopro's native gnark backend (gnark 0.16.3), with typed Dart
 bindings to Zolana Rust primitives. Android and iOS are supported. The package
 contains its Rust and Go sources; it does not require a sibling Zolana checkout.
 
 ## Requirements
 
-- Flutter with Dart 3.13.3 or newer, Rust stable, and Go 1.25.7 or newer.
+- Flutter with Dart 3.13.3 or newer, Rust stable, and Go 1.27.1 or newer.
 - Android: an installed NDK. Set `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to its
   directory if the SDK installation cannot be discovered automatically.
 - iOS: Xcode with its license accepted, CocoaPods, and the Rust iOS target.
