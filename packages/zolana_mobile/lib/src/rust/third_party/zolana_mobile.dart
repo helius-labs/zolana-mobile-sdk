@@ -130,7 +130,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// shielded-pool transactions, for the indexer. Returns the signature.
   ///
   /// `signatures` follows [`PendingTransaction::signers`]; each is checked
-  /// before anything is sent.
+  /// before anything is sent. A confirmed shielded-pool transaction is
+  /// synced before this returns, so the notes it spent are no longer
+  /// offered.
   Future<String> submit({
     required PendingTransaction pending,
     required List<Uint8List> signatures,

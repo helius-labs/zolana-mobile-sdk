@@ -47,6 +47,7 @@ String friendlyError(Object error) {
     'proving_key_download_failed' =>
       "Couldn't download the proving key. Check your connection.",
     'proof_failed' => "Couldn't prove this transaction.",
+    _ when message.contains('already used or queued') => 'Your balance changed since the last sync. Pull to refresh and try again.',
     _ when message.contains('insufficient') =>
       'Not enough balance for this and its fees.',
     _ => message,

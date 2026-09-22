@@ -322,18 +322,18 @@ fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
                             flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, false,
+                                &api_that, 0, true,
                             ),
                         ]);
                     for i in decode_indices_ {
                         match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
                             _ => unreachable!(),
                         }
                     }
-                    let api_that_guard = api_that_guard.unwrap();
+                    let mut api_that_guard = api_that_guard.unwrap();
                     let output_ok = zolana_mobile::MobileWallet::prepare_transfer(
-                        &*api_that_guard,
+                        &mut *api_that_guard,
                         api_recipient,
                         api_lamports,
                     )?;
@@ -377,18 +377,18 @@ fn wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
                             flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, false,
+                                &api_that, 0, true,
                             ),
                         ]);
                     for i in decode_indices_ {
                         match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
                             _ => unreachable!(),
                         }
                     }
-                    let api_that_guard = api_that_guard.unwrap();
+                    let mut api_that_guard = api_that_guard.unwrap();
                     let output_ok = zolana_mobile::MobileWallet::prepare_withdrawal(
-                        &*api_that_guard,
+                        &mut *api_that_guard,
                         api_recipient,
                         api_lamports,
                     )?;
@@ -633,18 +633,18 @@ fn wire__zolana_mobile__MobileWallet_submit_impl(
                     let decode_indices_ =
                         flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
                             flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, false,
+                                &api_that, 0, true,
                             ),
                         ]);
                     for i in decode_indices_ {
                         match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
                             _ => unreachable!(),
                         }
                     }
-                    let api_that_guard = api_that_guard.unwrap();
+                    let mut api_that_guard = api_that_guard.unwrap();
                     let output_ok = zolana_mobile::MobileWallet::submit(
-                        &*api_that_guard,
+                        &mut *api_that_guard,
                         api_pending,
                         api_signatures,
                     )?;

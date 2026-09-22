@@ -1,6 +1,6 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
 //! machine with the pinned keys: register, deposit, sync, private transfer,
-//! and the recipient's sync.
+//! the recipient's sync, and a withdrawal from a session that is stale.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon and the programs), or any cluster that runs the pinned
@@ -25,8 +25,10 @@ use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{derivation_message, MobileWallet, PendingTransaction, WalletConfig};
 
 const FUNDING: u64 = 1_000_000_000;
-const DEPOSIT: u64 = 300_000_000;
-const TRANSFER: u64 = 100_000_000;
+const DEPOSIT: u64 = 50_000_000;
+const TRANSFER: u64 = 20_000_000;
+const WITHDRAWAL: u64 = 10_000_000;
+const FEES: u64 = 20_000_000;
 
 fn required(name: &str) -> String {
     env::var(name).unwrap_or_else(|_| panic!("set {name}"))
@@ -67,7 +69,7 @@ fn open(signer: &Keypair) -> MobileWallet {
 }
 
 /// Sign as every required signer, which in this flow is the wallet owner.
-fn submit(wallet: &MobileWallet, signer: &Keypair, pending: PendingTransaction) -> String {
+fn submit(wallet: &mut MobileWallet, signer: &Keypair, pending: PendingTransaction) -> String {
     assert_eq!(pending.signers(), vec![signer.pubkey().to_string()]);
     let signature = signer.sign_message(&pending.message_bytes());
     println!("{}", pending.summary());
@@ -76,7 +78,7 @@ fn submit(wallet: &MobileWallet, signer: &Keypair, pending: PendingTransaction) 
         .expect("submit")
 }
 
-fn register(wallet: &MobileWallet, signer: &Keypair) {
+fn register(wallet: &mut MobileWallet, signer: &Keypair) {
     if let Some(pending) = wallet.prepare_registration().expect("prepare registration") {
         submit(wallet, signer, pending);
     }
@@ -89,33 +91,39 @@ fn register_deposit_transfer_and_receive() {
     let sender = account("ZOLANA_E2E_SENDER_SEED");
     let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
     let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
-    for signer in [&sender, &recipient] {
-        if rpc.get_balance(signer.pubkey()).expect("balance") < FUNDING / 2 {
+    // The sender pays the deposit and fees, the recipient only registration.
+    for (signer, needed) in [(&sender, DEPOSIT + FEES), (&recipient, FEES)] {
+        if rpc.get_balance(signer.pubkey()).expect("balance") < needed {
             rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
         }
     }
 
     let mut sender_wallet = open(&sender);
     let mut recipient_wallet = open(&recipient);
-    register(&sender_wallet, &sender);
-    register(&recipient_wallet, &recipient);
+    register(&mut sender_wallet, &sender);
+    register(&mut recipient_wallet, &recipient);
     // Reused accounts may already hold private balances from earlier runs.
     let sender_before = sender_wallet.sync().unwrap().private_lamports;
     let recipient_before = recipient_wallet.sync().unwrap().private_lamports;
 
     let pending = sender_wallet.prepare_deposit(DEPOSIT).unwrap();
-    submit(&sender_wallet, &sender, pending);
+    submit(&mut sender_wallet, &sender, pending);
     assert_eq!(
         sender_wallet.sync().unwrap().private_lamports,
         sender_before + DEPOSIT
     );
+
+    // A second session of the sender, synced before the transfer spends its
+    // notes: the same account on another device.
+    let mut stale = open(&sender);
+    stale.sync().unwrap();
 
     let started = std::time::Instant::now();
     let pending = sender_wallet
         .prepare_transfer(recipient.pubkey().to_string(), TRANSFER)
         .expect("prove transfer");
     println!("built and proved on device in {:?}", started.elapsed());
-    submit(&sender_wallet, &sender, pending);
+    submit(&mut sender_wallet, &sender, pending);
 
     assert_eq!(
         sender_wallet.sync().unwrap().private_lamports,
@@ -124,5 +132,15 @@ fn register_deposit_transfer_and_receive() {
     assert_eq!(
         recipient_wallet.sync().unwrap().private_lamports,
         recipient_before + TRANSFER
+    );
+
+    // The stale session must not pick a note the transfer already spent.
+    let pending = stale
+        .prepare_withdrawal(sender.pubkey().to_string(), WITHDRAWAL)
+        .expect("a stale session still builds a spendable withdrawal");
+    submit(&mut stale, &sender, pending);
+    assert_eq!(
+        stale.private_lamports().unwrap(),
+        sender_before + DEPOSIT - TRANSFER - WITHDRAWAL
     );
 }
