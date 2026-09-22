@@ -73,7 +73,7 @@ is vendored with local fixes documented in its provenance file so the pub packag
 includes its complete source build; it is built against gnark 0.16.3, the version
 the Zolana prover uses. Protocol crates `zolana-hasher`, `zolana-keypair`, and
 `zolana-transaction`, the vendored Go circuits, and the staged proving key are all
-pinned to Zolana `main` revision `4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8`
+pinned to Zolana `main` revision `88c5cdc0e457a963580ced47f842d94901eb0e30`
 (`[workspace.metadata.upstream]` in `Cargo.toml`).
 
 `scripts/check-upstream.sh` fails if any of these drift from that revision; CI

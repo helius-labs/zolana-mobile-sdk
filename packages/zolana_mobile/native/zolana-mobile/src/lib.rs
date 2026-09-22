@@ -14,15 +14,43 @@ use zolana_transaction::{
     instructions::transact::ConfidentialTransaction, Address, Data, Mint, Utxo, WalletUtxo,
 };
 
+mod keys;
+mod prover;
+mod wallet;
+
+pub use keys::DEFAULT_PROVING_KEYS_URL;
+pub use wallet::{
+    derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind, SyncSummary,
+    WalletConfig,
+};
+
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
 static PREPARED: Mutex<ProverState> = Mutex::new(ProverState {
     next_id: 1,
     loaded: None,
 });
 
+/// The one prepared proving system gnark holds at a time.
 struct ProverState {
     next_id: u64,
-    loaded: Option<(u64, rust_gnark::PreparedProver)>,
+    loaded: Option<Loaded>,
+}
+
+struct Loaded {
+    id: u64,
+    /// The lockfile key the wallet prover loaded, or `None` for a system the
+    /// application loaded itself through [`load_prover`]. The wallet prover
+    /// switches keys only in the first case.
+    key: Option<String>,
+    prover: rust_gnark::PreparedProver,
+}
+
+impl ProverState {
+    fn next_id(&mut self) -> Result<u64, String> {
+        let id = self.next_id;
+        self.next_id = id.checked_add(1).ok_or("prover_id_exhausted")?;
+        Ok(id)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -147,13 +175,16 @@ pub fn load_prover(
     if state.loaded.is_some() {
         return Err("prover_busy".to_string());
     }
-    let id = state.next_id;
-    state.next_id = id.checked_add(1).ok_or("prover_id_exhausted")?;
+    let id = state.next_id()?;
     init_gnark()?;
     let prover =
         rust_gnark::PreparedProver::load(&r1cs_path, &proving_key_path, &verifying_key_path)
             .map_err(|_| "prover_load_failed".to_string())?;
-    state.loaded = Some((id, prover));
+    state.loaded = Some(Loaded {
+        id,
+        key: None,
+        prover,
+    });
     Ok(PreparedProverInfo {
         id,
         load_ms: elapsed_ms(started),
@@ -165,7 +196,7 @@ pub fn release_prover(id: u64) -> Result<(), String> {
         .lock()
         .map_err(|_| "prover_unavailable".to_string())?;
     match &state.loaded {
-        Some((loaded_id, _)) if *loaded_id == id => {
+        Some(loaded) if loaded.id == id => {
             state.loaded = None;
             Ok(())
         }
@@ -181,11 +212,12 @@ pub fn prove_prepared(
     let input_json = Zeroizing::new(input_json);
     let started = Instant::now();
     let state = PREPARED.try_lock().map_err(|_| "prover_busy".to_string())?;
-    let (_, prover) = state
+    let prover = &state
         .loaded
         .as_ref()
-        .filter(|(loaded_id, _)| *loaded_id == id)
-        .ok_or("prover_closed")?;
+        .filter(|loaded| loaded.id == id)
+        .ok_or("prover_closed")?
+        .prover;
     let proof = if structured_request {
         prover.prove_request(&input_json)
     } else {
