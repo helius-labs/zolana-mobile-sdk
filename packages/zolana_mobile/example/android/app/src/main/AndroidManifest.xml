@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The wallet screen reaches a Solana RPC, the Zolana indexer and the
+         proving-key host. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
+        android:networkSecurityConfig="@xml/network_security_config"
         android:label="mopro_flutter_bindings_example"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

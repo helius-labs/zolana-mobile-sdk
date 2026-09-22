@@ -12,9 +12,10 @@ hashing, and local Mopro/gnark Groth16 proving on Android and iOS.
 - `fixtures`: committed 2→3 request and flattened gnark witness fixture.
 - `scripts`: checksum-locked Mopro asset staging.
 
-The package includes an offline transfer-draft helper for exercising Zolana
-proof-input types. It creates synthetic state and is not an on-chain transaction
-builder. The example UI intentionally exposes only local proof generation.
+`ZolanaWallet` runs the full private payment flow (register, deposit, sync,
+transfer, withdraw) with every proof generated on the device and the Solana key
+held by the application's signer. The example app has a wallet screen for a
+Zolana test cluster and a local proof benchmark.
 
 The generated native library keeps Mopro's internal
 `mopro_flutter_bindings` stem. Applications import the public Dart package as
@@ -84,11 +85,19 @@ the 2→3 fixtures as described in the rust-gnark provenance file.
 
 ## Current boundary
 
-`LocalProver.proveRequest` accepts a structured Zolana `/prove` request and builds
-its witness on-device. It returns a locally verified canonical proof for the
-existing Zolana transaction flow. The example uses a public 2→3 request fixture,
-not live wallet funds. Obtaining real wallet state, authorizing, signing, and
-submitting transactions remains the wallet application's responsibility.
+`ZolanaWallet` builds, proves and submits transactions; the application signs
+them. `LocalProver.proveRequest` remains for callers that assemble their own
+`/prove` requests. The wallet is SOL only, keeps its state in memory, and does
+not merge notes yet.
+
+The end-to-end wallet test needs a Zolana cluster and indexer, for example the
+localnet `just` starts in the zolana repository:
+
+```sh
+ZOLANA_E2E_RPC_URL=http://127.0.0.1:8899 \
+ZOLANA_E2E_INDEXER_URL=http://127.0.0.1:8784 \
+cargo test -p zolana-mobile --test wallet_flow -- --ignored --nocapture
+```
 
 See `packages/zolana_mobile/README.md` for the ownership, lock/discard, completion,
 and prepared-key lifetime contract. Closing drains work; it does not promise

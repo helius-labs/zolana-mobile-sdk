@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
+import 'wallet_screen.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await RustLib.init();
@@ -26,7 +28,41 @@ class ZolanaMobileDemo extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const DemoScreen(),
+      home: const HomeScreen(),
+    );
+  }
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    void open(Widget screen) =>
+        Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (_) => screen));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Zolana Mobile')),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.account_balance_wallet),
+            title: const Text('Private wallet'),
+            subtitle: const Text(
+              'Register, deposit, sync and send, proving on this device',
+            ),
+            onTap: () => open(const WalletScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.memory),
+            title: const Text('Local proof benchmark'),
+            subtitle: const Text('Prove a fixed 2→3 request with a staged key'),
+            // Holds its own prepared key while open; the wallet proves only
+            // after this screen has closed and released it.
+            onTap: () => open(const DemoScreen()),
+          ),
+        ],
+      ),
     );
   }
 }

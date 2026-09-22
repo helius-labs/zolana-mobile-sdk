@@ -7,8 +7,14 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ProverState`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Loaded`, `ProverState`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
+
+/// The Zolana derivation message the wallet's signer signs once to open it.
+Future<Uint8List> derivationMessage({required String solanaPubkey}) => RustLib
+    .instance
+    .api
+    .zolanaMobileDerivationMessage(solanaPubkey: solanaPubkey);
 
 Future<String> sdkVersion() => RustLib.instance.api.zolanaMobileSdkVersion();
 
@@ -66,12 +72,81 @@ Future<LocalProofResult> proveAssignment({
   assignmentPath: assignmentPath,
 );
 
-Future<String> shieldedAddress({required List<int> seed}) =>
-    RustLib.instance.api.zolanaMobileShieldedAddress(seed: seed);
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>>
+abstract class MobileWallet implements RustOpaqueInterface {
+  /// Whether this wallet has published its shielded address. Others can
+  /// only send to a registered wallet.
+  Future<bool> isRegistered();
 
-Future<TransferDraft> prepareTransfer({
-  required TransferDraftRequest request,
-}) => RustLib.instance.api.zolanaMobilePrepareTransfer(request: request);
+  /// Open the wallet of `solana_pubkey` from its signature over
+  /// [`derivation_message`].
+  static Future<MobileWallet> open({
+    required WalletConfig config,
+    required String solanaPubkey,
+    required List<int> derivationSignature,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletOpen(
+    config: config,
+    solanaPubkey: solanaPubkey,
+    derivationSignature: derivationSignature,
+  );
+
+  /// Deposit public SOL from this wallet into its own private balance.
+  /// Deposits carry no proof.
+  Future<PendingTransaction> prepareDeposit({required BigInt lamports});
+
+  /// `None` when the registry already holds this wallet's address.
+  Future<PendingTransaction?> prepareRegistration();
+
+  /// Build and prove a private transfer to a registered wallet.
+  ///
+  /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
+  /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
+  /// explicit instead.
+  Future<PendingTransaction> prepareTransfer({
+    required String recipient,
+    required BigInt lamports,
+  });
+
+  /// Build and prove a withdrawal of private SOL to a public account.
+  Future<PendingTransaction> prepareWithdrawal({
+    required String recipient,
+    required BigInt lamports,
+  });
+
+  /// Spendable private SOL as of the last [`Self::sync`].
+  Future<BigInt> privateLamports();
+
+  Future<String> shieldedAddress();
+
+  Future<String> solanaPubkey();
+
+  /// Attach the signatures, send, and wait for confirmation and, for
+  /// shielded-pool transactions, for the indexer. Returns the signature.
+  ///
+  /// `signatures` follows [`PendingTransaction::signers`]; each is checked
+  /// before anything is sent.
+  Future<String> submit({
+    required PendingTransaction pending,
+    required List<Uint8List> signatures,
+  });
+
+  /// Fetch and decrypt this wallet's notes from the indexer.
+  Future<SyncSummary> sync_();
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
+abstract class PendingTransaction implements RustOpaqueInterface {
+  Future<PendingTransactionKind> kind();
+
+  /// The bytes every signer signs with Ed25519.
+  Future<Uint8List> messageBytes();
+
+  /// Base58 public keys that must sign, in signature order.
+  Future<List<String>> signers();
+
+  /// Human-readable description to show before asking for a signature.
+  Future<String> summary();
+}
 
 class GnarkProofResult {
   final String proof;
@@ -138,6 +213,22 @@ class LocalProofResult {
           totalMs == other.totalMs;
 }
 
+/// What a submitted transaction waits for.
+enum PendingTransactionKind {
+  /// Publishes the wallet's shielded address so others can pay it.
+  registration,
+
+  /// Moves public SOL into the private balance. Public: sender, amount.
+  deposit,
+
+  /// Private transfer to a registered wallet. Reveals neither amount nor
+  /// recipient.
+  transfer,
+
+  /// Moves private SOL to a public account. Public: recipient, amount.
+  withdrawal,
+}
+
 class PreparedProverInfo {
   final BigInt id;
   final BigInt loadMs;
@@ -156,119 +247,64 @@ class PreparedProverInfo {
           loadMs == other.loadMs;
 }
 
-class TransferDraft {
-  final String sender;
-  final String recipient;
-  final BigInt inputLamports;
-  final BigInt transferLamports;
-  final BigInt changeLamports;
-  final String shape;
-  final String firstNullifierHex;
-  final String externalDataHashHex;
-  final List<TransferDraftOutput> outputs;
+class SyncSummary {
+  final BigInt storedUtxos;
+  final BigInt privateLamports;
 
-  const TransferDraft({
-    required this.sender,
-    required this.recipient,
-    required this.inputLamports,
-    required this.transferLamports,
-    required this.changeLamports,
-    required this.shape,
-    required this.firstNullifierHex,
-    required this.externalDataHashHex,
-    required this.outputs,
-  });
+  const SyncSummary({required this.storedUtxos, required this.privateLamports});
 
   @override
-  int get hashCode =>
-      sender.hashCode ^
-      recipient.hashCode ^
-      inputLamports.hashCode ^
-      transferLamports.hashCode ^
-      changeLamports.hashCode ^
-      shape.hashCode ^
-      firstNullifierHex.hashCode ^
-      externalDataHashHex.hashCode ^
-      outputs.hashCode;
+  int get hashCode => storedUtxos.hashCode ^ privateLamports.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TransferDraft &&
+      other is SyncSummary &&
           runtimeType == other.runtimeType &&
-          sender == other.sender &&
-          recipient == other.recipient &&
-          inputLamports == other.inputLamports &&
-          transferLamports == other.transferLamports &&
-          changeLamports == other.changeLamports &&
-          shape == other.shape &&
-          firstNullifierHex == other.firstNullifierHex &&
-          externalDataHashHex == other.externalDataHashHex &&
-          outputs == other.outputs;
+          storedUtxos == other.storedUtxos &&
+          privateLamports == other.privateLamports;
 }
 
-class TransferDraftOutput {
-  final String owner;
-  final BigInt lamports;
-  final bool isChange;
-  final bool isDummy;
-  final String commitmentHex;
+/// Where the wallet reads chain state and stores proving keys.
+class WalletConfig {
+  final String rpcUrl;
+  final String indexerUrl;
 
-  const TransferDraftOutput({
-    required this.owner,
-    required this.lamports,
-    required this.isChange,
-    required this.isDummy,
-    required this.commitmentHex,
+  /// Directory for downloaded proving keys; keep it across launches.
+  final String provingKeyDir;
+
+  /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
+  final String? provingKeyUrl;
+
+  /// Allow a plaintext indexer off loopback (an emulator reaching its host).
+  /// The indexer sees the wallet's view tags, so never set this for funds
+  /// that matter.
+  final bool allowInsecureHttp;
+
+  const WalletConfig({
+    required this.rpcUrl,
+    required this.indexerUrl,
+    required this.provingKeyDir,
+    this.provingKeyUrl,
+    required this.allowInsecureHttp,
   });
 
   @override
   int get hashCode =>
-      owner.hashCode ^
-      lamports.hashCode ^
-      isChange.hashCode ^
-      isDummy.hashCode ^
-      commitmentHex.hashCode;
+      rpcUrl.hashCode ^
+      indexerUrl.hashCode ^
+      provingKeyDir.hashCode ^
+      provingKeyUrl.hashCode ^
+      allowInsecureHttp.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TransferDraftOutput &&
+      other is WalletConfig &&
           runtimeType == other.runtimeType &&
-          owner == other.owner &&
-          lamports == other.lamports &&
-          isChange == other.isChange &&
-          isDummy == other.isDummy &&
-          commitmentHex == other.commitmentHex;
-}
-
-class TransferDraftRequest {
-  final Uint8List senderSeed;
-  final String recipient;
-  final BigInt inputLamports;
-  final BigInt transferLamports;
-
-  const TransferDraftRequest({
-    required this.senderSeed,
-    required this.recipient,
-    required this.inputLamports,
-    required this.transferLamports,
-  });
-
-  @override
-  int get hashCode =>
-      senderSeed.hashCode ^
-      recipient.hashCode ^
-      inputLamports.hashCode ^
-      transferLamports.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is TransferDraftRequest &&
-          runtimeType == other.runtimeType &&
-          senderSeed == other.senderSeed &&
-          recipient == other.recipient &&
-          inputLamports == other.inputLamports &&
-          transferLamports == other.transferLamports;
+          rpcUrl == other.rpcUrl &&
+          indexerUrl == other.indexerUrl &&
+          provingKeyDir == other.provingKeyDir &&
+          provingKeyUrl == other.provingKeyUrl &&
+          allowInsecureHttp == other.allowInsecureHttp;
 }
