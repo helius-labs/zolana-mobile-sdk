@@ -6,8 +6,8 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 /// An in-memory Ed25519 key standing in for the wallet's real signer.
 ///
 /// A production app signs through a platform keystore, a Solana wallet
-/// adapter or a custodian instead, and shows [purpose] before signing. This
-/// key is generated per launch and lost on exit: use it only on test clusters.
+/// adapter or a custodian instead, and shows [purpose] before signing. Use
+/// this only on test clusters.
 class DemoSigner implements SolanaSigner {
   DemoSigner._(this._keyPair, this.publicKey);
 
@@ -16,8 +16,19 @@ class DemoSigner implements SolanaSigner {
   @override
   final String publicKey;
 
-  static Future<DemoSigner> generate() async {
-    final keyPair = await Ed25519().newKeyPair();
+  static Future<DemoSigner> generate() async =>
+      _from(await Ed25519().newKeyPair());
+
+  /// The signer for a 32-byte Ed25519 seed given as hex.
+  static Future<DemoSigner> fromSeedHex(String seedHex) async {
+    final seed = [
+      for (var i = 0; i < seedHex.length; i += 2)
+        int.parse(seedHex.substring(i, i + 2), radix: 16),
+    ];
+    return _from(await Ed25519().newKeyPairFromSeed(seed));
+  }
+
+  static Future<DemoSigner> _from(SimpleKeyPair keyPair) async {
     final publicKey = await keyPair.extractPublicKey();
     return DemoSigner._(keyPair, base58Encode(publicKey.bytes));
   }

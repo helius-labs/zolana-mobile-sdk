@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
+import 'demo_keys.dart';
 import 'demo_signer.dart';
 import 'test_cluster_rpc.dart';
 
 const _lamportsPerSol = 1000000000;
+const _apiKey = String.fromEnvironment('ZOLANA_API_KEY');
 
 /// The full private payment flow against a Zolana test cluster: fund a demo
 /// key, register, deposit, sync, and send privately. Every transfer proof is
@@ -20,12 +22,22 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  // A localnet started by `just` in the zolana repository. An iOS simulator
-  // shares the host's loopback; for an Android phone or emulator, forward the
-  // ports first: `adb reverse tcp:8899 tcp:8899 && adb reverse tcp:8784 tcp:8784`.
-  final _rpcUrl = TextEditingController(text: 'http://127.0.0.1:8899');
-  final _indexerUrl = TextEditingController(text: 'http://127.0.0.1:8784');
+  // Devnet through Helius when built with `--dart-define=ZOLANA_API_KEY=...`;
+  // otherwise a localnet started by `just` in the zolana repository. An iOS
+  // simulator shares the host's loopback; for an Android phone or emulator,
+  // forward the ports: `adb reverse tcp:8899 tcp:8899 && adb reverse tcp:8784 tcp:8784`.
+  final _rpcUrl = TextEditingController(
+    text: _apiKey.isEmpty
+        ? 'http://127.0.0.1:8899'
+        : 'https://devnet.helius-rpc.com/?api-key=$_apiKey',
+  );
+  final _indexerUrl = TextEditingController(
+    text: _apiKey.isEmpty
+        ? 'http://127.0.0.1:8784'
+        : 'https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$_apiKey',
+  );
   final _recipient = TextEditingController();
+  DemoAccount _account = demoAccounts.first;
   final _amount = TextEditingController(text: '0.1');
   final _log = <String>[];
 
@@ -65,7 +77,10 @@ class _WalletScreenState extends State<WalletScreen> {
   TestClusterRpc get _rpc => TestClusterRpc(_rpcUrl.text.trim());
 
   Future<String?> _open() async {
-    final signer = _signer ?? await DemoSigner.generate();
+    final signer = await DemoSigner.fromSeedHex(_account.seedHex);
+    _recipient.text = demoAccounts
+        .firstWhere((account) => account != _account)
+        .publicKey;
     final keys = Directory(
       '${(await getApplicationSupportDirectory()).path}/proving-keys',
     );
@@ -95,9 +110,9 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<String?> _airdrop() async {
-    await _rpc.airdrop(_signer!.publicKey, BigInt.from(2 * _lamportsPerSol));
+    await _rpc.airdrop(_signer!.publicKey, BigInt.from(_lamportsPerSol));
     await _refreshPublic();
-    return '2 SOL';
+    return '1 SOL';
   }
 
   Future<String?> _register() async {
@@ -155,18 +170,36 @@ class _WalletScreenState extends State<WalletScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Demo signer: an in-memory key for test clusters. A real app '
-            'signs through its keystore or wallet adapter instead.',
+            'Demo signer: a devnet key built into this app, public in its '
+            'repository. A real app signs through its keystore or wallet '
+            'adapter instead.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
-          if (wallet == null)
+          if (wallet == null) ...[
+            SegmentedButton<DemoAccount>(
+              segments: [
+                for (final account in demoAccounts)
+                  ButtonSegment(
+                    value: account,
+                    label: Text('Account ${account.name}'),
+                  ),
+              ],
+              selected: {_account},
+              onSelectionChanged: (selection) =>
+                  setState(() => _account = selection.single),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(_account.publicKey),
+            const SizedBox(height: 12),
             FilledButton(
               onPressed: idle ? () => _run('Open wallet', _open) : null,
-              child: const Text('Create demo key and open wallet'),
-            )
-          else ...[
-            SelectableText('Account ${wallet.solanaPublicKey}'),
+              child: Text('Open wallet ${_account.name}'),
+            ),
+          ] else ...[
+            SelectableText(
+              'Account ${_account.name}: ${wallet.solanaPublicKey}',
+            ),
             Text(
               'Public ${_sol(_publicLamports)} · Private ${_sol(_privateLamports)}'
               '${_registered ? '' : ' · not registered'}',
@@ -178,7 +211,7 @@ class _WalletScreenState extends State<WalletScreen> {
               children: [
                 OutlinedButton(
                   onPressed: idle ? () => _run('Airdrop', _airdrop) : null,
-                  child: const Text('Airdrop 2 SOL'),
+                  child: const Text('Airdrop 1 SOL'),
                 ),
                 OutlinedButton(
                   onPressed: idle && !_registered
