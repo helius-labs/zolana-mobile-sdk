@@ -11,6 +11,12 @@
   (was 11).
 * CI runs the clean consumer on an Android API 26 emulator and checks that the
   iOS native library runs on iOS 16.
+* Add `ZolanaWallet`: registration, deposit, sync, private transfer and
+  withdrawal, proving on the device with the Solana key held by a
+  `SolanaSigner`.
+* Download proving keys on first use, pinned by the Zolana proving-key lockfile.
+* Remove the synthetic `prepareTransfer` draft and seed-based `shieldedAddress`.
+* Sync the vendored prover, keys and request schema with Zolana `main`.
 
 ## 0.1.0
 
