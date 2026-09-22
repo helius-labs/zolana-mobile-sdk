@@ -90,14 +90,19 @@ them. `LocalProver.proveRequest` remains for callers that assemble their own
 `/prove` requests. The wallet is SOL only, keeps its state in memory, and does
 not merge notes yet.
 
-The end-to-end wallet test needs a Zolana cluster and indexer, for example the
-localnet `just` starts in the zolana repository:
+The end-to-end wallet test registers, deposits, proves a private transfer on
+this machine and checks the recipient's balance. Zolana devnet runs the pinned
+revision; the example's demo accounts avoid devnet airdrop limits once funded:
 
 ```sh
-ZOLANA_E2E_RPC_URL=http://127.0.0.1:8899 \
-ZOLANA_E2E_INDEXER_URL=http://127.0.0.1:8784 \
-cargo test -p zolana-mobile --test wallet_flow -- --ignored --nocapture
+ZOLANA_E2E_RPC_URL=https://api.devnet.solana.com \
+ZOLANA_E2E_INDEXER_URL=https://d2xah7tnhdhcom.cloudfront.net \
+ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
+ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
+cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture
 ```
+
+A local cluster started by `just` in the zolana repository works as well.
 
 See `packages/zolana_mobile/README.md` for the ownership, lock/discard, completion,
 and prepared-key lifetime contract. Closing drains work; it does not promise

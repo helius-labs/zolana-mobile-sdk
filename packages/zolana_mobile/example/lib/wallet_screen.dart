@@ -22,19 +22,16 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  // Devnet through Helius when built with `--dart-define=ZOLANA_API_KEY=...`;
-  // otherwise a localnet started by `just` in the zolana repository. An iOS
-  // simulator shares the host's loopback; for an Android phone or emulator,
-  // forward the ports: `adb reverse tcp:8899 tcp:8899 && adb reverse tcp:8784 tcp:8784`.
+  // Zolana devnet (the devnet-c stack, which runs the zolana revision this
+  // SDK pins). Building with `--dart-define=ZOLANA_API_KEY=...` uses Helius
+  // for the Solana RPC instead of the rate-limited public endpoint.
   final _rpcUrl = TextEditingController(
     text: _apiKey.isEmpty
-        ? 'http://127.0.0.1:8899'
+        ? 'https://api.devnet.solana.com'
         : 'https://devnet.helius-rpc.com/?api-key=$_apiKey',
   );
   final _indexerUrl = TextEditingController(
-    text: _apiKey.isEmpty
-        ? 'http://127.0.0.1:8784'
-        : 'https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$_apiKey',
+    text: 'https://d2xah7tnhdhcom.cloudfront.net',
   );
   final _recipient = TextEditingController();
   DemoAccount _account = demoAccounts.first;
