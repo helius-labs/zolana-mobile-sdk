@@ -6,12 +6,12 @@ asset_dir="$repo_root/packages/zolana_mobile/example/assets/proving"
 key_name="transfer_confidential_2_3.key"
 key="$repo_root/.cache/proving/$key_name"
 witness="$repo_root/fixtures/witness-2x3.json"
-key_checksum="915ffeaf13ae754f737235c85106778a465d10711a47dd134156b7ddc2c4d2b6"
-pk_checksum="d5abbf3d961ea14545dc2d2e8e86b38ef2be59f76eca200e84771e58e45a1766"
-vk_checksum="9b39f5bd57f144fd03caf3456e26a5af3fbb6a8128f0f6c21284ee3617a3d2ba"
-r1cs_checksum="aa0ab29a7e79904a319477a5eaca08dd729d80f434eb55fff5e62ea60d2ed738"
-witness_checksum="654945f04505441f7a18bae1da44db93f020a7f28fb984603b035ed628870a02"
-request_checksum="074f0e453ac8a50063118521e754f418f036a31f7887266fe3f7f3d8ea6d9da5"
+key_checksum="55bc6b864955505d443f69a6c7ccde982ac4df75a2a48989611f41cd4475f9ed"
+pk_checksum="47b4f31c9bbc3c6251a99cb94eccfc4f667223fe57d0eb95e6950d2df4a778df"
+vk_checksum="77bdbb4dd66e6f32c71884fc6794192a0a42eb0fa25dc60aa242855ff4fcfa3f"
+r1cs_checksum="1488963e03cf968dea4083a8e3f86395ccbdb7338afc31aa067163ff4df4c51c"
+witness_checksum="9df02a206a7764d36138c6126dcf327857081f256e7bc188915e1c8540d56140"
+request_checksum="fd7eb087ed714d78037a6beecbfe0bd6c96f34918fdf38b13d242c54056c9d29"
 
 sha256() {
   if command -v shasum >/dev/null 2>&1; then
@@ -46,7 +46,7 @@ if [[ ! -f "$key" ]] || [[ "$(sha256 "$key")" != "$key_checksum" ]]; then
   temporary_key="$(mktemp)"
   trap 'rm -f "$temporary_key"' EXIT
   echo "downloading $key_name"
-  curl -fsSL "$base_url/proving-keys/a5ff0c508cac3f51/$key_name" -o "$temporary_key"
+  curl -fsSL "$base_url/proving-keys/7765d8fa45c5416c/$key_name" -o "$temporary_key"
   if [[ "$(sha256 "$temporary_key")" != "$key_checksum" ]]; then
     echo "downloaded proving key checksum does not match the lockfile" >&2
     exit 1
@@ -62,9 +62,9 @@ verify "$repo_root/fixtures/prove-request-2x3.json" "$request_checksum"
 
 temporary_assets="$(mktemp -d)"
 trap 'rm -rf "$temporary_assets"' EXIT
-slice "$key" 12 10118929 "$temporary_assets/transfer_confidential_2_3.pk"
-slice "$key" 10118941 364 "$temporary_assets/transfer_confidential_2_3.vk"
-slice "$key" 10119305 6234528 "$temporary_assets/transfer_confidential_2_3.r1cs"
+slice "$key" 12 10249347 "$temporary_assets/transfer_confidential_2_3.pk"
+slice "$key" 10249359 364 "$temporary_assets/transfer_confidential_2_3.vk"
+slice "$key" 10249723 6491080 "$temporary_assets/transfer_confidential_2_3.r1cs"
 verify "$temporary_assets/transfer_confidential_2_3.pk" "$pk_checksum"
 verify "$temporary_assets/transfer_confidential_2_3.vk" "$vk_checksum"
 verify "$temporary_assets/transfer_confidential_2_3.r1cs" "$r1cs_checksum"

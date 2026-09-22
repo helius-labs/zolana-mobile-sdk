@@ -6,12 +6,12 @@ use std::{
     time::Instant,
 };
 
+use solana_signature::Signature;
 use zeroize::Zeroizing;
 use zolana_hasher::{Hasher, Poseidon};
 use zolana_keypair::{ShieldedAddress, ShieldedKeypair, SigningKey};
 use zolana_transaction::{
-    instructions::{transact::ConfidentialTransfer, types::SppProofInputUtxo},
-    Address, AssetRegistry, Data, Utxo, SOL_MINT,
+    instructions::transact::ConfidentialTransaction, Address, Data, Mint, Utxo, WalletUtxo,
 };
 
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
@@ -286,30 +286,51 @@ pub fn prepare_transfer(request: TransferDraftRequest) -> Result<TransferDraft, 
     let mut blinding = [0u8; 32];
     getrandom::fill(&mut blinding[1..])
         .map_err(|error| format!("generate input blinding: {error}"))?;
-    let input = SppProofInputUtxo::new(
-        Utxo {
-            owner: sender.signing_pubkey(),
-            asset: SOL_MINT,
-            amount: request.input_lamports,
-            blinding,
-            ring_program_id: None,
-            data: Data::default(),
-        },
-        &sender,
-    );
+    let utxo = Utxo {
+        owner: sender.signing_pubkey(),
+        asset: Mint::SOL,
+        amount: request.input_lamports,
+        blinding,
+        ring_program_id: None,
+        data: Data::default(),
+    };
+    let nullifier_pubkey = sender
+        .nullifier_key
+        .pubkey()
+        .map_err(|error| error.to_string())?;
+    let utxo_hash = utxo
+        .hash(&nullifier_pubkey, &[0; 32], &[0; 32], 0)
+        .map_err(|error| error.to_string())?;
+    let nullifier = sender
+        .nullifier_key
+        .nullifier(&utxo_hash, &utxo.blinding)
+        .map_err(|error| error.to_string())?;
+    let input = WalletUtxo {
+        utxo,
+        nullifier_pubkey,
+        utxo_hash,
+        nullifier,
+        data_hash: None,
+        ring_data_hash: None,
+        tree_id: 0,
+        leaf_index: 0,
+        slot: 0,
+        tx_signature: Signature::default(),
+        slot_index: 0,
+    };
     let mut transfer =
-        ConfidentialTransfer::new(sender_address, vec![input], payer).with_compact_change();
+        ConfidentialTransaction::new(vec![input], payer).map_err(|error| error.to_string())?;
     transfer
-        .send(&recipient, SOL_MINT, request.transfer_lamports)
+        .transfer_sol(&recipient, request.transfer_lamports)
         .map_err(|error| error.to_string())?;
     let proof_inputs = transfer
-        .sign(&sender, &AssetRegistry::default())
+        .encrypt(&sender)
         .map_err(|error| error.to_string())?;
     let shape = proof_inputs
         .check_shape()
         .map_err(|error| error.to_string())?;
-    let first_nullifier = proof_inputs.input_utxos[0]
-        .nullifier()
+    let first_nullifier = proof_inputs
+        .first_nullifier()
         .map_err(|error| error.to_string())?;
     let external_data_hash = proof_inputs
         .external_data
@@ -324,7 +345,9 @@ pub fn prepare_transfer(request: TransferDraftRequest) -> Result<TransferDraft, 
                 .owner_address
                 .map(|address| address.to_string())
                 .unwrap_or_default();
-            let commitment = output.hash().map_err(|error| error.to_string())?;
+            let commitment = output
+                .hash(proof_inputs.output_tree_id)
+                .map_err(|error| error.to_string())?;
             Ok(TransferDraftOutput {
                 is_change: output.owner_address == Some(sender_address),
                 is_dummy: output.is_dummy(),
@@ -395,8 +418,17 @@ mod tests {
         assert_eq!(draft.shape, "1→2");
         assert_eq!(draft.change_lamports, 6);
         assert_eq!(draft.outputs.len(), 2);
-        assert!(draft.outputs[0].is_change);
-        assert!(!draft.outputs[1].is_change);
+        let (change, sent): (Vec<_>, Vec<_>) =
+            draft.outputs.iter().partition(|output| output.is_change);
+        assert_eq!((change.len(), sent.len()), (1, 1));
+        assert_eq!(
+            (change[0].owner.as_str(), change[0].lamports),
+            (draft.sender.as_str(), 6)
+        );
+        assert_eq!(
+            (sent[0].owner.as_str(), sent[0].lamports),
+            (draft.recipient.as_str(), 4)
+        );
     }
 
     #[test]

@@ -26,6 +26,7 @@ local build outputs and must not be synchronized or shipped as source.
 - `go/protocol/circuits/gadget/hash_bytes.go`
 - `go/protocol/circuits/gadget/hashchain.go`
 - `go/protocol/circuits/gadget/indexed.go`
+- `go/protocol/circuits/gadget/owner_identity.go`
 - `go/protocol/circuits/gadget/poseidon.go`
 - `go/protocol/circuits/gadget/proof_gadgets.go`
 - `go/protocol/circuits/spp_merge/default.go`
@@ -39,6 +40,7 @@ local build outputs and must not be synchronized or shipped as source.
 - `go/protocol/circuits/spp_transaction/custom/p256.go`
 - `go/protocol/circuits/spp_transaction/default/eddsa_only.go`
 - `go/protocol/circuits/spp_transaction/shared/balance.go`
+- `go/protocol/circuits/spp_transaction/shared/derivation.go`
 - `go/protocol/circuits/spp_transaction/shared/inputs.go`
 - `go/protocol/circuits/spp_transaction/shared/outputs.go`
 - `go/protocol/circuits/spp_transaction/shared/owner_tags.go`
@@ -46,10 +48,13 @@ local build outputs and must not be synchronized or shipped as source.
 - `go/protocol/circuits/spp_transaction/shared/ring.go`
 - `go/protocol/circuits/spp_transaction/shared/signers.go`
 - `go/protocol/circuits/spp_transaction/shared/transaction.go`
+- `go/protocol/circuits/spp_transaction/shared/tree_slot.go`
 - `go/protocol/circuits/spp_transaction/shared/utxo.go`
 - `go/protocol/go.mod`
 - `go/protocol/go.sum`
 - `go/protocol/prover-test/poseidon/poseidon.go`
+- `go/protocol/prover-test/spp/internal/p256key/private_key.go`
+- `go/protocol/prover-test/spp/parse/fields.go`
 - `go/protocol/prover-test/spp/protocol/doc.go`
 - `go/protocol/prover-test/spp/protocol/encoding.go`
 - `go/protocol/prover-test/spp/protocol/hash_bytes.go`
@@ -59,9 +64,15 @@ local build outputs and must not be synchronized or shipped as source.
 - `go/protocol/prover-test/spp/protocol/shape.go`
 - `go/protocol/prover-test/spp/protocol/state_tree.go`
 - `go/protocol/prover-test/spp/protocol/transcript.go`
+- `go/protocol/prover-test/spp/protocol/tree_slot.go`
 - `go/protocol/prover-test/spp/protocol/utxo.go`
+- `go/protocol/prover-test/spp/spptest/spptest.go`
+- `go/protocol/prover-test/spp/spptest/tree_slot.go`
 - `go/protocol/prover/common/circuit_utils.go`
+- `go/protocol/prover/common/field_hex.go`
+- `go/protocol/prover/common/input_flags.go`
 - `go/protocol/prover/common/marshal.go`
+- `go/protocol/prover/common/tree_slot.go`
 - `go/protocol/prover/common/types.go`
 - `go/protocol/prover/merge/marshal.go`
 - `go/protocol/prover/merge/params.go`

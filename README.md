@@ -22,7 +22,7 @@ The generated native library keeps Mopro's internal
 
 ## Demo
 
-Install Flutter, Rust, Go 1.25.7 or newer, and the platform toolchain. Then stage
+Install Flutter, Rust, Go 1.27.1 or newer, and the platform toolchain. Then stage
 the ignored proving assets:
 
 ```sh
@@ -68,11 +68,19 @@ cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignore
 ## Rust dependencies
 
 The Flutter-facing crate pins `mopro-ffi` to `sergeytimoshin/mopro` revision
-`c1071f96fa5a28dca8e567dd3944331047450a2b`. The gnark 0.15 backend from that revision
+`c1071f96fa5a28dca8e567dd3944331047450a2b`. The gnark backend from that revision
 is vendored with local fixes documented in its provenance file so the pub package
-includes its complete source build. Protocol crates `zolana-hasher`, `zolana-keypair`, and
-`zolana-transaction` are pinned to upstream revision
-`e6139f658c6961101d716e107a15a5ca9cecd143`.
+includes its complete source build; it is built against gnark 0.16.3, the version
+the Zolana prover uses. Protocol crates `zolana-hasher`, `zolana-keypair`, and
+`zolana-transaction`, the vendored Go circuits, and the staged proving key are all
+pinned to Zolana `main` revision `4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8`
+(`[workspace.metadata.upstream]` in `Cargo.toml`).
+
+`scripts/check-upstream.sh` fails if any of these drift from that revision; CI
+runs it on every push. To move to a newer Zolana revision, re-vendor
+`go/protocol` from `prover/server`, regenerate its `UPSTREAM_FILES.sha256`, bump
+the Cargo pins and the key checksums in `stage-demo-assets.sh`, and regenerate
+the 2→3 fixtures as described in the rust-gnark provenance file.
 
 ## Current boundary
 
