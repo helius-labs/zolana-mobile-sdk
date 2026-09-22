@@ -18,51 +18,20 @@ class ZolanaMobileDemo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Zolana Mobile',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff6750a4),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
+    ThemeData theme(Brightness brightness) => ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.black,
+        brightness: brightness,
+        dynamicSchemeVariant: DynamicSchemeVariant.monochrome,
       ),
-      home: const HomeScreen(),
+      useMaterial3: true,
     );
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    void open(Widget screen) =>
-        Navigator.of(context)
-            .push(MaterialPageRoute<void>(builder: (_) => screen));
-    return Scaffold(
-      appBar: AppBar(title: const Text('Zolana Mobile')),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.account_balance_wallet),
-            title: const Text('Private wallet'),
-            subtitle: const Text(
-              'Register, deposit, sync and send, proving on this device',
-            ),
-            onTap: () => open(const WalletScreen()),
-          ),
-          ListTile(
-            leading: const Icon(Icons.memory),
-            title: const Text('Local proof benchmark'),
-            subtitle: const Text('Prove a fixed 2→3 request with a staged key'),
-            // Holds its own prepared key while open; the wallet proves only
-            // after this screen has closed and released it.
-            onTap: () => open(const DemoScreen()),
-          ),
-        ],
-      ),
+    return MaterialApp(
+      title: 'Zolana',
+      debugShowCheckedModeBanner: false,
+      theme: theme(Brightness.light),
+      darkTheme: theme(Brightness.dark),
+      home: const WalletScreen(),
     );
   }
 }
@@ -233,7 +202,7 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Zolana local prover'),
+        title: const Text('Proof benchmark'),
         actions: [
           TextButton(
             onPressed: _unlocking ? null : (_locked ? _unlock : _lock),

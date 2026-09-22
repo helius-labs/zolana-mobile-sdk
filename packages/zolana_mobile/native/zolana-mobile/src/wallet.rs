@@ -25,9 +25,10 @@ use zolana_transaction::{AssetRegistry, SOL_MINT};
 use zolana_wallet::{
     build_deposit_transaction_sync, build_private_transaction_sync,
     build_registration_transaction_sync, create_transfer_sync, create_withdrawal,
-    get_private_token_balances, is_wallet_registered_sync, sync_wallet,
-    ClientEd25519WalletAuthority, Deposit, DepositParams, SyncWalletAuthority, TransferParams,
-    Wallet, WithdrawalLeg, WithdrawalParams,
+    get_private_token_balances, get_private_transactions, is_wallet_registered_sync, sync_wallet,
+    ClientEd25519WalletAuthority, Deposit, DepositParams, PrivateTransactionDirection,
+    PrivateTransactionKind, SyncWalletAuthority, TransferParams, Wallet, WithdrawalLeg,
+    WithdrawalParams,
 };
 
 use crate::{keys::KeyStore, prover::NativeProver};
@@ -100,6 +101,27 @@ impl PendingTransaction {
             .map(ToString::to_string)
             .collect()
     }
+}
+
+/// What a row of the wallet's history did, from this wallet's side.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActivityKind {
+    /// Public SOL moved into the private balance.
+    Shielded,
+    /// Private SOL moved to a public account.
+    Unshielded,
+    Sent,
+    Received,
+    /// Notes rearranged within this wallet (change, merges, splits).
+    Internal,
+}
+
+#[derive(Clone, Debug)]
+pub struct ActivityEntry {
+    pub kind: ActivityKind,
+    pub lamports: u64,
+    pub signature: String,
+    pub slot: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -219,6 +241,36 @@ impl MobileWallet {
             stored_utxos: report.stored_utxos as u64,
             private_lamports: self.private_lamports()?,
         })
+    }
+
+    /// Public SOL of this account, read from the RPC now.
+    pub fn public_lamports(&self) -> Result<u64, String> {
+        self.client.get_balance(self.owner).map_err(error)
+    }
+
+    /// SOL history found by the last [`Self::sync`], newest first.
+    pub fn activity(&self) -> Vec<ActivityEntry> {
+        let mut entries: Vec<ActivityEntry> = get_private_transactions(&self.wallet)
+            .iter()
+            .filter(|transaction| transaction.asset == SOL_MINT)
+            .map(|transaction| ActivityEntry {
+                kind: match (transaction.kind, transaction.direction) {
+                    (PrivateTransactionKind::Deposit, _) => ActivityKind::Shielded,
+                    (PrivateTransactionKind::PublicWithdrawal, _) => ActivityKind::Unshielded,
+                    (_, PrivateTransactionDirection::SelfTransfer)
+                    | (PrivateTransactionKind::Merge | PrivateTransactionKind::Split, _) => {
+                        ActivityKind::Internal
+                    }
+                    (_, PrivateTransactionDirection::Inbound) => ActivityKind::Received,
+                    (_, PrivateTransactionDirection::Outbound) => ActivityKind::Sent,
+                },
+                lamports: transaction.amount,
+                signature: transaction.id.signature.clone(),
+                slot: transaction.id.slot,
+            })
+            .collect();
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.slot));
+        entries
     }
 
     /// Spendable private SOL as of the last [`Self::sync`].
