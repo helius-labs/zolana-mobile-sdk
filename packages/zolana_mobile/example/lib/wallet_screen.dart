@@ -183,7 +183,7 @@ class _WalletScreenState extends State<WalletScreen> {
       _ => _private ?? BigInt.zero,
     };
     final other = demoAccounts.firstWhere((account) => account != _account);
-    final done = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -204,7 +204,9 @@ class _WalletScreenState extends State<WalletScreen> {
         },
       ),
     );
-    if (done ?? false) await _refresh();
+    // However the sheet closed (Done, swipe, back) the balance may have
+    // changed, so the screen never shows notes the action already spent.
+    await _refresh();
   }
 
   BigInt _maxShield() {
