@@ -13,20 +13,34 @@
 //! ```
 //!
 //! `ZOLANA_E2E_KEY_DIR` keeps downloaded proving keys between runs.
+//! `ZOLANA_E2E_SENDER_SEED` / `ZOLANA_E2E_RECIPIENT_SEED` (32-byte hex) reuse
+//! funded accounts, such as the example's demo accounts, where airdrops are
+//! rate limited; otherwise fresh accounts are airdropped.
 
 use std::env;
 
 use solana_keypair::Keypair;
 use solana_signer::Signer;
-use zolana_client::SolanaRpc;
+use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{derivation_message, MobileWallet, PendingTransaction, WalletConfig};
 
-const FUNDING: u64 = 2_000_000_000;
-const DEPOSIT: u64 = 500_000_000;
-const TRANSFER: u64 = 200_000_000;
+const FUNDING: u64 = 1_000_000_000;
+const DEPOSIT: u64 = 300_000_000;
+const TRANSFER: u64 = 100_000_000;
 
 fn required(name: &str) -> String {
     env::var(name).unwrap_or_else(|_| panic!("set {name}"))
+}
+
+fn account(seed_var: &str) -> Keypair {
+    let Ok(seed) = env::var(seed_var) else {
+        return Keypair::new();
+    };
+    let bytes: Vec<u8> = (0..seed.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&seed[i..i + 2], 16).expect("hex seed"))
+        .collect();
+    Keypair::new_from_array(bytes.try_into().expect("32-byte seed"))
 }
 
 fn open(signer: &Keypair) -> MobileWallet {
@@ -72,21 +86,29 @@ fn register(wallet: &MobileWallet, signer: &Keypair) {
 #[test]
 #[ignore = "needs a Zolana cluster and indexer"]
 fn register_deposit_transfer_and_receive() {
-    let sender = Keypair::new();
-    let recipient = Keypair::new();
+    let sender = account("ZOLANA_E2E_SENDER_SEED");
+    let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
     let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
     for signer in [&sender, &recipient] {
-        rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
+        if rpc.get_balance(signer.pubkey()).expect("balance") < FUNDING / 2 {
+            rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
+        }
     }
 
     let mut sender_wallet = open(&sender);
     let mut recipient_wallet = open(&recipient);
     register(&sender_wallet, &sender);
     register(&recipient_wallet, &recipient);
+    // Reused accounts may already hold private balances from earlier runs.
+    let sender_before = sender_wallet.sync().unwrap().private_lamports;
+    let recipient_before = recipient_wallet.sync().unwrap().private_lamports;
 
     let pending = sender_wallet.prepare_deposit(DEPOSIT).unwrap();
     submit(&sender_wallet, &sender, pending);
-    assert_eq!(sender_wallet.sync().unwrap().private_lamports, DEPOSIT);
+    assert_eq!(
+        sender_wallet.sync().unwrap().private_lamports,
+        sender_before + DEPOSIT
+    );
 
     let started = std::time::Instant::now();
     let pending = sender_wallet
@@ -97,7 +119,10 @@ fn register_deposit_transfer_and_receive() {
 
     assert_eq!(
         sender_wallet.sync().unwrap().private_lamports,
-        DEPOSIT - TRANSFER
+        sender_before + DEPOSIT - TRANSFER
     );
-    assert_eq!(recipient_wallet.sync().unwrap().private_lamports, TRANSFER);
+    assert_eq!(
+        recipient_wallet.sync().unwrap().private_lamports,
+        recipient_before + TRANSFER
+    );
 }
