@@ -67,6 +67,9 @@ await wallet.transfer(recipient: registeredAccount, lamports: BigInt.from(100000
 - **Privacy**: deposits and withdrawals are public. Private transfers reveal
   neither amount nor recipient. The indexer learns this wallet's view tags, so
   `allowInsecureHttp` is only for a local test cluster.
+- **Freshness**: a transfer or withdrawal syncs before it selects notes, and a
+  confirmed transaction is synced before `transfer`, `deposit` or `withdraw`
+  returns, so notes spent by another session or device are never picked.
 - **Errors** are `ZolanaWalletException`s with a code or a client error
   description, never key material.
 
@@ -160,14 +163,20 @@ it. Prefer `LocalProver` for wallet integration.
 
 ## Example and validation
 
-The repository includes the Flutter example and checksum-pinned asset staging:
+The example app is a private wallet on Zolana devnet with two built-in demo
+accounts (their keys are public in `example/lib/demo_keys.dart`; devnet SOL only)
+and a local proof benchmark. Stage the benchmark's key and run it:
 
 ```sh
 ./scripts/stage-demo-assets.sh
 cd packages/zolana_mobile/example
 flutter pub get
-flutter run --release -d YOUR_DEVICE_ID
+flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
+
+`ZOLANA_API_KEY` is optional: with a Helius key the Solana RPC is Helius devnet,
+without one it is the public devnet endpoint. It is compiled into that build
+only; never commit it.
 
 From the repository root, `bash scripts/test-consumer.sh android` extracts the
 package into a separate temporary consumer and builds it with fresh pub

@@ -3,6 +3,8 @@
 * Add `ZolanaWallet`: registration, deposit, sync, private transfer and
   withdrawal, proving on the device with the Solana key held by a
   `SolanaSigner`.
+* Add `publicLamports` and `activity` for balances and history.
+* Sync before selecting notes to spend and after each confirmed transaction.
 * Download proving keys on first use, pinned by the Zolana proving-key lockfile.
 * Remove the synthetic `prepareTransfer` draft and seed-based `shieldedAddress`.
 * Sync the vendored prover, keys and request schema with Zolana `main`.
