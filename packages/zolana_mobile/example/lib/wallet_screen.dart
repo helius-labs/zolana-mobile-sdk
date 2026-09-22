@@ -20,14 +20,11 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  // An Android emulator reaches its host at 10.0.2.2; an iOS simulator
-  // shares the host's loopback. Both match `just localnet` in zolana.
-  final _rpcUrl = TextEditingController(
-    text: Platform.isAndroid ? 'http://10.0.2.2:8899' : 'http://127.0.0.1:8899',
-  );
-  final _indexerUrl = TextEditingController(
-    text: Platform.isAndroid ? 'http://10.0.2.2:8784' : 'http://127.0.0.1:8784',
-  );
+  // A localnet started by `just` in the zolana repository. An iOS simulator
+  // shares the host's loopback; for an Android phone or emulator, forward the
+  // ports first: `adb reverse tcp:8899 tcp:8899 && adb reverse tcp:8784 tcp:8784`.
+  final _rpcUrl = TextEditingController(text: 'http://127.0.0.1:8899');
+  final _indexerUrl = TextEditingController(text: 'http://127.0.0.1:8784');
   final _recipient = TextEditingController();
   final _amount = TextEditingController(text: '0.1');
   final _log = <String>[];
@@ -79,7 +76,7 @@ class _WalletScreenState extends State<WalletScreen> {
         rpcUrl: _rpcUrl.text.trim(),
         indexerUrl: url.toString(),
         provingKeyDir: keys.path,
-        // Test clusters behind an emulator's host alias are plain HTTP.
+        // A local test cluster is plain HTTP.
         allowInsecureHttp: url.scheme == 'http',
       ),
     );
