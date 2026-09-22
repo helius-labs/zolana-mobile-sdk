@@ -69,6 +69,12 @@ class FakeWallet implements NativeWallet {
   Future<BigInt> privateLamports() async => BigInt.two;
 
   @override
+  Future<BigInt> publicLamports() async => BigInt.one;
+
+  @override
+  Future<List<ActivityEntry>> activity() async => const [];
+
+  @override
   Future<NativePending?> prepareRegistration() async => null;
 
   @override
