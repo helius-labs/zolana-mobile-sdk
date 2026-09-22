@@ -79,6 +79,12 @@ while read -r manifest; do
 done < <(find "$repo_root" -name Cargo.toml -not -path '*/target/*' -not -path '*/.git/*')
 
 lock="$(upstream prover/server/prover/provingkeys/proving-keys.lock)"
+embedded_lock="$repo_root/packages/zolana_mobile/native/zolana-mobile/proving-keys.lock"
+[[ "$(sha256 < "$embedded_lock")" == "$(printf '%s\n' "$lock" | sha256)" ]] ||
+  fail "zolana-mobile/proving-keys.lock differs from the upstream proving-key lockfile"
+want_url="$(upstream prover/server/prover/common/key_downloader.go | grep -o 'defaultProvingKeysBaseURL = "[^"]*"' | cut -d'"' -f2)"
+got_url="$(grep -o 'DEFAULT_PROVING_KEYS_URL: &str = "[^"]*"' "$repo_root/packages/zolana_mobile/native/zolana-mobile/src/keys.rs" | cut -d'"' -f2)"
+[[ "$got_url" == "$want_url" ]] || fail "default proving key URL $got_url, upstream uses $want_url"
 key_name="$(awk -F'"' '/^key_name=/ { print $2 }' "$stage_script")"
 key_checksum="$(awk -F'"' '/^key_checksum=/ { print $2 }' "$stage_script")"
 key_prefix="$(grep -o 'proving-keys/[0-9a-f]*/' "$stage_script" | head -1)"

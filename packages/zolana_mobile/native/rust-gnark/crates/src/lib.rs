@@ -40,6 +40,21 @@ impl PreparedProver {
                 vk.as_ptr().cast_mut(),
             )
         };
+        Self::from_result(raw)
+    }
+
+    /// Load a Zolana `.key` container (proving key, verifying key and
+    /// constraint system in one file). Verify the file against the pinned
+    /// proving-key lockfile first: the container is read before its sections
+    /// can be checked against each other.
+    pub fn load_key(key: &str) -> Result<Self> {
+        init()?;
+        let key = input_string(key)?;
+        let raw = unsafe { bind::gnark_prepared_load_key(key.as_ptr().cast_mut()) };
+        Self::from_result(raw)
+    }
+
+    fn from_result(raw: *mut bind::C_PreparedResult) -> Result<Self> {
         if raw.is_null() {
             bail!("gnark operation failed");
         }
