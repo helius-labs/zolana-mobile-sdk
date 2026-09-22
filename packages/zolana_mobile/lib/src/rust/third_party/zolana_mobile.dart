@@ -74,6 +74,9 @@ Future<LocalProofResult> proveAssignment({
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>>
 abstract class MobileWallet implements RustOpaqueInterface {
+  /// SOL history found by the last [`Self::sync`], newest first.
+  Future<List<ActivityEntry>> activity();
+
   /// Whether this wallet has published its shielded address. Others can
   /// only send to a registered wallet.
   Future<bool> isRegistered();
@@ -116,6 +119,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// Spendable private SOL as of the last [`Self::sync`].
   Future<BigInt> privateLamports();
 
+  /// Public SOL of this account, read from the RPC now.
+  Future<BigInt> publicLamports();
+
   Future<String> shieldedAddress();
 
   Future<String> solanaPubkey();
@@ -146,6 +152,48 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 
   /// Human-readable description to show before asking for a signature.
   Future<String> summary();
+}
+
+class ActivityEntry {
+  final ActivityKind kind;
+  final BigInt lamports;
+  final String signature;
+  final BigInt slot;
+
+  const ActivityEntry({
+    required this.kind,
+    required this.lamports,
+    required this.signature,
+    required this.slot,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^ lamports.hashCode ^ signature.hashCode ^ slot.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ActivityEntry &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          lamports == other.lamports &&
+          signature == other.signature &&
+          slot == other.slot;
+}
+
+/// What a row of the wallet's history did, from this wallet's side.
+enum ActivityKind {
+  /// Public SOL moved into the private balance.
+  shielded,
+
+  /// Private SOL moved to a public account.
+  unshielded,
+  sent,
+  received,
+
+  /// Notes rearranged within this wallet (change, merges, splits).
+  internal,
 }
 
 class GnarkProofResult {

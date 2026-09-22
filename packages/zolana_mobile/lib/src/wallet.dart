@@ -45,6 +45,8 @@ abstract interface class NativeWallet {
   Future<bool> isRegistered();
   Future<native.SyncSummary> sync();
   Future<BigInt> privateLamports();
+  Future<BigInt> publicLamports();
+  Future<List<native.ActivityEntry>> activity();
   Future<NativePending?> prepareRegistration();
   Future<NativePending> prepareDeposit(BigInt lamports);
   Future<NativePending> prepareTransfer(String recipient, BigInt lamports);
@@ -111,6 +113,12 @@ class ZolanaWallet {
 
   /// Spendable private SOL as of the last [sync].
   Future<BigInt> privateLamports() => _serial(_wallet.privateLamports);
+
+  /// Public SOL of [solanaPublicKey], read from the RPC now.
+  Future<BigInt> publicLamports() => _serial(_wallet.publicLamports);
+
+  /// SOL history found by the last [sync], newest first.
+  Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
   /// Send private SOL to the registered wallet of [recipient] (a Solana
   /// public key). Builds and proves on the device, then asks the signer.
@@ -196,6 +204,12 @@ class _NativeWallet implements NativeWallet {
 
   @override
   Future<BigInt> privateLamports() => _wallet.privateLamports();
+
+  @override
+  Future<BigInt> publicLamports() => _wallet.publicLamports();
+
+  @override
+  Future<List<native.ActivityEntry>> activity() => _wallet.activity();
 
   @override
   Future<NativePending?> prepareRegistration() async {
