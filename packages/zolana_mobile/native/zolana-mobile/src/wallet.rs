@@ -289,7 +289,7 @@ impl MobileWallet {
     /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
     /// explicit instead.
     pub fn prepare_transfer(
-        &self,
+        &mut self,
         recipient: String,
         lamports: u64,
     ) -> Result<PendingTransaction, String> {
@@ -297,6 +297,7 @@ impl MobileWallet {
         if !is_wallet_registered_sync(&self.client, recipient).map_err(error)? {
             return Err("recipient_not_registered".to_string());
         }
+        self.sync_before_spending()?;
         let created = create_transfer_sync(TransferParams {
             rpc: &self.client,
             wallet: &self.wallet,
@@ -326,11 +327,12 @@ impl MobileWallet {
 
     /// Build and prove a withdrawal of private SOL to a public account.
     pub fn prepare_withdrawal(
-        &self,
+        &mut self,
         recipient: String,
         lamports: u64,
     ) -> Result<PendingTransaction, String> {
         let recipient = parse_pubkey(&recipient)?;
+        self.sync_before_spending()?;
         let created = create_withdrawal(WithdrawalParams {
             wallet: &self.wallet,
             payer: self.owner,
@@ -361,9 +363,11 @@ impl MobileWallet {
     /// shielded-pool transactions, for the indexer. Returns the signature.
     ///
     /// `signatures` follows [`PendingTransaction::signers`]; each is checked
-    /// before anything is sent.
+    /// before anything is sent. A confirmed shielded-pool transaction is
+    /// synced before this returns, so the notes it spent are no longer
+    /// offered.
     pub fn submit(
-        &self,
+        &mut self,
         pending: PendingTransaction,
         signatures: Vec<Vec<u8>>,
     ) -> Result<String, String> {
@@ -400,8 +404,21 @@ impl MobileWallet {
             self.client
                 .confirm_private_transaction_sync(signature)
                 .map_err(error)?;
+            // Best effort: the transaction has landed, so a failed sync must
+            // not report it as failed. The next spend syncs again first.
+            let _ = sync_wallet(&mut self.wallet, &self.authority, &self.client);
         }
         Ok(signature.to_string())
+    }
+
+    /// The wallet learns of spends only by syncing, and a note it still
+    /// holds may have been spent since: by the last transaction if its sync
+    /// failed, or by the same account on another device. Selecting one builds
+    /// a transaction the indexer and the program reject.
+    fn sync_before_spending(&mut self) -> Result<(), String> {
+        sync_wallet(&mut self.wallet, &self.authority, &self.client)
+            .map(|_| ())
+            .map_err(error)
     }
 }
 
@@ -473,7 +490,7 @@ mod tests {
     #[test]
     fn submit_checks_every_signature_before_sending() {
         let signer = Keypair::new();
-        let wallet = open(&signer).unwrap();
+        let mut wallet = open(&signer).unwrap();
         let pending = || {
             let message = compile_message(
                 &signer.pubkey(),
@@ -514,7 +531,7 @@ mod tests {
 
     #[test]
     fn rejects_malformed_recipients_before_the_network() {
-        let wallet = open(&Keypair::new()).unwrap();
+        let mut wallet = open(&Keypair::new()).unwrap();
         assert_eq!(
             wallet
                 .prepare_transfer("not-a-pubkey".into(), 1)
