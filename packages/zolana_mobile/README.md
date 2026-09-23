@@ -40,7 +40,7 @@ class KeystoreSigner implements SolanaSigner {
       /* ask the user, then sign with Ed25519 */;
 }
 
-await RustLib.init();
+await initZolanaMobile();
 final wallet = await ZolanaWallet.open(
   signer: KeystoreSigner(),
   config: WalletConfig(
@@ -82,7 +82,7 @@ close a `LocalProver` before the wallet proves.
 ```dart
 import 'package:zolana_mobile/zolana_mobile.dart';
 
-await RustLib.init();
+await initZolanaMobile();
 final prover = await LocalProver.load(
   r1csPath: circuitPath,
   provingKeyPath: provingKeyPath,

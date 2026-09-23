@@ -9,7 +9,7 @@ import 'wallet_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await RustLib.init();
+  await initZolanaMobile();
   runApp(const ZolanaMobileDemo());
 }
 

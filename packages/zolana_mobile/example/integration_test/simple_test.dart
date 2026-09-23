@@ -6,7 +6,7 @@ import 'package:zolana_mobile_demo/demo_signer.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(RustLib.init);
+  setUpAll(initZolanaMobile);
 
   testWidgets('opens a wallet from a device-held signer', (tester) async {
     final signer = await DemoSigner.generate();

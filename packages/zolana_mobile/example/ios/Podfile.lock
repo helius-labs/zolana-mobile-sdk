@@ -1,0 +1,22 @@
+PODS:
+  - Flutter (1.0.0)
+  - zolana_mobile (0.1.0):
+    - Flutter
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - zolana_mobile (from `.symlinks/plugins/zolana_mobile/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  zolana_mobile:
+    :path: ".symlinks/plugins/zolana_mobile/ios"
+
+SPEC CHECKSUMS:
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  zolana_mobile: 6f7cbb85f54a949632162d7c3aa0c4596956c06d
+
+PODFILE CHECKSUM: 3ba3a73b1b12adcf321a227a745625fe0888cc82
+
+COCOAPODS: 1.17.0
