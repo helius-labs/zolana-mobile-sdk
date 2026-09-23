@@ -11,10 +11,25 @@
   (was 11).
 * CI runs the clean consumer on an Android API 26 emulator and checks that the
   iOS native library runs on iOS 16.
+* Add SPL Token and Token-2022 assets: `mint` on deposit, transfer and
+  withdrawal, `balances()`, `privateBalance()`, `publicBalance()`,
+  `prepareTokenAccount()`, and a mint on each activity entry. Amounts are
+  `amount` in base units.
+* Add `WalletConfig.rpcHeaders`: extra HTTP headers on every Solana RPC
+  request.
+* Add `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
+  `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
+  send transactions themselves.
+* Add `ZolanaWallet.close()` for lock and account switch: it rejects queued
+  operations, never signs or submits after the call, drains the running step
+  and releases the native wallet and the proving key it loaded.
+* Add `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
+  `register()` fails with `registration_conflict` when the user record holds
+  other keys, instead of replacing them.
 * Add `ZolanaWallet`: registration, deposit, sync, private transfer and
   withdrawal, proving on the device with the Solana key held by a
   `SolanaSigner`.
-* Add `publicLamports` and `activity` for balances and history.
+* Add `activity` for history.
 * Sync before selecting notes to spend and after each confirmed transaction.
 * Download proving keys on first use, pinned by the Zolana proving-key lockfile.
 * Remove the synthetic `prepareTransfer` draft and seed-based `shieldedAddress`.
