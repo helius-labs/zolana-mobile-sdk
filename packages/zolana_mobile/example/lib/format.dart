@@ -43,6 +43,8 @@ String friendlyError(Object error) {
   return switch (message) {
     'recipient_not_registered' =>
       "That account hasn't set up a private wallet yet.",
+    'registration_conflict' =>
+      'This account is registered with keys from another app.',
     'prover_busy' => 'Another proof is running. Try again in a moment.',
     'proving_key_download_failed' =>
       "Couldn't download the proving key. Check your connection.",

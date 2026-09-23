@@ -8,6 +8,7 @@ use std::{
 use zeroize::Zeroizing;
 use zolana_hasher::{Hasher, Poseidon};
 
+mod asset;
 mod keys;
 mod prover;
 mod wallet;
@@ -15,7 +16,7 @@ mod wallet;
 pub use keys::DEFAULT_PROVING_KEYS_URL;
 pub use wallet::{
     derivation_message, ActivityEntry, ActivityKind, MobileWallet, PendingTransaction,
-    PendingTransactionKind, SyncSummary, WalletConfig,
+    PendingTransactionKind, RegistrationStatus, SyncSummary, TokenBalance, WalletConfig,
 };
 
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();

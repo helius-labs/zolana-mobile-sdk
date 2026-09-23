@@ -101,10 +101,11 @@ the 2→3 fixtures as described in the rust-gnark provenance file.
 
 ## Current boundary
 
-`ZolanaWallet` builds, proves and submits transactions; the application signs
-them. `LocalProver.proveRequest` remains for callers that assemble their own
-`/prove` requests. The wallet is SOL only, keeps its state in memory, and does
-not merge notes yet.
+`ZolanaWallet` builds and proves transactions; the application signs them, and
+either the wallet or the application sends them. `LocalProver.proveRequest`
+remains for callers that assemble their own `/prove` requests. The wallet holds
+SOL and the SPL tokens the shielded pool has registered, keeps its state in
+memory, and does not merge notes yet.
 
 The end-to-end wallet test registers, deposits, proves a private transfer on
 this machine, checks the recipient's balance, and unshields from a second,

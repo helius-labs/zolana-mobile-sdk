@@ -7,7 +7,8 @@ require a sibling Zolana checkout.
 
 ## Requirements
 
-- Flutter with Dart 3.13.3 or newer, Rust stable, and Go 1.27.1 or newer.
+- Flutter with Dart 3.13.0 or newer, Rust stable, and Go 1.27.1 or newer. CI
+  checks Flutter 3.47.2 (Dart 3.13.2) and 3.47.4.
 - Android: an installed NDK. Set `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to its
   directory if the SDK installation cannot be discovered automatically.
 - iOS: Xcode with its license accepted, CocoaPods, and the Rust iOS target.
@@ -53,7 +54,7 @@ final wallet = await ZolanaWallet.open(
 await wallet.register();               // once, so others can pay this wallet
 await wallet.deposit(BigInt.from(500000000));
 await wallet.sync();
-await wallet.transfer(recipient: registeredAccount, lamports: BigInt.from(100000000));
+await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(100000000));
 ```
 
 - **Proving keys** download on first use from the Zolana key host into
@@ -61,6 +62,22 @@ await wallet.transfer(recipient: registeredAccount, lamports: BigInt.from(100000
   the pinned Zolana revision. The wallet picks the circuit shape, so the first
   transfer of a new shape downloads its key (8–240 MB); keep the directory
   across launches.
+- **Tokens**: pass `mint` (base58) for an SPL Token or Token-2022 asset; no
+  `mint` is SOL. Amounts are in base units. A mint works once the shielded pool
+  has registered it, otherwise calls fail with `asset_not_supported`.
+  `balances()` lists the private balance of each asset held. A token withdrawal
+  goes to the recipient's associated token account: when it fails with
+  `recipient_token_account_missing`, `prepareTokenAccount` creates the account.
+  Transaction fees are paid in SOL by this account.
+- **RPC headers**: `WalletConfig.rpcHeaders` adds HTTP headers to every Solana
+  RPC request, for example an auth token for your RPC proxy. The values are
+  marked sensitive, so they are not printed in logs. The indexer does not take
+  custom headers yet.
+- **Registration**: `registrationStatus()` is `notRegistered`, `registered` or
+  `conflict`. A conflict means the account's user record holds other keys: set
+  by another app, by a key rotation, or derived by a signer whose signatures
+  change between calls. `register()` then fails with `registration_conflict` and
+  never replaces them. The wallet can still spend and withdraw its own notes.
 - **Recipients** are Solana accounts that have registered. A transfer to an
   unregistered account fails with `recipient_not_registered`; use `withdraw`
   for a public payment.
@@ -73,7 +90,38 @@ await wallet.transfer(recipient: registeredAccount, lamports: BigInt.from(100000
 - **Errors** are `ZolanaWalletException`s with a code or a client error
   description, never key material.
 
-Current limits: SOL only; wallet state is in memory, so reopen and `sync` after
+- **Lock and account switch**: call `await wallet.close()`. Operations not yet
+  started fail with `wallet_closed`, and nothing is signed or submitted after
+  the call. `close()` waits for the running native step (a proof cannot be
+  interrupted) and for an open signer prompt, so cancel your prompt on lock.
+  Then it releases the native wallet: its keys, notes and the proving key it
+  loaded. Open the next account after `close()` completes. A transaction
+  already submitted is not recalled.
+
+### Signing and sending in the application
+
+`register`, `deposit`, `transfer` and `withdraw` prepare, sign with the
+`SolanaSigner` and submit. An application that approves, signs and sends
+transactions itself uses the `prepare` methods and reports back:
+
+```dart
+final tx = await wallet.prepareTransfer(recipient: account, amount: amount);
+// Show tx.summary, sign tx.message with each of tx.signers, send it.
+await wallet.confirm(tx, signature); // base58 transaction signature
+```
+
+`confirm` checks that `signature` is the fee payer's signature over
+`tx.message`, waits until Solana confirms it and, for shielded-pool
+transactions, until the indexer has it, then syncs. `submit(tx, signatures)`
+sends through the wallet's RPC instead.
+
+- The message carries a recent blockhash and expires after about 150 blocks
+  (60–90 s). Prepare again when it expires.
+- Prepare one spend at a time. Until a prepared spend is confirmed, the next
+  one can select the same notes; the program then rejects the second
+  transaction. No funds are lost.
+
+Current limits: wallet state is in memory, so reopen and `sync` after
 a restart; notes are not merged; one prepared prover is loaded per process, so
 close a `LocalProver` before the wallet proves.
 

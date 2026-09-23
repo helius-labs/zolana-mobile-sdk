@@ -20,7 +20,7 @@ cat > "$consumer/pubspec.yaml" <<'YAML'
 name: zolana_consumer
 publish_to: none
 environment:
-  sdk: ^3.13.3
+  sdk: ^3.13.0
 dependencies:
   flutter:
     sdk: flutter
