@@ -5,2280 +5,1607 @@
 
 import 'dart:async';
 import 'dart:convert';
-
 import 'frb_generated.dart';
-import 'frb_generated.io.dart'
-    if (dart.library.js_interop) 'frb_generated.web.dart';
-
+import 'frb_generated.io.dart' if (dart.library.js_interop) 'frb_generated.web.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
-
 import 'third_party/zolana_mobile.dart';
 
-/// Main entrypoint of the Rust API
-class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
-  @internal
-  static final instance = RustLib._();
 
-  RustLib._();
+                /// Main entrypoint of the Rust API
+                class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
+                  @internal
+                  static final instance = RustLib._();
 
-  /// Initialize flutter_rust_bridge
-  static Future<void> init({
-    RustLibApi? api,
-    BaseHandler? handler,
-    ExternalLibrary? externalLibrary,
-    bool forceSameCodegenVersion = true,
-  }) async {
-    await instance.initImpl(
-      api: api,
-      handler: handler,
-      externalLibrary: externalLibrary,
-      forceSameCodegenVersion: forceSameCodegenVersion,
-    );
-  }
+                  RustLib._();
 
-  /// Initialize flutter_rust_bridge in mock mode.
-  /// No libraries for FFI are loaded.
-  static void initMock({required RustLibApi api}) {
-    instance.initMockImpl(api: api);
-  }
+                  /// Initialize flutter_rust_bridge
+                  static Future<void> init({
+                    RustLibApi? api,
+                    BaseHandler? handler,
+                    ExternalLibrary? externalLibrary,
+                    bool forceSameCodegenVersion = true,
+                  }) async {
+                    await instance.initImpl(
+                      api: api,
+                      handler: handler,
+                      externalLibrary: externalLibrary,
+                      forceSameCodegenVersion: forceSameCodegenVersion,
+                    );
+                  }
 
-  /// Dispose flutter_rust_bridge
-  ///
-  /// The call to this function is optional, since flutter_rust_bridge (and everything else)
-  /// is automatically disposed when the app stops.
-  static void dispose() => instance.disposeImpl();
+                  /// Initialize flutter_rust_bridge in mock mode.
+                  /// No libraries for FFI are loaded.
+                  static void initMock({
+                    required RustLibApi api,
+                  }) {
+                    instance.initMockImpl(
+                      api: api,
+                    );
+                  }
 
-  @override
-  ApiImplConstructor<RustLibApiImpl, RustLibWire> get apiImplConstructor =>
-      RustLibApiImpl.new;
+                  /// Dispose flutter_rust_bridge
+                  ///
+                  /// The call to this function is optional, since flutter_rust_bridge (and everything else)
+                  /// is automatically disposed when the app stops.
+                  static void dispose() => instance.disposeImpl();
 
-  @override
-  WireConstructor<RustLibWire> get wireConstructor =>
-      RustLibWire.fromExternalLibrary;
+                  @override
+                  ApiImplConstructor<RustLibApiImpl, RustLibWire> get apiImplConstructor => RustLibApiImpl.new;
 
-  @override
-  Future<void> executeRustInitializers() async {
-    await api.crateApiSimpleInitApp();
-  }
+                  @override
+                  WireConstructor<RustLibWire> get wireConstructor => RustLibWire.fromExternalLibrary;
 
-  @override
-  ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig =>
-      kDefaultExternalLibraryLoaderConfig;
+                  @override
+                  Future<void> executeRustInitializers() async {
+                    await api.crateApiSimpleInitApp();
 
-  @override
-  String get codegenVersion => '2.11.1';
+                  }
 
-  @override
-  int get rustContentHash => -1065319924;
+                  @override
+                  ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig => kDefaultExternalLibraryLoaderConfig;
 
-  static const kDefaultExternalLibraryLoaderConfig =
-      ExternalLibraryLoaderConfig(
-        stem: 'mopro_flutter_bindings',
-        ioDirectory: 'rust/target/release/',
-        webPrefix: 'pkg/',
-      );
-}
+                  @override
+                  String get codegenVersion => '2.11.1';
 
-abstract class RustLibApi extends BaseApi {
-  Future<List<ActivityEntry>> zolanaMobileMobileWalletActivity({
-    required MobileWallet that,
-  });
+                  @override
+                  int get rustContentHash => -1587318895;
 
-  Future<bool> zolanaMobileMobileWalletIsRegistered({
-    required MobileWallet that,
-  });
+                  static const kDefaultExternalLibraryLoaderConfig = ExternalLibraryLoaderConfig(
+                    stem: 'mopro_flutter_bindings',
+                    ioDirectory: 'rust/target/release/',
+                    webPrefix: 'pkg/',
+                  );
+                }
+                
 
-  Future<MobileWallet> zolanaMobileMobileWalletOpen({
-    required WalletConfig config,
-    required String solanaPubkey,
-    required List<int> derivationSignature,
-  });
+                abstract class RustLibApi extends BaseApi {
+                  Future<List<ActivityEntry>> zolanaMobileMobileWalletActivity({required MobileWallet that });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareDeposit({
-    required MobileWallet that,
-    required BigInt lamports,
-  });
+Future<List<TokenBalance>> zolanaMobileMobileWalletBalances({required MobileWallet that });
 
-  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({
-    required MobileWallet that,
-  });
+Future<void> zolanaMobileMobileWalletConfirm({required MobileWallet that , required PendingTransaction pending , required String signature });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({
-    required MobileWallet that,
-    required String recipient,
-    required BigInt lamports,
-  });
+Future<MobileWallet> zolanaMobileMobileWalletOpen({required WalletConfig config , required String solanaPubkey , required List<int> derivationSignature });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({
-    required MobileWallet that,
-    required String recipient,
-    required BigInt lamports,
-  });
+Future<PendingTransaction> zolanaMobileMobileWalletPrepareDeposit({required MobileWallet that , String? mint , required BigInt amount });
 
-  Future<BigInt> zolanaMobileMobileWalletPrivateLamports({
-    required MobileWallet that,
-  });
+Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({required MobileWallet that });
 
-  Future<BigInt> zolanaMobileMobileWalletPublicLamports({
-    required MobileWallet that,
-  });
+Future<PendingTransaction?> zolanaMobileMobileWalletPrepareTokenAccount({required MobileWallet that , required String owner , required String mint });
 
-  Future<String> zolanaMobileMobileWalletShieldedAddress({
-    required MobileWallet that,
-  });
+Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({required MobileWallet that , required String recipient , String? mint , required BigInt amount });
 
-  Future<String> zolanaMobileMobileWalletSolanaPubkey({
-    required MobileWallet that,
-  });
+Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({required MobileWallet that , required String recipient , String? mint , required BigInt amount });
 
-  Future<String> zolanaMobileMobileWalletSubmit({
-    required MobileWallet that,
-    required PendingTransaction pending,
-    required List<Uint8List> signatures,
-  });
+Future<BigInt> zolanaMobileMobileWalletPrivateBalance({required MobileWallet that , String? mint });
 
-  Future<SyncSummary> zolanaMobileMobileWalletSync({
-    required MobileWallet that,
-  });
+Future<BigInt> zolanaMobileMobileWalletPublicBalance({required MobileWallet that , String? mint });
 
-  Future<PendingTransactionKind> zolanaMobilePendingTransactionKind({
-    required PendingTransaction that,
-  });
+Future<RegistrationStatus> zolanaMobileMobileWalletRegistrationStatus({required MobileWallet that });
 
-  Future<Uint8List> zolanaMobilePendingTransactionMessageBytes({
-    required PendingTransaction that,
-  });
+Future<String> zolanaMobileMobileWalletShieldedAddress({required MobileWallet that });
 
-  Future<List<String>> zolanaMobilePendingTransactionSigners({
-    required PendingTransaction that,
-  });
+Future<String> zolanaMobileMobileWalletSolanaPubkey({required MobileWallet that });
 
-  Future<String> zolanaMobilePendingTransactionSummary({
-    required PendingTransaction that,
-  });
+Future<String> zolanaMobileMobileWalletSubmit({required MobileWallet that , required PendingTransaction pending , required List<Uint8List> signatures });
 
-  Future<Uint8List> zolanaMobileDerivationMessage({
-    required String solanaPubkey,
-  });
+Future<SyncSummary> zolanaMobileMobileWalletSync({required MobileWallet that });
 
-  Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({
-    required String r1CsPath,
-    required String provingKeyPath,
-    required String witnessJson,
-  });
+Future<PendingTransactionKind> zolanaMobilePendingTransactionKind({required PendingTransaction that });
 
-  Future<void> crateApiSimpleInitApp();
+Future<Uint8List> zolanaMobilePendingTransactionMessageBytes({required PendingTransaction that });
 
-  Future<PreparedProverInfo> zolanaMobileLoadProver({
-    required String r1CsPath,
-    required String provingKeyPath,
-    required String verifyingKeyPath,
-  });
+Future<List<String>> zolanaMobilePendingTransactionSigners({required PendingTransaction that });
 
-  Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs});
+Future<String> zolanaMobilePendingTransactionSummary({required PendingTransaction that });
 
-  Future<LocalProofResult> zolanaMobileProveAssignment({
-    required String provingKeyPath,
-    required String assignmentPath,
-  });
+Future<Uint8List> zolanaMobileDerivationMessage({required String solanaPubkey });
 
-  Future<LocalProofResult> zolanaMobileProvePrepared({
-    required BigInt id,
-    required String inputJson,
-    required bool structuredRequest,
-  });
+Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({required String r1CsPath , required String provingKeyPath , required String witnessJson });
 
-  Future<void> zolanaMobileReleaseProver({required BigInt id});
+Future<void> crateApiSimpleInitApp();
 
-  Future<String> zolanaMobileSdkVersion();
+Future<PreparedProverInfo> zolanaMobileLoadProver({required String r1CsPath , required String provingKeyPath , required String verifyingKeyPath });
 
-  Future<bool> zolanaMobileVerifyGnarkProof({
-    required String r1CsPath,
-    required String verifyingKeyPath,
-    required GnarkProofResult proofResult,
-  });
+Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs });
 
-  RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_MobileWallet;
+Future<LocalProofResult> zolanaMobileProveAssignment({required String provingKeyPath , required String assignmentPath });
 
-  RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_MobileWallet;
+Future<LocalProofResult> zolanaMobileProvePrepared({required BigInt id , required String inputJson , required bool structuredRequest });
 
-  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_MobileWalletPtr;
+Future<void> zolanaMobileReleaseProver({required BigInt id });
 
-  RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_PendingTransaction;
+Future<String> zolanaMobileSdkVersion();
 
-  RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_PendingTransaction;
+Future<bool> zolanaMobileVerifyGnarkProof({required String r1CsPath , required String verifyingKeyPath , required GnarkProofResult proofResult });
 
-  CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_PendingTransactionPtr;
-}
+RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_MobileWallet;
 
-class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
-  RustLibApiImpl({
-    required super.handler,
-    required super.wire,
-    required super.generalizedFrbRustBinding,
-    required super.portManager,
-  });
+RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_MobileWallet;
 
-  @override
-  Future<List<ActivityEntry>> zolanaMobileMobileWalletActivity({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 1,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_MobileWalletPtr;
+
+RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_PendingTransaction;
+
+RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_PendingTransaction;
+
+CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_PendingTransactionPtr;
+
+
+                }
+                
+
+                class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
+                  RustLibApiImpl({
+                    required super.handler,
+                    required super.wire,
+                    required super.generalizedFrbRustBinding,
+                    required super.portManager,
+                  });
+
+                  @override Future<List<ActivityEntry>> zolanaMobileMobileWalletActivity({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_list_activity_entry,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobileMobileWalletActivityConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletActivityConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletActivityConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_activity",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<bool> zolanaMobileMobileWalletIsRegistered({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 2,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_bool,
+        TaskConstMeta get kZolanaMobileMobileWalletActivityConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_activity",
+            argNames: ["that"],
+        );
+        
+
+@override Future<List<TokenBalance>> zolanaMobileMobileWalletBalances({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_list_token_balance,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletIsRegisteredConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletBalancesConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletIsRegisteredConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_is_registered",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<MobileWallet> zolanaMobileMobileWalletOpen({
-    required WalletConfig config,
-    required String solanaPubkey,
-    required List<int> derivationSignature,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_box_autoadd_wallet_config(config, serializer);
-          sse_encode_String(solanaPubkey, serializer);
-          sse_encode_list_prim_u_8_loose(derivationSignature, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 3,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet,
+        TaskConstMeta get kZolanaMobileMobileWalletBalancesConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_balances",
+            argNames: ["that"],
+        );
+        
+
+@override Future<void> zolanaMobileMobileWalletConfirm({required MobileWallet that , required PendingTransaction pending , required String signature })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(pending, serializer);
+sse_encode_String(signature, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletOpenConstMeta,
-        argValues: [config, solanaPubkey, derivationSignature],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletConfirmConstMeta,
+            argValues: [that, pending, signature],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletOpenConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_open",
-        argNames: ["config", "solanaPubkey", "derivationSignature"],
-      );
 
-  @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareDeposit({
-    required MobileWallet that,
-    required BigInt lamports,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          sse_encode_u_64(lamports, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 4,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+        TaskConstMeta get kZolanaMobileMobileWalletConfirmConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_confirm",
+            argNames: ["that", "pending", "signature"],
+        );
+        
+
+@override Future<MobileWallet> zolanaMobileMobileWalletOpen({required WalletConfig config , required String solanaPubkey , required List<int> derivationSignature })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_box_autoadd_wallet_config(config, serializer);
+sse_encode_String(solanaPubkey, serializer);
+sse_encode_list_prim_u_8_loose(derivationSignature, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletPrepareDepositConstMeta,
-        argValues: [that, lamports],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletOpenConstMeta,
+            argValues: [config, solanaPubkey, derivationSignature],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletPrepareDepositConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_prepare_deposit",
-        argNames: ["that", "lamports"],
-      );
 
-  @override
-  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 5,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData:
-              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+        TaskConstMeta get kZolanaMobileMobileWalletOpenConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_open",
+            argNames: ["config", "solanaPubkey", "derivationSignature"],
+        );
+        
+
+@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareDeposit({required MobileWallet that , String? mint , required BigInt amount })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_opt_String(mint, serializer);
+sse_encode_u_64(amount, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletPrepareRegistrationConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPrepareDepositConstMeta,
+            argValues: [that, mint, amount],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletPrepareRegistrationConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_prepare_registration",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({
-    required MobileWallet that,
-    required String recipient,
-    required BigInt lamports,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          sse_encode_String(recipient, serializer);
-          sse_encode_u_64(lamports, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 6,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+        TaskConstMeta get kZolanaMobileMobileWalletPrepareDepositConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_prepare_deposit",
+            argNames: ["that", "mint", "amount"],
+        );
+        
+
+@override Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletPrepareTransferConstMeta,
-        argValues: [that, recipient, lamports],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPrepareRegistrationConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletPrepareTransferConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_prepare_transfer",
-        argNames: ["that", "recipient", "lamports"],
-      );
 
-  @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({
-    required MobileWallet that,
-    required String recipient,
-    required BigInt lamports,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          sse_encode_String(recipient, serializer);
-          sse_encode_u_64(lamports, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 7,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+        TaskConstMeta get kZolanaMobileMobileWalletPrepareRegistrationConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_prepare_registration",
+            argNames: ["that"],
+        );
+        
+
+@override Future<PendingTransaction?> zolanaMobileMobileWalletPrepareTokenAccount({required MobileWallet that , required String owner , required String mint })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_String(owner, serializer);
+sse_encode_String(mint, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletPrepareWithdrawalConstMeta,
-        argValues: [that, recipient, lamports],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPrepareTokenAccountConstMeta,
+            argValues: [that, owner, mint],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletPrepareWithdrawalConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_prepare_withdrawal",
-        argNames: ["that", "recipient", "lamports"],
-      );
 
-  @override
-  Future<BigInt> zolanaMobileMobileWalletPrivateLamports({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 8,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletPrepareTokenAccountConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_prepare_token_account",
+            argNames: ["that", "owner", "mint"],
+        );
+        
+
+@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({required MobileWallet that , required String recipient , String? mint , required BigInt amount })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_String(recipient, serializer);
+sse_encode_opt_String(mint, serializer);
+sse_encode_u_64(amount, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+          decodeErrorData: sse_decode_String,
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPrepareTransferConstMeta,
+            argValues: [that, recipient, mint, amount],
+            apiImpl: this,
+        )); }
+
+
+        TaskConstMeta get kZolanaMobileMobileWalletPrepareTransferConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_prepare_transfer",
+            argNames: ["that", "recipient", "mint", "amount"],
+        );
+        
+
+@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({required MobileWallet that , required String recipient , String? mint , required BigInt amount })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_String(recipient, serializer);
+sse_encode_opt_String(mint, serializer);
+sse_encode_u_64(amount, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+          decodeErrorData: sse_decode_String,
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPrepareWithdrawalConstMeta,
+            argValues: [that, recipient, mint, amount],
+            apiImpl: this,
+        )); }
+
+
+        TaskConstMeta get kZolanaMobileMobileWalletPrepareWithdrawalConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_prepare_withdrawal",
+            argNames: ["that", "recipient", "mint", "amount"],
+        );
+        
+
+@override Future<BigInt> zolanaMobileMobileWalletPrivateBalance({required MobileWallet that , String? mint })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_opt_String(mint, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_u_64,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletPrivateLamportsConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPrivateBalanceConstMeta,
+            argValues: [that, mint],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletPrivateLamportsConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_private_lamports",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<BigInt> zolanaMobileMobileWalletPublicLamports({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 9,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletPrivateBalanceConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_private_balance",
+            argNames: ["that", "mint"],
+        );
+        
+
+@override Future<BigInt> zolanaMobileMobileWalletPublicBalance({required MobileWallet that , String? mint })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_opt_String(mint, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_u_64,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletPublicLamportsConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletPublicBalanceConstMeta,
+            argValues: [that, mint],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletPublicLamportsConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_public_lamports",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<String> zolanaMobileMobileWalletShieldedAddress({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 10,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletPublicBalanceConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_public_balance",
+            argNames: ["that", "mint"],
+        );
+        
+
+@override Future<RegistrationStatus> zolanaMobileMobileWalletRegistrationStatus({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
+          decodeSuccessData: sse_decode_registration_status,
+          decodeErrorData: sse_decode_String,
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletRegistrationStatusConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
+
+
+        TaskConstMeta get kZolanaMobileMobileWalletRegistrationStatusConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_registration_status",
+            argNames: ["that"],
+        );
+        
+
+@override Future<String> zolanaMobileMobileWalletShieldedAddress({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobileMobileWalletShieldedAddressConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletShieldedAddressConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletShieldedAddressConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_shielded_address",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<String> zolanaMobileMobileWalletSolanaPubkey({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 11,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletShieldedAddressConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_shielded_address",
+            argNames: ["that"],
+        );
+        
+
+@override Future<String> zolanaMobileMobileWalletSolanaPubkey({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobileMobileWalletSolanaPubkeyConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletSolanaPubkeyConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletSolanaPubkeyConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_solana_pubkey",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<String> zolanaMobileMobileWalletSubmit({
-    required MobileWallet that,
-    required PendingTransaction pending,
-    required List<Uint8List> signatures,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-            pending,
-            serializer,
-          );
-          sse_encode_list_list_prim_u_8_strict(signatures, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 12,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletSolanaPubkeyConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_solana_pubkey",
+            argNames: ["that"],
+        );
+        
+
+@override Future<String> zolanaMobileMobileWalletSubmit({required MobileWallet that , required PendingTransaction pending , required List<Uint8List> signatures })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(pending, serializer);
+sse_encode_list_list_prim_u_8_strict(signatures, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_String,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletSubmitConstMeta,
-        argValues: [that, pending, signatures],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletSubmitConstMeta,
+            argValues: [that, pending, signatures],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletSubmitConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_submit",
-        argNames: ["that", "pending", "signatures"],
-      );
 
-  @override
-  Future<SyncSummary> zolanaMobileMobileWalletSync({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 13,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletSubmitConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_submit",
+            argNames: ["that", "pending", "signatures"],
+        );
+        
+
+@override Future<SyncSummary> zolanaMobileMobileWalletSync({required MobileWallet that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_sync_summary,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileMobileWalletSyncConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileMobileWalletSyncConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileMobileWalletSyncConstMeta =>
-      const TaskConstMeta(debugName: "MobileWallet_sync", argNames: ["that"]);
 
-  @override
-  Future<PendingTransactionKind> zolanaMobilePendingTransactionKind({
-    required PendingTransaction that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 14,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileMobileWalletSyncConstMeta => const TaskConstMeta(
+            debugName: "MobileWallet_sync",
+            argNames: ["that"],
+        );
+        
+
+@override Future<PendingTransactionKind> zolanaMobilePendingTransactionKind({required PendingTransaction that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_pending_transaction_kind,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobilePendingTransactionKindConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobilePendingTransactionKindConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionKindConstMeta =>
-      const TaskConstMeta(
-        debugName: "PendingTransaction_kind",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<Uint8List> zolanaMobilePendingTransactionMessageBytes({
-    required PendingTransaction that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 15,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobilePendingTransactionKindConstMeta => const TaskConstMeta(
+            debugName: "PendingTransaction_kind",
+            argNames: ["that"],
+        );
+        
+
+@override Future<Uint8List> zolanaMobilePendingTransactionMessageBytes({required PendingTransaction that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobilePendingTransactionMessageBytesConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobilePendingTransactionMessageBytesConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionMessageBytesConstMeta =>
-      const TaskConstMeta(
-        debugName: "PendingTransaction_message_bytes",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<List<String>> zolanaMobilePendingTransactionSigners({
-    required PendingTransaction that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 16,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobilePendingTransactionMessageBytesConstMeta => const TaskConstMeta(
+            debugName: "PendingTransaction_message_bytes",
+            argNames: ["that"],
+        );
+        
+
+@override Future<List<String>> zolanaMobilePendingTransactionSigners({required PendingTransaction that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_list_String,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobilePendingTransactionSignersConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobilePendingTransactionSignersConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionSignersConstMeta =>
-      const TaskConstMeta(
-        debugName: "PendingTransaction_signers",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<String> zolanaMobilePendingTransactionSummary({
-    required PendingTransaction that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 17,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobilePendingTransactionSignersConstMeta => const TaskConstMeta(
+            debugName: "PendingTransaction_signers",
+            argNames: ["that"],
+        );
+        
+
+@override Future<String> zolanaMobilePendingTransactionSummary({required PendingTransaction that })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(that, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobilePendingTransactionSummaryConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobilePendingTransactionSummaryConstMeta,
+            argValues: [that],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionSummaryConstMeta =>
-      const TaskConstMeta(
-        debugName: "PendingTransaction_summary",
-        argNames: ["that"],
-      );
 
-  @override
-  Future<Uint8List> zolanaMobileDerivationMessage({
-    required String solanaPubkey,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(solanaPubkey, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 18,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobilePendingTransactionSummaryConstMeta => const TaskConstMeta(
+            debugName: "PendingTransaction_summary",
+            argNames: ["that"],
+        );
+        
+
+@override Future<Uint8List> zolanaMobileDerivationMessage({required String solanaPubkey })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_String(solanaPubkey, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileDerivationMessageConstMeta,
-        argValues: [solanaPubkey],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileDerivationMessageConstMeta,
+            argValues: [solanaPubkey],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileDerivationMessageConstMeta =>
-      const TaskConstMeta(
-        debugName: "derivation_message",
-        argNames: ["solanaPubkey"],
-      );
 
-  @override
-  Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({
-    required String r1CsPath,
-    required String provingKeyPath,
-    required String witnessJson,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(r1CsPath, serializer);
-          sse_encode_String(provingKeyPath, serializer);
-          sse_encode_String(witnessJson, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 19,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileDerivationMessageConstMeta => const TaskConstMeta(
+            debugName: "derivation_message",
+            argNames: ["solanaPubkey"],
+        );
+        
+
+@override Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({required String r1CsPath , required String provingKeyPath , required String witnessJson })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_String(r1CsPath, serializer);
+sse_encode_String(provingKeyPath, serializer);
+sse_encode_String(witnessJson, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 22, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_gnark_proof_result,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileGenerateGnarkProofConstMeta,
-        argValues: [r1CsPath, provingKeyPath, witnessJson],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileGenerateGnarkProofConstMeta,
+            argValues: [r1CsPath, provingKeyPath, witnessJson],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileGenerateGnarkProofConstMeta =>
-      const TaskConstMeta(
-        debugName: "generate_gnark_proof",
-        argNames: ["r1CsPath", "provingKeyPath", "witnessJson"],
-      );
 
-  @override
-  Future<void> crateApiSimpleInitApp() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 20,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileGenerateGnarkProofConstMeta => const TaskConstMeta(
+            debugName: "generate_gnark_proof",
+            argNames: ["r1CsPath", "provingKeyPath", "witnessJson"],
+        );
+        
+
+@override Future<void> crateApiSimpleInitApp()  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: null,
-        ),
-        constMeta: kCrateApiSimpleInitAppConstMeta,
-        argValues: [],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kCrateApiSimpleInitAppConstMeta,
+            argValues: [],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kCrateApiSimpleInitAppConstMeta =>
-      const TaskConstMeta(debugName: "init_app", argNames: []);
 
-  @override
-  Future<PreparedProverInfo> zolanaMobileLoadProver({
-    required String r1CsPath,
-    required String provingKeyPath,
-    required String verifyingKeyPath,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(r1CsPath, serializer);
-          sse_encode_String(provingKeyPath, serializer);
-          sse_encode_String(verifyingKeyPath, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 21,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kCrateApiSimpleInitAppConstMeta => const TaskConstMeta(
+            debugName: "init_app",
+            argNames: [],
+        );
+        
+
+@override Future<PreparedProverInfo> zolanaMobileLoadProver({required String r1CsPath , required String provingKeyPath , required String verifyingKeyPath })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_String(r1CsPath, serializer);
+sse_encode_String(provingKeyPath, serializer);
+sse_encode_String(verifyingKeyPath, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 24, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_prepared_prover_info,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileLoadProverConstMeta,
-        argValues: [r1CsPath, provingKeyPath, verifyingKeyPath],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileLoadProverConstMeta,
+            argValues: [r1CsPath, provingKeyPath, verifyingKeyPath],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileLoadProverConstMeta => const TaskConstMeta(
-    debugName: "load_prover",
-    argNames: ["r1CsPath", "provingKeyPath", "verifyingKeyPath"],
-  );
 
-  @override
-  Future<Uint8List> zolanaMobilePoseidonHash({
-    required List<Uint8List> inputs,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_list_list_prim_u_8_strict(inputs, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 22,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileLoadProverConstMeta => const TaskConstMeta(
+            debugName: "load_prover",
+            argNames: ["r1CsPath", "provingKeyPath", "verifyingKeyPath"],
+        );
+        
+
+@override Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_list_list_prim_u_8_strict(inputs, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 25, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobilePoseidonHashConstMeta,
-        argValues: [inputs],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobilePoseidonHashConstMeta,
+            argValues: [inputs],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobilePoseidonHashConstMeta =>
-      const TaskConstMeta(debugName: "poseidon_hash", argNames: ["inputs"]);
 
-  @override
-  Future<LocalProofResult> zolanaMobileProveAssignment({
-    required String provingKeyPath,
-    required String assignmentPath,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(provingKeyPath, serializer);
-          sse_encode_String(assignmentPath, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 23,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobilePoseidonHashConstMeta => const TaskConstMeta(
+            debugName: "poseidon_hash",
+            argNames: ["inputs"],
+        );
+        
+
+@override Future<LocalProofResult> zolanaMobileProveAssignment({required String provingKeyPath , required String assignmentPath })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_String(provingKeyPath, serializer);
+sse_encode_String(assignmentPath, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_local_proof_result,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileProveAssignmentConstMeta,
-        argValues: [provingKeyPath, assignmentPath],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileProveAssignmentConstMeta,
+            argValues: [provingKeyPath, assignmentPath],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileProveAssignmentConstMeta =>
-      const TaskConstMeta(
-        debugName: "prove_assignment",
-        argNames: ["provingKeyPath", "assignmentPath"],
-      );
 
-  @override
-  Future<LocalProofResult> zolanaMobileProvePrepared({
-    required BigInt id,
-    required String inputJson,
-    required bool structuredRequest,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_u_64(id, serializer);
-          sse_encode_String(inputJson, serializer);
-          sse_encode_bool(structuredRequest, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 24,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileProveAssignmentConstMeta => const TaskConstMeta(
+            debugName: "prove_assignment",
+            argNames: ["provingKeyPath", "assignmentPath"],
+        );
+        
+
+@override Future<LocalProofResult> zolanaMobileProvePrepared({required BigInt id , required String inputJson , required bool structuredRequest })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_u_64(id, serializer);
+sse_encode_String(inputJson, serializer);
+sse_encode_bool(structuredRequest, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_local_proof_result,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileProvePreparedConstMeta,
-        argValues: [id, inputJson, structuredRequest],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileProvePreparedConstMeta,
+            argValues: [id, inputJson, structuredRequest],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileProvePreparedConstMeta => const TaskConstMeta(
-    debugName: "prove_prepared",
-    argNames: ["id", "inputJson", "structuredRequest"],
-  );
 
-  @override
-  Future<void> zolanaMobileReleaseProver({required BigInt id}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_u_64(id, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 25,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileProvePreparedConstMeta => const TaskConstMeta(
+            debugName: "prove_prepared",
+            argNames: ["id", "inputJson", "structuredRequest"],
+        );
+        
+
+@override Future<void> zolanaMobileReleaseProver({required BigInt id })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_u_64(id, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileReleaseProverConstMeta,
-        argValues: [id],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileReleaseProverConstMeta,
+            argValues: [id],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileReleaseProverConstMeta =>
-      const TaskConstMeta(debugName: "release_prover", argNames: ["id"]);
 
-  @override
-  Future<String> zolanaMobileSdkVersion() {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 26,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileReleaseProverConstMeta => const TaskConstMeta(
+            debugName: "release_prover",
+            argNames: ["id"],
+        );
+        
+
+@override Future<String> zolanaMobileSdkVersion()  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobileSdkVersionConstMeta,
-        argValues: [],
-        apiImpl: this,
-      ),
-    );
-  }
+        )
+        ,
+            constMeta: kZolanaMobileSdkVersionConstMeta,
+            argValues: [],
+            apiImpl: this,
+        )); }
 
-  TaskConstMeta get kZolanaMobileSdkVersionConstMeta =>
-      const TaskConstMeta(debugName: "sdk_version", argNames: []);
 
-  @override
-  Future<bool> zolanaMobileVerifyGnarkProof({
-    required String r1CsPath,
-    required String verifyingKeyPath,
-    required GnarkProofResult proofResult,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(r1CsPath, serializer);
-          sse_encode_String(verifyingKeyPath, serializer);
-          sse_encode_box_autoadd_gnark_proof_result(proofResult, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 27,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
+        TaskConstMeta get kZolanaMobileSdkVersionConstMeta => const TaskConstMeta(
+            debugName: "sdk_version",
+            argNames: [],
+        );
+        
+
+@override Future<bool> zolanaMobileVerifyGnarkProof({required String r1CsPath , required String verifyingKeyPath , required GnarkProofResult proofResult })  { return handler.executeNormal(NormalTask(
+            callFfi: (port_) {
+              
+            final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_String(r1CsPath, serializer);
+sse_encode_String(verifyingKeyPath, serializer);
+sse_encode_box_autoadd_gnark_proof_result(proofResult, serializer);
+            pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30, port: port_);
+            
+            },
+            codec: 
+        SseCodec(
           decodeSuccessData: sse_decode_bool,
           decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileVerifyGnarkProofConstMeta,
-        argValues: [r1CsPath, verifyingKeyPath, proofResult],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kZolanaMobileVerifyGnarkProofConstMeta =>
-      const TaskConstMeta(
-        debugName: "verify_gnark_proof",
-        argNames: ["r1CsPath", "verifyingKeyPath", "proofResult"],
-      );
-
-  RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_MobileWallet => wire
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
-
-  RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_MobileWallet => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
-
-  RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_PendingTransaction => wire
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
-
-  RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_PendingTransaction => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
-
-  @protected
-  MobileWallet
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  PendingTransaction
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  MobileWallet
-  dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  MobileWallet
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  PendingTransaction
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  MobileWallet
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  PendingTransaction
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
-  }
-
-  @protected
-  String dco_decode_String(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as String;
-  }
-
-  @protected
-  ActivityEntry dco_decode_activity_entry(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
-    return ActivityEntry(
-      kind: dco_decode_activity_kind(arr[0]),
-      lamports: dco_decode_u_64(arr[1]),
-      signature: dco_decode_String(arr[2]),
-      slot: dco_decode_u_64(arr[3]),
-    );
-  }
-
-  @protected
-  ActivityKind dco_decode_activity_kind(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return ActivityKind.values[raw as int];
-  }
-
-  @protected
-  bool dco_decode_bool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as bool;
-  }
-
-  @protected
-  PendingTransaction
-  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-      raw,
-    );
-  }
-
-  @protected
-  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dco_decode_gnark_proof_result(raw);
-  }
-
-  @protected
-  WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dco_decode_wallet_config(raw);
-  }
-
-  @protected
-  GnarkProofResult dco_decode_gnark_proof_result(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return GnarkProofResult(
-      proof: dco_decode_String(arr[0]),
-      publicInputs: dco_decode_String(arr[1]),
-    );
-  }
-
-  @protected
-  int dco_decode_i_32(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as int;
-  }
-
-  @protected
-  List<String> dco_decode_list_String(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>).map(dco_decode_String).toList();
-  }
-
-  @protected
-  List<ActivityEntry> dco_decode_list_activity_entry(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>).map(dco_decode_activity_entry).toList();
-  }
-
-  @protected
-  List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return (raw as List<dynamic>).map(dco_decode_list_prim_u_8_strict).toList();
-  }
-
-  @protected
-  List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as List<int>;
-  }
-
-  @protected
-  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as Uint8List;
-  }
-
-  @protected
-  LocalProofResult dco_decode_local_proof_result(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
-    return LocalProofResult(
-      proofJson: dco_decode_String(arr[0]),
-      verified: dco_decode_bool(arr[1]),
-      inputs: dco_decode_u_32(arr[2]),
-      outputs: dco_decode_u_32(arr[3]),
-      proofMs: dco_decode_u_64(arr[4]),
-      witnessMs: dco_decode_u_64(arr[5]),
-      verifyMs: dco_decode_u_64(arr[6]),
-      totalMs: dco_decode_u_64(arr[7]),
-    );
-  }
-
-  @protected
-  String? dco_decode_opt_String(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null ? null : dco_decode_String(raw);
-  }
-
-  @protected
-  PendingTransaction?
-  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null
-        ? null
-        : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-            raw,
-          );
-  }
-
-  @protected
-  PendingTransactionKind dco_decode_pending_transaction_kind(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionKind.values[raw as int];
-  }
-
-  @protected
-  PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return PreparedProverInfo(
-      id: dco_decode_u_64(arr[0]),
-      loadMs: dco_decode_u_64(arr[1]),
-    );
-  }
-
-  @protected
-  SyncSummary dco_decode_sync_summary(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return SyncSummary(
-      storedUtxos: dco_decode_u_64(arr[0]),
-      privateLamports: dco_decode_u_64(arr[1]),
-    );
-  }
-
-  @protected
-  int dco_decode_u_32(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as int;
-  }
-
-  @protected
-  BigInt dco_decode_u_64(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dcoDecodeU64(raw);
-  }
-
-  @protected
-  int dco_decode_u_8(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as int;
-  }
-
-  @protected
-  void dco_decode_unit(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return;
-  }
-
-  @protected
-  BigInt dco_decode_usize(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dcoDecodeU64(raw);
-  }
-
-  @protected
-  WalletConfig dco_decode_wallet_config(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
-    return WalletConfig(
-      rpcUrl: dco_decode_String(arr[0]),
-      indexerUrl: dco_decode_String(arr[1]),
-      provingKeyDir: dco_decode_String(arr[2]),
-      provingKeyUrl: dco_decode_opt_String(arr[3]),
-      allowInsecureHttp: dco_decode_bool(arr[4]),
-    );
-  }
-
-  @protected
-  MobileWallet
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  PendingTransaction
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  MobileWallet
-  sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  MobileWallet
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  PendingTransaction
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  MobileWallet
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return MobileWalletImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  PendingTransaction
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalSseDecode(
-      sse_decode_usize(deserializer),
-      sse_decode_i_32(deserializer),
-    );
-  }
-
-  @protected
-  String sse_decode_String(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var inner = sse_decode_list_prim_u_8_strict(deserializer);
-    return utf8.decoder.convert(inner);
-  }
-
-  @protected
-  ActivityEntry sse_decode_activity_entry(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_kind = sse_decode_activity_kind(deserializer);
-    var var_lamports = sse_decode_u_64(deserializer);
-    var var_signature = sse_decode_String(deserializer);
-    var var_slot = sse_decode_u_64(deserializer);
-    return ActivityEntry(
-      kind: var_kind,
-      lamports: var_lamports,
-      signature: var_signature,
-      slot: var_slot,
-    );
-  }
-
-  @protected
-  ActivityKind sse_decode_activity_kind(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var inner = sse_decode_i_32(deserializer);
-    return ActivityKind.values[inner];
-  }
-
-  @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
-  }
-
-  @protected
-  PendingTransaction
-  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-      deserializer,
-    ));
-  }
-
-  @protected
-  GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_gnark_proof_result(deserializer));
-  }
-
-  @protected
-  WalletConfig sse_decode_box_autoadd_wallet_config(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_wallet_config(deserializer));
-  }
-
-  @protected
-  GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_proof = sse_decode_String(deserializer);
-    var var_publicInputs = sse_decode_String(deserializer);
-    return GnarkProofResult(proof: var_proof, publicInputs: var_publicInputs);
-  }
-
-  @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
-  }
-
-  @protected
-  List<String> sse_decode_list_String(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <String>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(sse_decode_String(deserializer));
-    }
-    return ans_;
-  }
-
-  @protected
-  List<ActivityEntry> sse_decode_list_activity_entry(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <ActivityEntry>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(sse_decode_activity_entry(deserializer));
-    }
-    return ans_;
-  }
-
-  @protected
-  List<Uint8List> sse_decode_list_list_prim_u_8_strict(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    var len_ = sse_decode_i_32(deserializer);
-    var ans_ = <Uint8List>[];
-    for (var idx_ = 0; idx_ < len_; ++idx_) {
-      ans_.add(sse_decode_list_prim_u_8_strict(deserializer));
-    }
-    return ans_;
-  }
-
-  @protected
-  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var len_ = sse_decode_i_32(deserializer);
-    return deserializer.buffer.getUint8List(len_);
-  }
-
-  @protected
-  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var len_ = sse_decode_i_32(deserializer);
-    return deserializer.buffer.getUint8List(len_);
-  }
-
-  @protected
-  LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_proofJson = sse_decode_String(deserializer);
-    var var_verified = sse_decode_bool(deserializer);
-    var var_inputs = sse_decode_u_32(deserializer);
-    var var_outputs = sse_decode_u_32(deserializer);
-    var var_proofMs = sse_decode_u_64(deserializer);
-    var var_witnessMs = sse_decode_u_64(deserializer);
-    var var_verifyMs = sse_decode_u_64(deserializer);
-    var var_totalMs = sse_decode_u_64(deserializer);
-    return LocalProofResult(
-      proofJson: var_proofJson,
-      verified: var_verified,
-      inputs: var_inputs,
-      outputs: var_outputs,
-      proofMs: var_proofMs,
-      witnessMs: var_witnessMs,
-      verifyMs: var_verifyMs,
-      totalMs: var_totalMs,
-    );
-  }
-
-  @protected
-  String? sse_decode_opt_String(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_String(deserializer));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
-  PendingTransaction?
-  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-        deserializer,
-      ));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
-  PendingTransactionKind sse_decode_pending_transaction_kind(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var inner = sse_decode_i_32(deserializer);
-    return PendingTransactionKind.values[inner];
-  }
-
-  @protected
-  PreparedProverInfo sse_decode_prepared_prover_info(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_id = sse_decode_u_64(deserializer);
-    var var_loadMs = sse_decode_u_64(deserializer);
-    return PreparedProverInfo(id: var_id, loadMs: var_loadMs);
-  }
-
-  @protected
-  SyncSummary sse_decode_sync_summary(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_storedUtxos = sse_decode_u_64(deserializer);
-    var var_privateLamports = sse_decode_u_64(deserializer);
-    return SyncSummary(
-      storedUtxos: var_storedUtxos,
-      privateLamports: var_privateLamports,
-    );
-  }
-
-  @protected
-  int sse_decode_u_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint32();
-  }
-
-  @protected
-  BigInt sse_decode_u_64(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getBigUint64();
-  }
-
-  @protected
-  int sse_decode_u_8(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8();
-  }
-
-  @protected
-  void sse_decode_unit(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  BigInt sse_decode_usize(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getBigUint64();
-  }
-
-  @protected
-  WalletConfig sse_decode_wallet_config(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_rpcUrl = sse_decode_String(deserializer);
-    var var_indexerUrl = sse_decode_String(deserializer);
-    var var_provingKeyDir = sse_decode_String(deserializer);
-    var var_provingKeyUrl = sse_decode_opt_String(deserializer);
-    var var_allowInsecureHttp = sse_decode_bool(deserializer);
-    return WalletConfig(
-      rpcUrl: var_rpcUrl,
-      indexerUrl: var_indexerUrl,
-      provingKeyDir: var_provingKeyDir,
-      provingKeyUrl: var_provingKeyUrl,
-      allowInsecureHttp: var_allowInsecureHttp,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    MobileWallet self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as MobileWalletImpl).frbInternalSseEncode(move: true),
-      serializer,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as PendingTransactionImpl).frbInternalSseEncode(move: true),
-      serializer,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    MobileWallet self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as MobileWalletImpl).frbInternalSseEncode(move: false),
-      serializer,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    MobileWallet self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as MobileWalletImpl).frbInternalSseEncode(move: false),
-      serializer,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as PendingTransactionImpl).frbInternalSseEncode(move: false),
-      serializer,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-    MobileWallet self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as MobileWalletImpl).frbInternalSseEncode(move: null),
-      serializer,
-    );
-  }
-
-  @protected
-  void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_usize(
-      (self as PendingTransactionImpl).frbInternalSseEncode(move: null),
-      serializer,
-    );
-  }
-
-  @protected
-  void sse_encode_String(String self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
-  }
-
-  @protected
-  void sse_encode_activity_entry(ActivityEntry self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_activity_kind(self.kind, serializer);
-    sse_encode_u_64(self.lamports, serializer);
-    sse_encode_String(self.signature, serializer);
-    sse_encode_u_64(self.slot, serializer);
-  }
-
-  @protected
-  void sse_encode_activity_kind(ActivityKind self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.index, serializer);
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
-  }
-
-  @protected
-  void
-  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-      self,
-      serializer,
-    );
-  }
-
-  @protected
-  void sse_encode_box_autoadd_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_gnark_proof_result(self, serializer);
-  }
-
-  @protected
-  void sse_encode_box_autoadd_wallet_config(
-    WalletConfig self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_wallet_config(self, serializer);
-  }
-
-  @protected
-  void sse_encode_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.proof, serializer);
-    sse_encode_String(self.publicInputs, serializer);
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
-  }
-
-  @protected
-  void sse_encode_list_String(List<String> self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_String(item, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_list_activity_entry(
-    List<ActivityEntry> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_activity_entry(item, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_list_list_prim_u_8_strict(
-    List<Uint8List> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    for (final item in self) {
-      sse_encode_list_prim_u_8_strict(item, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_list_prim_u_8_loose(
-    List<int> self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    serializer.buffer.putUint8List(
-      self is Uint8List ? self : Uint8List.fromList(self),
-    );
-  }
-
-  @protected
-  void sse_encode_list_prim_u_8_strict(
-    Uint8List self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.length, serializer);
-    serializer.buffer.putUint8List(self);
-  }
-
-  @protected
-  void sse_encode_local_proof_result(
-    LocalProofResult self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.proofJson, serializer);
-    sse_encode_bool(self.verified, serializer);
-    sse_encode_u_32(self.inputs, serializer);
-    sse_encode_u_32(self.outputs, serializer);
-    sse_encode_u_64(self.proofMs, serializer);
-    sse_encode_u_64(self.witnessMs, serializer);
-    sse_encode_u_64(self.verifyMs, serializer);
-    sse_encode_u_64(self.totalMs, serializer);
-  }
-
-  @protected
-  void sse_encode_opt_String(String? self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_String(self, serializer);
-    }
-  }
-
-  @protected
-  void
-  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction? self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-        self,
-        serializer,
-      );
-    }
-  }
-
-  @protected
-  void sse_encode_pending_transaction_kind(
-    PendingTransactionKind self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_i_32(self.index, serializer);
-  }
-
-  @protected
-  void sse_encode_prepared_prover_info(
-    PreparedProverInfo self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_u_64(self.id, serializer);
-    sse_encode_u_64(self.loadMs, serializer);
-  }
-
-  @protected
-  void sse_encode_sync_summary(SyncSummary self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_u_64(self.storedUtxos, serializer);
-    sse_encode_u_64(self.privateLamports, serializer);
-  }
-
-  @protected
-  void sse_encode_u_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint32(self);
-  }
-
-  @protected
-  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putBigUint64(self);
-  }
-
-  @protected
-  void sse_encode_u_8(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self);
-  }
-
-  @protected
-  void sse_encode_unit(void self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_usize(BigInt self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putBigUint64(self);
-  }
-
-  @protected
-  void sse_encode_wallet_config(WalletConfig self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.rpcUrl, serializer);
-    sse_encode_String(self.indexerUrl, serializer);
-    sse_encode_String(self.provingKeyDir, serializer);
-    sse_encode_opt_String(self.provingKeyUrl, serializer);
-    sse_encode_bool(self.allowInsecureHttp, serializer);
-  }
-}
-
-@sealed
-class MobileWalletImpl extends RustOpaque implements MobileWallet {
-  // Not to be used by end users
-  MobileWalletImpl.frbInternalDcoDecode(List<dynamic> wire)
-    : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  MobileWalletImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
-    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_MobileWallet,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_MobileWallet,
-    rustArcDecrementStrongCountPtr:
-        RustLib.instance.api.rust_arc_decrement_strong_count_MobileWalletPtr,
-  );
-
-  /// SOL history found by the last [`Self::sync`], newest first.
-  Future<List<ActivityEntry>> activity() =>
-      RustLib.instance.api.zolanaMobileMobileWalletActivity(that: this);
-
-  /// Whether this wallet has published its shielded address. Others can
-  /// only send to a registered wallet.
-  Future<bool> isRegistered() =>
-      RustLib.instance.api.zolanaMobileMobileWalletIsRegistered(that: this);
-
-  /// Deposit public SOL from this wallet into its own private balance.
-  /// Deposits carry no proof.
-  Future<PendingTransaction> prepareDeposit({required BigInt lamports}) =>
-      RustLib.instance.api.zolanaMobileMobileWalletPrepareDeposit(
-        that: this,
-        lamports: lamports,
-      );
-
-  /// `None` when the registry already holds this wallet's address.
-  Future<PendingTransaction?> prepareRegistration() => RustLib.instance.api
-      .zolanaMobileMobileWalletPrepareRegistration(that: this);
-
-  /// Build and prove a private transfer to a registered wallet.
-  ///
-  /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
-  /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
-  /// explicit instead.
-  Future<PendingTransaction> prepareTransfer({
-    required String recipient,
-    required BigInt lamports,
-  }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareTransfer(
-    that: this,
-    recipient: recipient,
-    lamports: lamports,
-  );
-
-  /// Build and prove a withdrawal of private SOL to a public account.
-  Future<PendingTransaction> prepareWithdrawal({
-    required String recipient,
-    required BigInt lamports,
-  }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareWithdrawal(
-    that: this,
-    recipient: recipient,
-    lamports: lamports,
-  );
-
-  /// Spendable private SOL as of the last [`Self::sync`].
-  Future<BigInt> privateLamports() =>
-      RustLib.instance.api.zolanaMobileMobileWalletPrivateLamports(that: this);
-
-  /// Public SOL of this account, read from the RPC now.
-  Future<BigInt> publicLamports() =>
-      RustLib.instance.api.zolanaMobileMobileWalletPublicLamports(that: this);
-
-  Future<String> shieldedAddress() =>
-      RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this);
-
-  Future<String> solanaPubkey() =>
-      RustLib.instance.api.zolanaMobileMobileWalletSolanaPubkey(that: this);
-
-  /// Attach the signatures, send, and wait for confirmation and, for
-  /// shielded-pool transactions, for the indexer. Returns the signature.
-  ///
-  /// `signatures` follows [`PendingTransaction::signers`]; each is checked
-  /// before anything is sent. A confirmed shielded-pool transaction is
-  /// synced before this returns, so the notes it spent are no longer
-  /// offered.
-  Future<String> submit({
-    required PendingTransaction pending,
-    required List<Uint8List> signatures,
-  }) => RustLib.instance.api.zolanaMobileMobileWalletSubmit(
-    that: this,
-    pending: pending,
-    signatures: signatures,
-  );
-
-  /// Fetch and decrypt this wallet's notes from the indexer.
-  Future<SyncSummary> sync_() =>
-      RustLib.instance.api.zolanaMobileMobileWalletSync(that: this);
-}
-
-@sealed
-class PendingTransactionImpl extends RustOpaque implements PendingTransaction {
-  // Not to be used by end users
-  PendingTransactionImpl.frbInternalDcoDecode(List<dynamic> wire)
-    : super.frbInternalDcoDecode(wire, _kStaticData);
-
-  // Not to be used by end users
-  PendingTransactionImpl.frbInternalSseDecode(
-    BigInt ptr,
-    int externalSizeOnNative,
-  ) : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
-
-  static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_PendingTransaction,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_PendingTransaction,
-    rustArcDecrementStrongCountPtr: RustLib
-        .instance
-        .api
-        .rust_arc_decrement_strong_count_PendingTransactionPtr,
-  );
-
-  Future<PendingTransactionKind> kind() =>
-      RustLib.instance.api.zolanaMobilePendingTransactionKind(that: this);
-
-  /// The bytes every signer signs with Ed25519.
-  Future<Uint8List> messageBytes() => RustLib.instance.api
-      .zolanaMobilePendingTransactionMessageBytes(that: this);
-
-  /// Base58 public keys that must sign, in signature order.
-  Future<List<String>> signers() =>
-      RustLib.instance.api.zolanaMobilePendingTransactionSigners(that: this);
-
-  /// Human-readable description to show before asking for a signature.
-  Future<String> summary() =>
-      RustLib.instance.api.zolanaMobilePendingTransactionSummary(that: this);
-}
+        )
+        ,
+            constMeta: kZolanaMobileVerifyGnarkProofConstMeta,
+            argValues: [r1CsPath, verifyingKeyPath, proofResult],
+            apiImpl: this,
+        )); }
+
+
+        TaskConstMeta get kZolanaMobileVerifyGnarkProofConstMeta => const TaskConstMeta(
+            debugName: "verify_gnark_proof",
+            argNames: ["r1CsPath", "verifyingKeyPath", "proofResult"],
+        );
+        
+
+RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_MobileWallet => wire.rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
+
+RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_MobileWallet => wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
+
+RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_PendingTransaction => wire.rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
+
+RustArcDecrementStrongCountFnType get rust_arc_decrement_strong_count_PendingTransaction => wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
+
+
+
+                  @protected MobileWallet dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected PendingTransaction dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected MobileWallet dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected MobileWallet dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected PendingTransaction dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected Map<String, String> dco_decode_Map_String_String_None(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return Map.fromEntries(dco_decode_list_record_string_string(raw).map((e) => MapEntry(e.$1, e.$2))); }
+
+@protected MobileWallet dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected PendingTransaction dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>); }
+
+@protected String dco_decode_String(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as String; }
+
+@protected ActivityEntry dco_decode_activity_entry(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 5) throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+                return ActivityEntry(kind: dco_decode_activity_kind(arr[0]),
+mint: dco_decode_opt_String(arr[1]),
+amount: dco_decode_u_64(arr[2]),
+signature: dco_decode_String(arr[3]),
+slot: dco_decode_u_64(arr[4]),); }
+
+@protected ActivityKind dco_decode_activity_kind(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return ActivityKind.values[raw as int]; }
+
+@protected bool dco_decode_bool(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as bool; }
+
+@protected PendingTransaction dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(raw); }
+
+@protected GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return dco_decode_gnark_proof_result(raw); }
+
+@protected WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return dco_decode_wallet_config(raw); }
+
+@protected GnarkProofResult dco_decode_gnark_proof_result(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+                return GnarkProofResult(proof: dco_decode_String(arr[0]),
+publicInputs: dco_decode_String(arr[1]),); }
+
+@protected int dco_decode_i_32(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as int; }
+
+@protected List<String> dco_decode_list_String(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return (raw as List<dynamic>).map(dco_decode_String).toList(); }
+
+@protected List<ActivityEntry> dco_decode_list_activity_entry(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return (raw as List<dynamic>).map(dco_decode_activity_entry).toList(); }
+
+@protected List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return (raw as List<dynamic>).map(dco_decode_list_prim_u_8_strict).toList(); }
+
+@protected List<int> dco_decode_list_prim_u_8_loose(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as List<int>; }
+
+@protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as Uint8List; }
+
+@protected List<(String,String)> dco_decode_list_record_string_string(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return (raw as List<dynamic>).map(dco_decode_record_string_string).toList(); }
+
+@protected List<TokenBalance> dco_decode_list_token_balance(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return (raw as List<dynamic>).map(dco_decode_token_balance).toList(); }
+
+@protected LocalProofResult dco_decode_local_proof_result(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 8) throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+                return LocalProofResult(proofJson: dco_decode_String(arr[0]),
+verified: dco_decode_bool(arr[1]),
+inputs: dco_decode_u_32(arr[2]),
+outputs: dco_decode_u_32(arr[3]),
+proofMs: dco_decode_u_64(arr[4]),
+witnessMs: dco_decode_u_64(arr[5]),
+verifyMs: dco_decode_u_64(arr[6]),
+totalMs: dco_decode_u_64(arr[7]),); }
+
+@protected Map<String, String>? dco_decode_opt_Map_String_String_None(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw == null ? null : dco_decode_Map_String_String_None(raw); }
+
+@protected String? dco_decode_opt_String(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw == null ? null : dco_decode_String(raw); }
+
+@protected PendingTransaction? dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw == null ? null : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(raw); }
+
+@protected PendingTransactionKind dco_decode_pending_transaction_kind(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return PendingTransactionKind.values[raw as int]; }
+
+@protected PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+                return PreparedProverInfo(id: dco_decode_u_64(arr[0]),
+loadMs: dco_decode_u_64(arr[1]),); }
+
+@protected (String,String) dco_decode_record_string_string(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+            if (arr.length != 2) {
+                throw Exception('Expected 2 elements, got ${arr.length}');
+            }
+            return (dco_decode_String(arr[0]),dco_decode_String(arr[1]),); }
+
+@protected RegistrationStatus dco_decode_registration_status(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return RegistrationStatus.values[raw as int]; }
+
+@protected SyncSummary dco_decode_sync_summary(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+                return SyncSummary(storedUtxos: dco_decode_u_64(arr[0]),
+balances: dco_decode_list_token_balance(arr[1]),); }
+
+@protected TokenBalance dco_decode_token_balance(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+                return TokenBalance(mint: dco_decode_opt_String(arr[0]),
+amount: dco_decode_u_64(arr[1]),); }
+
+@protected int dco_decode_u_32(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as int; }
+
+@protected BigInt dco_decode_u_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return dcoDecodeU64(raw); }
+
+@protected int dco_decode_u_8(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return raw as int; }
+
+@protected void dco_decode_unit(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return; }
+
+@protected BigInt dco_decode_usize(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+return dcoDecodeU64(raw); }
+
+@protected WalletConfig dco_decode_wallet_config(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
+final arr = raw as List<dynamic>;
+                if (arr.length != 6) throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+                return WalletConfig(rpcUrl: dco_decode_String(arr[0]),
+rpcHeaders: dco_decode_opt_Map_String_String_None(arr[1]),
+indexerUrl: dco_decode_String(arr[2]),
+provingKeyDir: dco_decode_String(arr[3]),
+provingKeyUrl: dco_decode_opt_String(arr[4]),
+allowInsecureHttp: dco_decode_bool(arr[5]),); }
+
+@protected MobileWallet sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return MobileWalletImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected PendingTransaction sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return PendingTransactionImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected MobileWallet sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return MobileWalletImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected MobileWallet sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return MobileWalletImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected PendingTransaction sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return PendingTransactionImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected Map<String, String> sse_decode_Map_String_String_None(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var inner = sse_decode_list_record_string_string(deserializer);
+        return Map.fromEntries(inner.map((e) => MapEntry(e.$1, e.$2))); }
+
+@protected MobileWallet sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return MobileWalletImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected PendingTransaction sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return PendingTransactionImpl.frbInternalSseDecode(sse_decode_usize(deserializer), sse_decode_i_32(deserializer)); }
+
+@protected String sse_decode_String(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var inner = sse_decode_list_prim_u_8_strict(deserializer);
+        return utf8.decoder.convert(inner); }
+
+@protected ActivityEntry sse_decode_activity_entry(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_kind = sse_decode_activity_kind(deserializer);
+var var_mint = sse_decode_opt_String(deserializer);
+var var_amount = sse_decode_u_64(deserializer);
+var var_signature = sse_decode_String(deserializer);
+var var_slot = sse_decode_u_64(deserializer);
+return ActivityEntry(kind: var_kind, mint: var_mint, amount: var_amount, signature: var_signature, slot: var_slot); }
+
+@protected ActivityKind sse_decode_activity_kind(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var inner = sse_decode_i_32(deserializer);
+        return ActivityKind.values[inner]; }
+
+@protected bool sse_decode_bool(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return deserializer.buffer.getUint8() != 0; }
+
+@protected PendingTransaction sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(deserializer)); }
+
+@protected GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return (sse_decode_gnark_proof_result(deserializer)); }
+
+@protected WalletConfig sse_decode_box_autoadd_wallet_config(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return (sse_decode_wallet_config(deserializer)); }
+
+@protected GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_proof = sse_decode_String(deserializer);
+var var_publicInputs = sse_decode_String(deserializer);
+return GnarkProofResult(proof: var_proof, publicInputs: var_publicInputs); }
+
+@protected int sse_decode_i_32(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return deserializer.buffer.getInt32(); }
+
+@protected List<String> sse_decode_list_String(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+        var len_ = sse_decode_i_32(deserializer);
+        var ans_ = <String>[];
+        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_String(deserializer)); }
+        return ans_;
+         }
+
+@protected List<ActivityEntry> sse_decode_list_activity_entry(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+        var len_ = sse_decode_i_32(deserializer);
+        var ans_ = <ActivityEntry>[];
+        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_activity_entry(deserializer)); }
+        return ans_;
+         }
+
+@protected List<Uint8List> sse_decode_list_list_prim_u_8_strict(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+        var len_ = sse_decode_i_32(deserializer);
+        var ans_ = <Uint8List>[];
+        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_list_prim_u_8_strict(deserializer)); }
+        return ans_;
+         }
+
+@protected List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var len_ = sse_decode_i_32(deserializer);
+                return deserializer.buffer.getUint8List(len_); }
+
+@protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var len_ = sse_decode_i_32(deserializer);
+                return deserializer.buffer.getUint8List(len_); }
+
+@protected List<(String,String)> sse_decode_list_record_string_string(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+        var len_ = sse_decode_i_32(deserializer);
+        var ans_ = <(String,String)>[];
+        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_record_string_string(deserializer)); }
+        return ans_;
+         }
+
+@protected List<TokenBalance> sse_decode_list_token_balance(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+        var len_ = sse_decode_i_32(deserializer);
+        var ans_ = <TokenBalance>[];
+        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_token_balance(deserializer)); }
+        return ans_;
+         }
+
+@protected LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_proofJson = sse_decode_String(deserializer);
+var var_verified = sse_decode_bool(deserializer);
+var var_inputs = sse_decode_u_32(deserializer);
+var var_outputs = sse_decode_u_32(deserializer);
+var var_proofMs = sse_decode_u_64(deserializer);
+var var_witnessMs = sse_decode_u_64(deserializer);
+var var_verifyMs = sse_decode_u_64(deserializer);
+var var_totalMs = sse_decode_u_64(deserializer);
+return LocalProofResult(proofJson: var_proofJson, verified: var_verified, inputs: var_inputs, outputs: var_outputs, proofMs: var_proofMs, witnessMs: var_witnessMs, verifyMs: var_verifyMs, totalMs: var_totalMs); }
+
+@protected Map<String, String>? sse_decode_opt_Map_String_String_None(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+            if (sse_decode_bool(deserializer)) {
+                return (sse_decode_Map_String_String_None(deserializer));
+            } else {
+                return null;
+            }
+             }
+
+@protected String? sse_decode_opt_String(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+            if (sse_decode_bool(deserializer)) {
+                return (sse_decode_String(deserializer));
+            } else {
+                return null;
+            }
+             }
+
+@protected PendingTransaction? sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+            if (sse_decode_bool(deserializer)) {
+                return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(deserializer));
+            } else {
+                return null;
+            }
+             }
+
+@protected PendingTransactionKind sse_decode_pending_transaction_kind(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var inner = sse_decode_i_32(deserializer);
+        return PendingTransactionKind.values[inner]; }
+
+@protected PreparedProverInfo sse_decode_prepared_prover_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_id = sse_decode_u_64(deserializer);
+var var_loadMs = sse_decode_u_64(deserializer);
+return PreparedProverInfo(id: var_id, loadMs: var_loadMs); }
+
+@protected (String,String) sse_decode_record_string_string(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_field0 = sse_decode_String(deserializer);
+var var_field1 = sse_decode_String(deserializer);
+return (var_field0, var_field1); }
+
+@protected RegistrationStatus sse_decode_registration_status(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var inner = sse_decode_i_32(deserializer);
+        return RegistrationStatus.values[inner]; }
+
+@protected SyncSummary sse_decode_sync_summary(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_storedUtxos = sse_decode_u_64(deserializer);
+var var_balances = sse_decode_list_token_balance(deserializer);
+return SyncSummary(storedUtxos: var_storedUtxos, balances: var_balances); }
+
+@protected TokenBalance sse_decode_token_balance(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_mint = sse_decode_opt_String(deserializer);
+var var_amount = sse_decode_u_64(deserializer);
+return TokenBalance(mint: var_mint, amount: var_amount); }
+
+@protected int sse_decode_u_32(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return deserializer.buffer.getUint32(); }
+
+@protected BigInt sse_decode_u_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return deserializer.buffer.getBigUint64(); }
+
+@protected int sse_decode_u_8(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return deserializer.buffer.getUint8(); }
+
+@protected void sse_decode_unit(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+ }
+
+@protected BigInt sse_decode_usize(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+return deserializer.buffer.getBigUint64(); }
+
+@protected WalletConfig sse_decode_wallet_config(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+var var_rpcUrl = sse_decode_String(deserializer);
+var var_rpcHeaders = sse_decode_opt_Map_String_String_None(deserializer);
+var var_indexerUrl = sse_decode_String(deserializer);
+var var_provingKeyDir = sse_decode_String(deserializer);
+var var_provingKeyUrl = sse_decode_opt_String(deserializer);
+var var_allowInsecureHttp = sse_decode_bool(deserializer);
+return WalletConfig(rpcUrl: var_rpcUrl, rpcHeaders: var_rpcHeaders, indexerUrl: var_indexerUrl, provingKeyDir: var_provingKeyDir, provingKeyUrl: var_provingKeyUrl, allowInsecureHttp: var_allowInsecureHttp); }
+
+@protected void sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as MobileWalletImpl).frbInternalSseEncode(move: true), serializer); }
+
+@protected void sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as PendingTransactionImpl).frbInternalSseEncode(move: true), serializer); }
+
+@protected void sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as MobileWalletImpl).frbInternalSseEncode(move: false), serializer); }
+
+@protected void sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as MobileWalletImpl).frbInternalSseEncode(move: false), serializer); }
+
+@protected void sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as PendingTransactionImpl).frbInternalSseEncode(move: false), serializer); }
+
+@protected void sse_encode_Map_String_String_None(Map<String, String> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_list_record_string_string(self.entries.map((e) => (e.key, e.value)).toList(), serializer); }
+
+@protected void sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as MobileWalletImpl).frbInternalSseEncode(move: null), serializer); }
+
+@protected void sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_usize((self as PendingTransactionImpl).frbInternalSseEncode(move: null), serializer); }
+
+@protected void sse_encode_String(String self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer); }
+
+@protected void sse_encode_activity_entry(ActivityEntry self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_activity_kind(self.kind, serializer);
+sse_encode_opt_String(self.mint, serializer);
+sse_encode_u_64(self.amount, serializer);
+sse_encode_String(self.signature, serializer);
+sse_encode_u_64(self.slot, serializer);
+ }
+
+@protected void sse_encode_activity_kind(ActivityKind self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.index, serializer); }
+
+@protected void sse_encode_bool(bool self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+serializer.buffer.putUint8(self ? 1 : 0); }
+
+@protected void sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(self, serializer); }
+
+@protected void sse_encode_box_autoadd_gnark_proof_result(GnarkProofResult self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_gnark_proof_result(self, serializer); }
+
+@protected void sse_encode_box_autoadd_wallet_config(WalletConfig self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_wallet_config(self, serializer); }
+
+@protected void sse_encode_gnark_proof_result(GnarkProofResult self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_String(self.proof, serializer);
+sse_encode_String(self.publicInputs, serializer);
+ }
+
+@protected void sse_encode_i_32(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+serializer.buffer.putInt32(self); }
+
+@protected void sse_encode_list_String(List<String> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+        for (final item in self) { sse_encode_String(item, serializer); } }
+
+@protected void sse_encode_list_activity_entry(List<ActivityEntry> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+        for (final item in self) { sse_encode_activity_entry(item, serializer); } }
+
+@protected void sse_encode_list_list_prim_u_8_strict(List<Uint8List> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+        for (final item in self) { sse_encode_list_prim_u_8_strict(item, serializer); } }
+
+@protected void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+                    serializer.buffer.putUint8List(self is Uint8List ? self : Uint8List.fromList(self)); }
+
+@protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+                    serializer.buffer.putUint8List(self); }
+
+@protected void sse_encode_list_record_string_string(List<(String,String)> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+        for (final item in self) { sse_encode_record_string_string(item, serializer); } }
+
+@protected void sse_encode_list_token_balance(List<TokenBalance> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.length, serializer);
+        for (final item in self) { sse_encode_token_balance(item, serializer); } }
+
+@protected void sse_encode_local_proof_result(LocalProofResult self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_String(self.proofJson, serializer);
+sse_encode_bool(self.verified, serializer);
+sse_encode_u_32(self.inputs, serializer);
+sse_encode_u_32(self.outputs, serializer);
+sse_encode_u_64(self.proofMs, serializer);
+sse_encode_u_64(self.witnessMs, serializer);
+sse_encode_u_64(self.verifyMs, serializer);
+sse_encode_u_64(self.totalMs, serializer);
+ }
+
+@protected void sse_encode_opt_Map_String_String_None(Map<String, String>? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+                sse_encode_bool(self != null, serializer);
+                if (self != null) {
+                    sse_encode_Map_String_String_None(self, serializer);
+                }
+                 }
+
+@protected void sse_encode_opt_String(String? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+                sse_encode_bool(self != null, serializer);
+                if (self != null) {
+                    sse_encode_String(self, serializer);
+                }
+                 }
+
+@protected void sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+
+                sse_encode_bool(self != null, serializer);
+                if (self != null) {
+                    sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(self, serializer);
+                }
+                 }
+
+@protected void sse_encode_pending_transaction_kind(PendingTransactionKind self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.index, serializer); }
+
+@protected void sse_encode_prepared_prover_info(PreparedProverInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_u_64(self.id, serializer);
+sse_encode_u_64(self.loadMs, serializer);
+ }
+
+@protected void sse_encode_record_string_string((String,String) self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_String(self.$1, serializer);
+sse_encode_String(self.$2, serializer);
+ }
+
+@protected void sse_encode_registration_status(RegistrationStatus self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_i_32(self.index, serializer); }
+
+@protected void sse_encode_sync_summary(SyncSummary self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_u_64(self.storedUtxos, serializer);
+sse_encode_list_token_balance(self.balances, serializer);
+ }
+
+@protected void sse_encode_token_balance(TokenBalance self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_opt_String(self.mint, serializer);
+sse_encode_u_64(self.amount, serializer);
+ }
+
+@protected void sse_encode_u_32(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+serializer.buffer.putUint32(self); }
+
+@protected void sse_encode_u_64(BigInt self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+serializer.buffer.putBigUint64(self); }
+
+@protected void sse_encode_u_8(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+serializer.buffer.putUint8(self); }
+
+@protected void sse_encode_unit(void self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+ }
+
+@protected void sse_encode_usize(BigInt self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+serializer.buffer.putBigUint64(self); }
+
+@protected void sse_encode_wallet_config(WalletConfig self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
+sse_encode_String(self.rpcUrl, serializer);
+sse_encode_opt_Map_String_String_None(self.rpcHeaders, serializer);
+sse_encode_String(self.indexerUrl, serializer);
+sse_encode_String(self.provingKeyDir, serializer);
+sse_encode_opt_String(self.provingKeyUrl, serializer);
+sse_encode_bool(self.allowInsecureHttp, serializer);
+ }
+                }
+                
+
+            @sealed class MobileWalletImpl extends RustOpaque implements MobileWallet {
+                // Not to be used by end users
+                MobileWalletImpl.frbInternalDcoDecode(List<dynamic> wire):
+                    super.frbInternalDcoDecode(wire, _kStaticData);
+
+                // Not to be used by end users
+                MobileWalletImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative):
+                    super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+                static final _kStaticData = RustArcStaticData(
+                    rustArcIncrementStrongCount: RustLib.instance.api.rust_arc_increment_strong_count_MobileWallet,
+                    rustArcDecrementStrongCount: RustLib.instance.api.rust_arc_decrement_strong_count_MobileWallet,
+                    rustArcDecrementStrongCountPtr: RustLib.instance.api.rust_arc_decrement_strong_count_MobileWalletPtr,
+                );
+
+                /// History found by the last [`Self::sync`], newest first.
+ Future<List<ActivityEntry>>  activity()=>RustLib.instance.api.zolanaMobileMobileWalletActivity(that: this, );
+
+
+/// Spendable private balances as of the last [`Self::sync`], one per
+/// asset held.
+ Future<List<TokenBalance>>  balances()=>RustLib.instance.api.zolanaMobileMobileWalletBalances(that: this, );
+
+
+/// Wait for a transaction the application sent itself: until Solana
+/// confirms it and, for shielded-pool transactions, the indexer has it.
+/// A confirmed shielded-pool transaction is synced before this returns,
+/// so the notes it spent are no longer offered.
+///
+/// `signature` is the transaction signature, the fee payer's; it is
+/// checked against `pending` before anything is asked.
+ Future<void>  confirm({required PendingTransaction pending , required String signature })=>RustLib.instance.api.zolanaMobileMobileWalletConfirm(that: this, pending: pending, signature: signature);
+
+
+/// Deposit public SOL (`mint` `None`) or tokens from this account into
+/// its own private balance. Deposits carry no proof.
+ Future<PendingTransaction>  prepareDeposit({String? mint , required BigInt amount })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareDeposit(that: this, mint: mint, amount: amount);
+
+
+/// `None` when the registry already holds this wallet's address. Fails
+/// with `registration_conflict` when it holds other keys: this wallet
+/// never replaces them.
+ Future<PendingTransaction?>  prepareRegistration()=>RustLib.instance.api.zolanaMobileMobileWalletPrepareRegistration(that: this, );
+
+
+/// Create `owner`'s associated token account for `mint`, paid by this
+/// account, so a withdrawal can reach it. `None` when it already exists.
+ Future<PendingTransaction?>  prepareTokenAccount({required String owner , required String mint })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareTokenAccount(that: this, owner: owner, mint: mint);
+
+
+/// Build and prove a private transfer to a registered wallet.
+///
+/// Refuses an unregistered recipient: the wallet SDK turns a transfer to
+/// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
+/// explicit instead.
+ Future<PendingTransaction>  prepareTransfer({required String recipient , String? mint , required BigInt amount })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareTransfer(that: this, recipient: recipient, mint: mint, amount: amount);
+
+
+/// Build and prove a withdrawal of private funds to the public account
+/// `recipient`. Tokens go to its associated token account, which must
+/// exist: [`Self::prepare_token_account`] creates it.
+ Future<PendingTransaction>  prepareWithdrawal({required String recipient , String? mint , required BigInt amount })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareWithdrawal(that: this, recipient: recipient, mint: mint, amount: amount);
+
+
+/// Spendable private balance of SOL (`mint` `None`) or `mint` as of the
+/// last [`Self::sync`].
+ Future<BigInt>  privateBalance({String? mint })=>RustLib.instance.api.zolanaMobileMobileWalletPrivateBalance(that: this, mint: mint);
+
+
+/// Public balance of this account, read from the RPC now: lamports, or
+/// the amount in its associated token account for `mint` (0 without one).
+ Future<BigInt>  publicBalance({String? mint })=>RustLib.instance.api.zolanaMobileMobileWalletPublicBalance(that: this, mint: mint);
+
+
+/// Whether the user registry publishes this wallet's shielded address.
+/// Others can only send to a registered wallet.
+ Future<RegistrationStatus>  registrationStatus()=>RustLib.instance.api.zolanaMobileMobileWalletRegistrationStatus(that: this, );
+
+
+ Future<String>  shieldedAddress()=>RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this, );
+
+
+ Future<String>  solanaPubkey()=>RustLib.instance.api.zolanaMobileMobileWalletSolanaPubkey(that: this, );
+
+
+/// Attach the signatures, send, and wait as [`Self::confirm`] does.
+/// Returns the signature.
+///
+/// `signatures` follows [`PendingTransaction::signers`]; each is checked
+/// before anything is sent.
+ Future<String>  submit({required PendingTransaction pending , required List<Uint8List> signatures })=>RustLib.instance.api.zolanaMobileMobileWalletSubmit(that: this, pending: pending, signatures: signatures);
+
+
+/// Fetch and decrypt this wallet's notes from the indexer.
+ Future<SyncSummary>  sync_()=>RustLib.instance.api.zolanaMobileMobileWalletSync(that: this, );
+
+
+            }
+            @sealed class PendingTransactionImpl extends RustOpaque implements PendingTransaction {
+                // Not to be used by end users
+                PendingTransactionImpl.frbInternalDcoDecode(List<dynamic> wire):
+                    super.frbInternalDcoDecode(wire, _kStaticData);
+
+                // Not to be used by end users
+                PendingTransactionImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative):
+                    super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+                static final _kStaticData = RustArcStaticData(
+                    rustArcIncrementStrongCount: RustLib.instance.api.rust_arc_increment_strong_count_PendingTransaction,
+                    rustArcDecrementStrongCount: RustLib.instance.api.rust_arc_decrement_strong_count_PendingTransaction,
+                    rustArcDecrementStrongCountPtr: RustLib.instance.api.rust_arc_decrement_strong_count_PendingTransactionPtr,
+                );
+
+                 Future<PendingTransactionKind>  kind()=>RustLib.instance.api.zolanaMobilePendingTransactionKind(that: this, );
+
+
+/// The bytes every signer signs with Ed25519.
+ Future<Uint8List>  messageBytes()=>RustLib.instance.api.zolanaMobilePendingTransactionMessageBytes(that: this, );
+
+
+/// Base58 public keys that must sign, in signature order.
+ Future<List<String>>  signers()=>RustLib.instance.api.zolanaMobilePendingTransactionSigners(that: this, );
+
+
+/// Human-readable description to show before asking for a signature.
+ Future<String>  summary()=>RustLib.instance.api.zolanaMobilePendingTransactionSummary(that: this, );
+
+
+            }

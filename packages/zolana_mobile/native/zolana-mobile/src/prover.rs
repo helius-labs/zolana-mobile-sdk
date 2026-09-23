@@ -1,5 +1,7 @@
 //! The on-device [`Prover`] the wallet hands to `ZolanaClient::with_prover`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use zolana_client::{ClientError, Delivery, Proof, Prover};
 
 use crate::{init_gnark, keys, Loaded, PREPARED};
@@ -9,11 +11,16 @@ use crate::{init_gnark, keys, Loaded, PREPARED};
 /// carry nullifier secrets and never leave the process.
 pub(crate) struct NativeProver {
     keys: keys::KeyStore,
+    /// Id of the prepared system this prover loaded last; 0 before the first.
+    loaded: AtomicU64,
 }
 
 impl NativeProver {
     pub(crate) fn new(keys: keys::KeyStore) -> Self {
-        Self { keys }
+        Self {
+            keys,
+            loaded: AtomicU64::new(0),
+        }
     }
 
     fn prove_json(&self, body: &str) -> Result<String, String> {
@@ -35,6 +42,7 @@ impl NativeProver {
             let prover = rust_gnark::PreparedProver::load_key(path)
                 .map_err(|_| "prover_load_failed".to_string())?;
             let id = state.next_id()?;
+            self.loaded.store(id, Ordering::Relaxed);
             state.loaded = Some(Loaded {
                 id,
                 key: Some(name),
@@ -47,6 +55,20 @@ impl NativeProver {
             .prove_request(body)
             .map_err(|_| "proof_failed".to_string())?;
         Ok(proof.proof_json)
+    }
+}
+
+/// A closed wallet releases the proving key it loaded, unless another prover
+/// has replaced it since.
+impl Drop for NativeProver {
+    fn drop(&mut self) {
+        let id = *self.loaded.get_mut();
+        let Ok(mut state) = PREPARED.lock() else {
+            return;
+        };
+        if state.loaded.as_ref().is_some_and(|loaded| loaded.id == id) {
+            state.loaded = None;
+        }
     }
 }
 

@@ -37,18 +37,25 @@ void main() {
   ) async {
     final lamports = BigInt.from(1000000);
     final sender = await open(demoAccounts[0]);
+    addTearDown(sender.close);
     final recipient = await open(demoAccounts[1]);
-    expect(await sender.isRegistered(), isTrue);
-    expect(await recipient.isRegistered(), isTrue);
+    addTearDown(recipient.close);
+    expect(await sender.registrationStatus(), RegistrationStatus.registered);
+    expect(
+      await recipient.registrationStatus(),
+      RegistrationStatus.registered,
+    );
 
-    final senderBefore = (await sender.sync()).privateLamports;
-    final recipientBefore = (await recipient.sync()).privateLamports;
+    await sender.sync();
+    await recipient.sync();
+    final senderBefore = await sender.privateBalance();
+    final recipientBefore = await recipient.privateBalance();
     expect(senderBefore, greaterThanOrEqualTo(lamports));
 
     final started = DateTime.now();
     final signature = await sender.transfer(
       recipient: demoAccounts[1].publicKey,
-      lamports: lamports,
+      amount: lamports,
     );
     // ignore: avoid_print
     print(
@@ -56,10 +63,8 @@ void main() {
       '(proving key download, proof, signing, confirmation)',
     );
 
-    expect(await sender.privateLamports(), senderBefore - lamports);
-    expect(
-      (await recipient.sync()).privateLamports,
-      recipientBefore + lamports,
-    );
+    expect(await sender.privateBalance(), senderBefore - lamports);
+    await recipient.sync();
+    expect(await recipient.privateBalance(), recipientBefore + lamports);
   }, skip: !_enabled);
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -63,10 +65,17 @@ class _WalletScreenState extends State<WalletScreen> {
     _open();
   }
 
+  @override
+  void dispose() {
+    unawaited(_wallet?.close());
+    super.dispose();
+  }
+
   bool _current(int generation) => mounted && generation == _generation;
 
   Future<void> _open() async {
     final generation = ++_generation;
+    final previous = _wallet;
     setState(() {
       _phase = _Phase.opening;
       _status = 'Opening wallet…';
@@ -76,6 +85,8 @@ class _WalletScreenState extends State<WalletScreen> {
       _activity = const [];
     });
     try {
+      // Release the previous account before this one proves.
+      await previous?.close();
       final signer = await DemoSigner.fromSeedHex(_account.seedHex);
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';
@@ -88,7 +99,10 @@ class _WalletScreenState extends State<WalletScreen> {
           allowInsecureHttp: Uri.parse(_network.indexerUrl).scheme == 'http',
         ),
       );
-      if (!_current(generation)) return;
+      if (!_current(generation)) {
+        unawaited(wallet.close());
+        return;
+      }
       _wallet = wallet;
       await _finishSetup(generation);
     } catch (error) {
@@ -101,10 +115,14 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _finishSetup(int generation) async {
     final wallet = _wallet!;
     try {
-      final public = await wallet.publicLamports();
+      final public = await wallet.publicBalance();
       if (!_current(generation)) return;
       setState(() => _public = public);
-      if (!await wallet.isRegistered()) {
+      final registration = await wallet.registrationStatus();
+      if (registration == RegistrationStatus.conflict) {
+        throw const ZolanaWalletException('registration_conflict');
+      }
+      if (registration == RegistrationStatus.notRegistered) {
         if (public < _setupMinimum) {
           setState(() => _phase = _Phase.needsFunds);
           return;
@@ -137,15 +155,20 @@ class _WalletScreenState extends State<WalletScreen> {
     final generation = _generation;
     setState(() => _refreshing = true);
     try {
-      final summary = await wallet.sync();
-      final public = await wallet.publicLamports();
+      await wallet.sync();
+      final private = await wallet.privateBalance();
+      final public = await wallet.publicBalance();
       final activity = await wallet.activity();
       if (!_current(generation)) return;
       setState(() {
-        _private = summary.privateLamports;
+        _private = private;
         _public = public;
+        // The demo shows SOL only.
         _activity = activity
-            .where((entry) => entry.kind != ActivityKind.internal)
+            .where(
+              (entry) =>
+                  entry.mint == null && entry.kind != ActivityKind.internal,
+            )
             .toList();
       });
     } catch (error) {
@@ -194,12 +217,12 @@ class _WalletScreenState extends State<WalletScreen> {
         run: (lamports, recipient) => switch (action) {
           WalletAction.send => wallet.transfer(
             recipient: recipient!,
-            lamports: lamports,
+            amount: lamports,
           ),
           WalletAction.shield => wallet.deposit(lamports),
           WalletAction.unshield => wallet.withdraw(
             recipient: wallet.solanaPublicKey,
-            lamports: lamports,
+            amount: lamports,
           ),
         },
       ),
@@ -533,7 +556,7 @@ class _ActivityRow extends StatelessWidget {
       title: Text(title),
       subtitle: Text(route),
       trailing: Text(
-        '$sign${formatSol(entry.lamports)}',
+        '$sign${formatSol(entry.amount)}',
         style: Theme.of(context).textTheme.bodyLarge,
       ),
       onTap: onTap,
