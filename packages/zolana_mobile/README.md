@@ -213,21 +213,25 @@ flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 without one it is the public devnet endpoint. It is compiled into that build
 only; never commit it.
 
-To build and run the example from Xcode, install Go 1.27.1 or newer
-(`brew install go`). The pod builds the Rust and Go sources and finds Go outside
-Xcode's `PATH`; set `GO` to use another binary. With the workspace closed:
+### From Xcode
+
+Install Go 1.27.1 or newer (`brew install go`) and Flutter; the pod builds the
+Rust and Go sources and finds Go outside Xcode's `PATH` (or set `GO`). Then, with
+the workspace closed:
 
 ```sh
 cd packages/zolana_mobile/example
 flutter pub get
-flutter build ios --config-only --simulator
+flutter build ios --config-only --simulator [--dart-define=ZOLANA_API_KEY=...]
 open ios/Runner.xcworkspace
 ```
 
 Open the workspace, not `Runner.xcodeproj`, pick the Runner scheme and a
-simulator, and run. If Xcode reports a missing
-`FlutterGeneratedPluginSwiftPackage`, it resolved packages while Flutter was
-regenerating them: use File → Packages → Reset Package Caches.
+simulator, and run. Rerun `--config-only` after changing a define. If Xcode then
+reports a missing `FlutterGeneratedPluginSwiftPackage`, it resolved packages
+while Flutter was regenerating them: use File → Packages → Reset Package Caches.
+Xcode build logs contain the defines base64-encoded; do not share logs from a
+build with an API key.
 
 From the repository root, `bash scripts/test-consumer.sh android` extracts the
 package into a separate temporary consumer and builds it with fresh pub
