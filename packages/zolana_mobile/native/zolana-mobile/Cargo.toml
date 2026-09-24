@@ -15,18 +15,34 @@ default = []
 flutter = ["dep:mopro-ffi", "mopro-ffi/flutter"]
 
 [dependencies]
-getrandom = "0.3"
 mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 rust-gnark = { path = "../rust-gnark" }
+serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.10"
+solana-commitment-config = "3.1"
+solana-message = "4.2"
+solana-rpc-client = "4.2"
+solana-transaction = "4.1"
 serde_json = "1.0"
 zeroize = "1.9"
 solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8", features = ["std"] }
-zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8" }
-zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8" }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30", features = ["std"] }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30", features = ["solana"] }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30" }
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30", features = ["client"] }
+zolana-wallet = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30" }
+# Off-chain, this crate links OpenSSL; mobile targets have no system copy.
+solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30" }
+
+[dev-dependencies]
+solana-account = "4.3"
+solana-keypair = "3"
+solana-signer = "3.0"
 
 [[bin]]
 name = "flutter"

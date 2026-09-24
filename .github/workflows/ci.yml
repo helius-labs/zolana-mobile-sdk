@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  min-flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          cache: true
+      - run: flutter pub get && flutter analyze && flutter test
+        working-directory: packages/zolana_mobile
+      - run: flutter pub get && flutter analyze
+        working-directory: packages/zolana_mobile/example
+
   android:
     runs-on: ubuntu-latest
     steps:

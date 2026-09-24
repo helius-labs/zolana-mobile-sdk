@@ -1,20 +1,21 @@
 # Zolana Mobile SDK
 
-Standalone Flutter bindings for Zolana proof-input primitives, Poseidon
-hashing, and local Mopro/gnark Groth16 proving on Android and iOS.
+A Flutter SDK for private Zolana payments on Android and iOS. `ZolanaWallet`
+registers, shields, syncs, sends privately and unshields, building every
+transaction with the Zolana Rust client and proving it on the device with
+Mopro/gnark Groth16. The Solana key stays with the application's signer.
 
 ## Layout
 
-- `packages/zolana_mobile/native/zolana-mobile`: Zolana API and native prover handles.
+- `packages/zolana_mobile/native/zolana-mobile`: the native wallet, on-device
+  prover, proving-key store, and lower-level prover handles.
 - `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
-  strict witness validation, prepared keys, and the structured request adapter.
-- `packages/zolana_mobile`: generated Flutter plugin and proof-only example.
-- `fixtures`: committed 2→3 request and flattened gnark witness fixture.
-- `scripts`: checksum-locked Mopro asset staging.
-
-The package includes an offline transfer-draft helper for exercising Zolana
-proof-input types. It creates synthetic state and is not an on-chain transaction
-builder. The example UI intentionally exposes only local proof generation.
+  strict witness validation, prepared keys, `.key` loading, and the structured
+  request adapter.
+- `packages/zolana_mobile`: the Flutter plugin, and an example devnet wallet.
+- `fixtures`: a 2→3 `/prove` request captured from the Zolana client, and its
+  flattened witness.
+- `scripts`: asset staging and the upstream drift check.
 
 The generated native library keeps Mopro's internal
 `mopro_flutter_bindings` stem. Applications import the public Dart package as
@@ -22,29 +23,45 @@ The generated native library keeps Mopro's internal
 
 ## Demo
 
-Install Flutter, Rust, Go 1.27.1 or newer, and the platform toolchain. Then stage
-the ignored proving assets:
+The example is a private wallet on Zolana devnet with two built-in demo accounts,
+A and B, so one phone can pay itself privately. Their keys are public in
+`example/lib/demo_keys.dart`: fund them with devnet SOL only, for example from
+faucet.solana.com. The first send downloads the proving key for its shape into
+app storage; later sends reuse it.
+
+Install Flutter, Rust, Go 1.27.1 or newer, and the platform toolchain. Then:
 
 ```sh
-./scripts/stage-demo-assets.sh
+./scripts/stage-demo-assets.sh   # the proof benchmark's 2→3 key
 cd packages/zolana_mobile/example
 flutter pub get
-flutter run
+flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
 
-Android builds compile the gnark bridge from source and require an installed
-NDK. Set both variables to the NDK directory shown by Android Studio's SDK
-Manager before running Flutter, for example:
+To send privately from A to B on a device or simulator, proving there:
 
 ```sh
-export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/27.1.12297006"
+flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
+  --dart-define=ZOLANA_E2E=true
+```
+
+`ZOLANA_API_KEY` is optional: a Helius key selects Helius devnet for Solana RPC,
+without one the public devnet endpoint is used. It is compiled into that build
+only; do not commit it.
+
+Android builds compile the gnark bridge from source and need the NDK version
+Flutter selects (28.2.13676358 for Flutter 3.47), installed through Android
+Studio's SDK Manager:
+
+```sh
+export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/28.2.13676358"
 export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 ```
 
 `stage-demo-assets.sh` downloads one checksum-locked packed Zolana key and
-splits its `.pk`, `.vk`, and `.r1cs` sections at verified offsets. It also stages
-the committed flattened witness JSON. Demo users do not run `mopro init` or
-`mopro build`.
+splits its `.pk`, `.vk`, and `.r1cs` sections at verified offsets for the
+benchmark. The wallet itself downloads upstream `.key` files on demand and uses
+them unsplit.
 
 ## Validation
 
@@ -73,8 +90,8 @@ is vendored with local fixes documented in its provenance file so the pub packag
 includes its complete source build; it is built against gnark 0.16.3, the version
 the Zolana prover uses. Protocol crates `zolana-hasher`, `zolana-keypair`, and
 `zolana-transaction`, the vendored Go circuits, and the staged proving key are all
-pinned to Zolana `main` revision `4745bbb3bc60edd08ca0f348ea6cfc6a4ab168f8`
-(`[workspace.metadata.upstream]` in `Cargo.toml`).
+pinned to one Zolana revision, `[workspace.metadata.upstream]` in `Cargo.toml`,
+which must be on Zolana `main`.
 
 `scripts/check-upstream.sh` fails if any of these drift from that revision; CI
 runs it on every push. To move to a newer Zolana revision, re-vendor
@@ -84,11 +101,26 @@ the 2→3 fixtures as described in the rust-gnark provenance file.
 
 ## Current boundary
 
-`LocalProver.proveRequest` accepts a structured Zolana `/prove` request and builds
-its witness on-device. It returns a locally verified canonical proof for the
-existing Zolana transaction flow. The example uses a public 2→3 request fixture,
-not live wallet funds. Obtaining real wallet state, authorizing, signing, and
-submitting transactions remains the wallet application's responsibility.
+`ZolanaWallet` builds and proves transactions; the application signs them, and
+either the wallet or the application sends them. `LocalProver.proveRequest`
+remains for callers that assemble their own `/prove` requests. The wallet holds
+SOL and the SPL tokens the shielded pool has registered, keeps its state in
+memory, and does not merge notes yet.
+
+The end-to-end wallet test registers, deposits, proves a private transfer on
+this machine, checks the recipient's balance, and unshields from a second,
+stale session of the sender. Zolana devnet runs the pinned revision; the demo
+accounts avoid devnet airdrop limits once funded:
+
+```sh
+ZOLANA_E2E_RPC_URL=https://api.devnet.solana.com \
+ZOLANA_E2E_INDEXER_URL=https://d2xah7tnhdhcom.cloudfront.net \
+ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
+ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
+cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture
+```
+
+A local cluster started by `just` in the zolana repository works as well.
 
 See `packages/zolana_mobile/README.md` for the ownership, lock/discard, completion,
 and prepared-key lifetime contract. Closing drains work; it does not promise

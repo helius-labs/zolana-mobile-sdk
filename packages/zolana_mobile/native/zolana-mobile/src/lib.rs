@@ -1,17 +1,22 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    str::FromStr,
     sync::{Mutex, OnceLock},
     time::Instant,
 };
 
-use solana_signature::Signature;
 use zeroize::Zeroizing;
 use zolana_hasher::{Hasher, Poseidon};
-use zolana_keypair::{ShieldedAddress, ShieldedKeypair, SigningKey};
-use zolana_transaction::{
-    instructions::transact::ConfidentialTransaction, Address, Data, Mint, Utxo, WalletUtxo,
+
+mod asset;
+mod keys;
+mod prover;
+mod wallet;
+
+pub use keys::DEFAULT_PROVING_KEYS_URL;
+pub use wallet::{
+    derivation_message, ActivityEntry, ActivityKind, MobileWallet, PendingTransaction,
+    PendingTransactionKind, RegistrationStatus, SyncSummary, TokenBalance, WalletConfig,
 };
 
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
@@ -20,9 +25,27 @@ static PREPARED: Mutex<ProverState> = Mutex::new(ProverState {
     loaded: None,
 });
 
+/// The one prepared proving system gnark holds at a time.
 struct ProverState {
     next_id: u64,
-    loaded: Option<(u64, rust_gnark::PreparedProver)>,
+    loaded: Option<Loaded>,
+}
+
+struct Loaded {
+    id: u64,
+    /// The lockfile key the wallet prover loaded, or `None` for a system the
+    /// application loaded itself through [`load_prover`]. The wallet prover
+    /// switches keys only in the first case.
+    key: Option<String>,
+    prover: rust_gnark::PreparedProver,
+}
+
+impl ProverState {
+    fn next_id(&mut self) -> Result<u64, String> {
+        let id = self.next_id;
+        self.next_id = id.checked_add(1).ok_or("prover_id_exhausted")?;
+        Ok(id)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,35 +70,6 @@ pub struct LocalProofResult {
 pub struct GnarkProofResult {
     pub proof: String,
     pub public_inputs: String,
-}
-
-pub struct TransferDraftRequest {
-    pub sender_seed: Vec<u8>,
-    pub recipient: String,
-    pub input_lamports: u64,
-    pub transfer_lamports: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct TransferDraftOutput {
-    pub owner: String,
-    pub lamports: u64,
-    pub is_change: bool,
-    pub is_dummy: bool,
-    pub commitment_hex: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct TransferDraft {
-    pub sender: String,
-    pub recipient: String,
-    pub input_lamports: u64,
-    pub transfer_lamports: u64,
-    pub change_lamports: u64,
-    pub shape: String,
-    pub first_nullifier_hex: String,
-    pub external_data_hash_hex: String,
-    pub outputs: Vec<TransferDraftOutput>,
 }
 
 pub fn sdk_version() -> String {
@@ -147,13 +141,16 @@ pub fn load_prover(
     if state.loaded.is_some() {
         return Err("prover_busy".to_string());
     }
-    let id = state.next_id;
-    state.next_id = id.checked_add(1).ok_or("prover_id_exhausted")?;
+    let id = state.next_id()?;
     init_gnark()?;
     let prover =
         rust_gnark::PreparedProver::load(&r1cs_path, &proving_key_path, &verifying_key_path)
             .map_err(|_| "prover_load_failed".to_string())?;
-    state.loaded = Some((id, prover));
+    state.loaded = Some(Loaded {
+        id,
+        key: None,
+        prover,
+    });
     Ok(PreparedProverInfo {
         id,
         load_ms: elapsed_ms(started),
@@ -165,7 +162,7 @@ pub fn release_prover(id: u64) -> Result<(), String> {
         .lock()
         .map_err(|_| "prover_unavailable".to_string())?;
     match &state.loaded {
-        Some((loaded_id, _)) if *loaded_id == id => {
+        Some(loaded) if loaded.id == id => {
             state.loaded = None;
             Ok(())
         }
@@ -181,11 +178,12 @@ pub fn prove_prepared(
     let input_json = Zeroizing::new(input_json);
     let started = Instant::now();
     let state = PREPARED.try_lock().map_err(|_| "prover_busy".to_string())?;
-    let (_, prover) = state
+    let prover = &state
         .loaded
         .as_ref()
-        .filter(|(loaded_id, _)| *loaded_id == id)
-        .ok_or("prover_closed")?;
+        .filter(|loaded| loaded.id == id)
+        .ok_or("prover_closed")?
+        .prover;
     let proof = if structured_request {
         prover.prove_request(&input_json)
     } else {
@@ -251,126 +249,6 @@ pub fn prove_assignment(
     })
 }
 
-pub fn shielded_address(seed: Vec<u8>) -> Result<String, String> {
-    let seed = Zeroizing::new(seed);
-    keypair_from_seed(&seed)?
-        .shielded_address()
-        .map(|address| address.to_string())
-        .map_err(|error| error.to_string())
-}
-
-pub fn prepare_transfer(request: TransferDraftRequest) -> Result<TransferDraft, String> {
-    let sender_seed = Zeroizing::new(request.sender_seed);
-    if request.input_lamports == 0 {
-        return Err("input_lamports must be greater than zero".to_string());
-    }
-    if request.transfer_lamports == 0 {
-        return Err("transfer_lamports must be greater than zero".to_string());
-    }
-    if request.transfer_lamports > request.input_lamports {
-        return Err("transfer_lamports exceeds the input balance".to_string());
-    }
-
-    let sender = keypair_from_seed(&sender_seed)?;
-    let sender_address = sender
-        .shielded_address()
-        .map_err(|error| error.to_string())?;
-    let recipient =
-        ShieldedAddress::from_str(&request.recipient).map_err(|error| error.to_string())?;
-    let payer = Address::new_from_array(
-        sender
-            .signing_pubkey()
-            .as_ed25519()
-            .map_err(|error| error.to_string())?,
-    );
-    let mut blinding = [0u8; 32];
-    getrandom::fill(&mut blinding[1..])
-        .map_err(|error| format!("generate input blinding: {error}"))?;
-    let utxo = Utxo {
-        owner: sender.signing_pubkey(),
-        asset: Mint::SOL,
-        amount: request.input_lamports,
-        blinding,
-        ring_program_id: None,
-        data: Data::default(),
-    };
-    let nullifier_pubkey = sender
-        .nullifier_key
-        .pubkey()
-        .map_err(|error| error.to_string())?;
-    let utxo_hash = utxo
-        .hash(&nullifier_pubkey, &[0; 32], &[0; 32], 0)
-        .map_err(|error| error.to_string())?;
-    let nullifier = sender
-        .nullifier_key
-        .nullifier(&utxo_hash, &utxo.blinding)
-        .map_err(|error| error.to_string())?;
-    let input = WalletUtxo {
-        utxo,
-        nullifier_pubkey,
-        utxo_hash,
-        nullifier,
-        data_hash: None,
-        ring_data_hash: None,
-        tree_id: 0,
-        leaf_index: 0,
-        slot: 0,
-        tx_signature: Signature::default(),
-        slot_index: 0,
-    };
-    let mut transfer =
-        ConfidentialTransaction::new(vec![input], payer).map_err(|error| error.to_string())?;
-    transfer
-        .transfer_sol(&recipient, request.transfer_lamports)
-        .map_err(|error| error.to_string())?;
-    let proof_inputs = transfer
-        .encrypt(&sender)
-        .map_err(|error| error.to_string())?;
-    let shape = proof_inputs
-        .check_shape()
-        .map_err(|error| error.to_string())?;
-    let first_nullifier = proof_inputs
-        .first_nullifier()
-        .map_err(|error| error.to_string())?;
-    let external_data_hash = proof_inputs
-        .external_data
-        .hash()
-        .map_err(|error| error.to_string())?;
-    let sender_text = sender_address.to_string();
-    let outputs = proof_inputs
-        .output_utxos
-        .iter()
-        .map(|output| {
-            let owner = output
-                .owner_address
-                .map(|address| address.to_string())
-                .unwrap_or_default();
-            let commitment = output
-                .hash(proof_inputs.output_tree_id)
-                .map_err(|error| error.to_string())?;
-            Ok(TransferDraftOutput {
-                is_change: output.owner_address == Some(sender_address),
-                is_dummy: output.is_dummy(),
-                owner,
-                lamports: output.amount,
-                commitment_hex: hex(&commitment),
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-
-    Ok(TransferDraft {
-        sender: sender_text,
-        recipient: recipient.to_string(),
-        input_lamports: request.input_lamports,
-        transfer_lamports: request.transfer_lamports,
-        change_lamports: request.input_lamports - request.transfer_lamports,
-        shape: format!("{}→{}", shape.n_inputs(), shape.n_outputs()),
-        first_nullifier_hex: hex(&first_nullifier),
-        external_data_hash_hex: hex(&external_data_hash),
-        outputs,
-    })
-}
-
 fn init_gnark() -> Result<(), String> {
     GNARK_INIT
         .get_or_init(|| rust_gnark::init().map_err(|_| "prover_init_failed".to_string()))
@@ -385,71 +263,13 @@ fn sibling_asset(proving_key: &Path, extension: &str) -> Result<String, String> 
     Ok(path.display().to_string())
 }
 
-fn keypair_from_seed(seed: &[u8]) -> Result<ShieldedKeypair, String> {
-    let bytes =
-        Zeroizing::new(<[u8; 32]>::try_from(seed).map_err(|_| "invalid_seed_length".to_string())?);
-    ShieldedKeypair::from_keypair(SigningKey::from_ed25519_bytes(&bytes))
-        .map_err(|error| error.to_string())
-}
-
 fn elapsed_ms(started: Instant) -> u64 {
     started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn prepares_compact_partial_transfer() {
-        let recipient = shielded_address(vec![8; 32]).unwrap();
-        let draft = prepare_transfer(TransferDraftRequest {
-            sender_seed: vec![7; 32],
-            recipient,
-            input_lamports: 10,
-            transfer_lamports: 4,
-        })
-        .unwrap();
-
-        assert_eq!(draft.shape, "1→2");
-        assert_eq!(draft.change_lamports, 6);
-        assert_eq!(draft.outputs.len(), 2);
-        let (change, sent): (Vec<_>, Vec<_>) =
-            draft.outputs.iter().partition(|output| output.is_change);
-        assert_eq!((change.len(), sent.len()), (1, 1));
-        assert_eq!(
-            (change[0].owner.as_str(), change[0].lamports),
-            (draft.sender.as_str(), 6)
-        );
-        assert_eq!(
-            (sent[0].owner.as_str(), sent[0].lamports),
-            (draft.recipient.as_str(), 4)
-        );
-    }
-
-    #[test]
-    fn transfer_drafts_do_not_reuse_blinding() {
-        let recipient = shielded_address(vec![8; 32]).unwrap();
-        let request = || TransferDraftRequest {
-            sender_seed: vec![7; 32],
-            recipient: recipient.clone(),
-            input_lamports: 10,
-            transfer_lamports: 4,
-        };
-
-        let first = prepare_transfer(request()).unwrap();
-        let second = prepare_transfer(request()).unwrap();
-
-        assert_ne!(first.first_nullifier_hex, second.first_nullifier_hex);
-        assert_ne!(
-            first.outputs[0].commitment_hex,
-            second.outputs[0].commitment_hex
-        );
-    }
 
     #[test]
     fn poseidon_binding_validates_inputs() {

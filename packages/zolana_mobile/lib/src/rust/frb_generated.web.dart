@@ -3,250 +3,298 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
 import 'dart:async';
 import 'dart:convert';
-
 import 'frb_generated.dart';
-
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
-
 import 'third_party/zolana_mobile.dart';
 
-abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
-  RustLibApiImplPlatform({
-    required super.handler,
-    required super.wire,
-    required super.generalizedFrbRustBinding,
-    required super.portManager,
-  });
 
-  @protected
-  String dco_decode_String(dynamic raw);
 
-  @protected
-  bool dco_decode_bool(dynamic raw);
 
-  @protected
-  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw);
+                abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
+                  RustLibApiImplPlatform({
+                    required super.handler,
+                    required super.wire,
+                    required super.generalizedFrbRustBinding,
+                    required super.portManager,
+                  });
 
-  @protected
-  TransferDraftRequest dco_decode_box_autoadd_transfer_draft_request(
-    dynamic raw,
-  );
+                  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_MobileWalletPtr => wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
 
-  @protected
-  GnarkProofResult dco_decode_gnark_proof_result(dynamic raw);
+CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_PendingTransactionPtr => wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
 
-  @protected
-  List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
-  @protected
-  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
-  @protected
-  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+                  @protected MobileWallet dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw);
 
-  @protected
-  List<TransferDraftOutput> dco_decode_list_transfer_draft_output(dynamic raw);
+@protected PendingTransaction dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw);
 
-  @protected
-  LocalProofResult dco_decode_local_proof_result(dynamic raw);
+@protected MobileWallet dco_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw);
 
-  @protected
-  PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw);
+@protected MobileWallet dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw);
 
-  @protected
-  TransferDraft dco_decode_transfer_draft(dynamic raw);
+@protected PendingTransaction dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw);
 
-  @protected
-  TransferDraftOutput dco_decode_transfer_draft_output(dynamic raw);
+@protected Map<String, String> dco_decode_Map_String_String_None(dynamic raw);
 
-  @protected
-  TransferDraftRequest dco_decode_transfer_draft_request(dynamic raw);
+@protected MobileWallet dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(dynamic raw);
 
-  @protected
-  int dco_decode_u_32(dynamic raw);
+@protected PendingTransaction dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw);
 
-  @protected
-  BigInt dco_decode_u_64(dynamic raw);
+@protected String dco_decode_String(dynamic raw);
 
-  @protected
-  int dco_decode_u_8(dynamic raw);
+@protected ActivityEntry dco_decode_activity_entry(dynamic raw);
 
-  @protected
-  void dco_decode_unit(dynamic raw);
+@protected ActivityKind dco_decode_activity_kind(dynamic raw);
 
-  @protected
-  String sse_decode_String(SseDeserializer deserializer);
+@protected bool dco_decode_bool(dynamic raw);
 
-  @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
+@protected PendingTransaction dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw);
 
-  @protected
-  GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
-    SseDeserializer deserializer,
-  );
+@protected GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw);
 
-  @protected
-  TransferDraftRequest sse_decode_box_autoadd_transfer_draft_request(
-    SseDeserializer deserializer,
-  );
+@protected WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw);
 
-  @protected
-  GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer);
+@protected GnarkProofResult dco_decode_gnark_proof_result(dynamic raw);
 
-  @protected
-  List<Uint8List> sse_decode_list_list_prim_u_8_strict(
-    SseDeserializer deserializer,
-  );
+@protected int dco_decode_i_32(dynamic raw);
 
-  @protected
-  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+@protected List<String> dco_decode_list_String(dynamic raw);
 
-  @protected
-  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+@protected List<ActivityEntry> dco_decode_list_activity_entry(dynamic raw);
 
-  @protected
-  List<TransferDraftOutput> sse_decode_list_transfer_draft_output(
-    SseDeserializer deserializer,
-  );
+@protected List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
-  @protected
-  LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer);
+@protected List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
-  @protected
-  PreparedProverInfo sse_decode_prepared_prover_info(
-    SseDeserializer deserializer,
-  );
+@protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
-  @protected
-  TransferDraft sse_decode_transfer_draft(SseDeserializer deserializer);
+@protected List<(String,String)> dco_decode_list_record_string_string(dynamic raw);
 
-  @protected
-  TransferDraftOutput sse_decode_transfer_draft_output(
-    SseDeserializer deserializer,
-  );
+@protected List<TokenBalance> dco_decode_list_token_balance(dynamic raw);
 
-  @protected
-  TransferDraftRequest sse_decode_transfer_draft_request(
-    SseDeserializer deserializer,
-  );
+@protected LocalProofResult dco_decode_local_proof_result(dynamic raw);
 
-  @protected
-  int sse_decode_u_32(SseDeserializer deserializer);
+@protected Map<String, String>? dco_decode_opt_Map_String_String_None(dynamic raw);
 
-  @protected
-  BigInt sse_decode_u_64(SseDeserializer deserializer);
+@protected String? dco_decode_opt_String(dynamic raw);
 
-  @protected
-  int sse_decode_u_8(SseDeserializer deserializer);
+@protected PendingTransaction? dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(dynamic raw);
 
-  @protected
-  void sse_decode_unit(SseDeserializer deserializer);
+@protected PendingTransactionKind dco_decode_pending_transaction_kind(dynamic raw);
 
-  @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
+@protected PreparedProverInfo dco_decode_prepared_prover_info(dynamic raw);
 
-  @protected
-  void sse_encode_String(String self, SseSerializer serializer);
+@protected (String,String) dco_decode_record_string_string(dynamic raw);
 
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
+@protected RegistrationStatus dco_decode_registration_status(dynamic raw);
 
-  @protected
-  void sse_encode_box_autoadd_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  );
+@protected SyncSummary dco_decode_sync_summary(dynamic raw);
 
-  @protected
-  void sse_encode_box_autoadd_transfer_draft_request(
-    TransferDraftRequest self,
-    SseSerializer serializer,
-  );
+@protected TokenBalance dco_decode_token_balance(dynamic raw);
 
-  @protected
-  void sse_encode_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  );
+@protected int dco_decode_u_32(dynamic raw);
 
-  @protected
-  void sse_encode_list_list_prim_u_8_strict(
-    List<Uint8List> self,
-    SseSerializer serializer,
-  );
+@protected BigInt dco_decode_u_64(dynamic raw);
 
-  @protected
-  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
+@protected int dco_decode_u_8(dynamic raw);
 
-  @protected
-  void sse_encode_list_prim_u_8_strict(
-    Uint8List self,
-    SseSerializer serializer,
-  );
+@protected void dco_decode_unit(dynamic raw);
 
-  @protected
-  void sse_encode_list_transfer_draft_output(
-    List<TransferDraftOutput> self,
-    SseSerializer serializer,
-  );
+@protected BigInt dco_decode_usize(dynamic raw);
 
-  @protected
-  void sse_encode_local_proof_result(
-    LocalProofResult self,
-    SseSerializer serializer,
-  );
+@protected WalletConfig dco_decode_wallet_config(dynamic raw);
 
-  @protected
-  void sse_encode_prepared_prover_info(
-    PreparedProverInfo self,
-    SseSerializer serializer,
-  );
+@protected MobileWallet sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_transfer_draft(TransferDraft self, SseSerializer serializer);
+@protected PendingTransaction sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_transfer_draft_output(
-    TransferDraftOutput self,
-    SseSerializer serializer,
-  );
+@protected MobileWallet sse_decode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_transfer_draft_request(
-    TransferDraftRequest self,
-    SseSerializer serializer,
-  );
+@protected MobileWallet sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_u_32(int self, SseSerializer serializer);
+@protected PendingTransaction sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_u_64(BigInt self, SseSerializer serializer);
+@protected Map<String, String> sse_decode_Map_String_String_None(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_u_8(int self, SseSerializer serializer);
+@protected MobileWallet sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_unit(void self, SseSerializer serializer);
+@protected PendingTransaction sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
-}
+@protected String sse_decode_String(SseDeserializer deserializer);
+
+@protected ActivityEntry sse_decode_activity_entry(SseDeserializer deserializer);
+
+@protected ActivityKind sse_decode_activity_kind(SseDeserializer deserializer);
+
+@protected bool sse_decode_bool(SseDeserializer deserializer);
+
+@protected PendingTransaction sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer);
+
+@protected GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(SseDeserializer deserializer);
+
+@protected WalletConfig sse_decode_box_autoadd_wallet_config(SseDeserializer deserializer);
+
+@protected GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer);
+
+@protected int sse_decode_i_32(SseDeserializer deserializer);
+
+@protected List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+@protected List<ActivityEntry> sse_decode_list_activity_entry(SseDeserializer deserializer);
+
+@protected List<Uint8List> sse_decode_list_list_prim_u_8_strict(SseDeserializer deserializer);
+
+@protected List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+@protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+@protected List<(String,String)> sse_decode_list_record_string_string(SseDeserializer deserializer);
+
+@protected List<TokenBalance> sse_decode_list_token_balance(SseDeserializer deserializer);
+
+@protected LocalProofResult sse_decode_local_proof_result(SseDeserializer deserializer);
+
+@protected Map<String, String>? sse_decode_opt_Map_String_String_None(SseDeserializer deserializer);
+
+@protected String? sse_decode_opt_String(SseDeserializer deserializer);
+
+@protected PendingTransaction? sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(SseDeserializer deserializer);
+
+@protected PendingTransactionKind sse_decode_pending_transaction_kind(SseDeserializer deserializer);
+
+@protected PreparedProverInfo sse_decode_prepared_prover_info(SseDeserializer deserializer);
+
+@protected (String,String) sse_decode_record_string_string(SseDeserializer deserializer);
+
+@protected RegistrationStatus sse_decode_registration_status(SseDeserializer deserializer);
+
+@protected SyncSummary sse_decode_sync_summary(SseDeserializer deserializer);
+
+@protected TokenBalance sse_decode_token_balance(SseDeserializer deserializer);
+
+@protected int sse_decode_u_32(SseDeserializer deserializer);
+
+@protected BigInt sse_decode_u_64(SseDeserializer deserializer);
+
+@protected int sse_decode_u_8(SseDeserializer deserializer);
+
+@protected void sse_decode_unit(SseDeserializer deserializer);
+
+@protected BigInt sse_decode_usize(SseDeserializer deserializer);
+
+@protected WalletConfig sse_decode_wallet_config(SseDeserializer deserializer);
+
+@protected void sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer);
+
+@protected void sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer);
+
+@protected void sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer);
+
+@protected void sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer);
+
+@protected void sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer);
+
+@protected void sse_encode_Map_String_String_None(Map<String, String> self, SseSerializer serializer);
+
+@protected void sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(MobileWallet self, SseSerializer serializer);
+
+@protected void sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer);
+
+@protected void sse_encode_String(String self, SseSerializer serializer);
+
+@protected void sse_encode_activity_entry(ActivityEntry self, SseSerializer serializer);
+
+@protected void sse_encode_activity_kind(ActivityKind self, SseSerializer serializer);
+
+@protected void sse_encode_bool(bool self, SseSerializer serializer);
+
+@protected void sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction self, SseSerializer serializer);
+
+@protected void sse_encode_box_autoadd_gnark_proof_result(GnarkProofResult self, SseSerializer serializer);
+
+@protected void sse_encode_box_autoadd_wallet_config(WalletConfig self, SseSerializer serializer);
+
+@protected void sse_encode_gnark_proof_result(GnarkProofResult self, SseSerializer serializer);
+
+@protected void sse_encode_i_32(int self, SseSerializer serializer);
+
+@protected void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+@protected void sse_encode_list_activity_entry(List<ActivityEntry> self, SseSerializer serializer);
+
+@protected void sse_encode_list_list_prim_u_8_strict(List<Uint8List> self, SseSerializer serializer);
+
+@protected void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
+
+@protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer);
+
+@protected void sse_encode_list_record_string_string(List<(String,String)> self, SseSerializer serializer);
+
+@protected void sse_encode_list_token_balance(List<TokenBalance> self, SseSerializer serializer);
+
+@protected void sse_encode_local_proof_result(LocalProofResult self, SseSerializer serializer);
+
+@protected void sse_encode_opt_Map_String_String_None(Map<String, String>? self, SseSerializer serializer);
+
+@protected void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+@protected void sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(PendingTransaction? self, SseSerializer serializer);
+
+@protected void sse_encode_pending_transaction_kind(PendingTransactionKind self, SseSerializer serializer);
+
+@protected void sse_encode_prepared_prover_info(PreparedProverInfo self, SseSerializer serializer);
+
+@protected void sse_encode_record_string_string((String,String) self, SseSerializer serializer);
+
+@protected void sse_encode_registration_status(RegistrationStatus self, SseSerializer serializer);
+
+@protected void sse_encode_sync_summary(SyncSummary self, SseSerializer serializer);
+
+@protected void sse_encode_token_balance(TokenBalance self, SseSerializer serializer);
+
+@protected void sse_encode_u_32(int self, SseSerializer serializer);
+
+@protected void sse_encode_u_64(BigInt self, SseSerializer serializer);
+
+@protected void sse_encode_u_8(int self, SseSerializer serializer);
+
+@protected void sse_encode_unit(void self, SseSerializer serializer);
+
+@protected void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+@protected void sse_encode_wallet_config(WalletConfig self, SseSerializer serializer);
+                }
+                
+
 
 // Section: wire_class
 
 class RustLibWire implements BaseWire {
-  RustLibWire.fromExternalLibrary(ExternalLibrary lib);
-}
+            RustLibWire.fromExternalLibrary(ExternalLibrary lib);
 
-@JS('wasm_bindgen')
-external RustLibWasmModule get wasmModule;
+            void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(int ptr) => wasmModule.rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(ptr);
 
-@JS()
-@anonymous
-extension type RustLibWasmModule._(JSObject _) implements JSObject {}
+void rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(int ptr) => wasmModule.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(ptr);
+
+void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(int ptr) => wasmModule.rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(ptr);
+
+void rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(int ptr) => wasmModule.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(ptr);
+        }
+        @JS('wasm_bindgen') external RustLibWasmModule get wasmModule;
+
+        @JS() @anonymous extension type RustLibWasmModule._(JSObject _) implements JSObject {
+            external void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(int ptr);
+
+external void rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(int ptr);
+
+external void rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(int ptr);
+
+external void rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(int ptr);
+        }
+        

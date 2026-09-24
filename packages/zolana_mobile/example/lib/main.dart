@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
+import 'wallet_screen.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await RustLib.init();
+  await initZolanaMobile();
   runApp(const ZolanaMobileDemo());
 }
 
@@ -16,17 +18,20 @@ class ZolanaMobileDemo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Zolana Mobile',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff6750a4),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
+    ThemeData theme(Brightness brightness) => ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.black,
+        brightness: brightness,
+        dynamicSchemeVariant: DynamicSchemeVariant.monochrome,
       ),
-      home: const DemoScreen(),
+      useMaterial3: true,
+    );
+    return MaterialApp(
+      title: 'Zolana',
+      debugShowCheckedModeBanner: false,
+      theme: theme(Brightness.light),
+      darkTheme: theme(Brightness.dark),
+      home: const WalletScreen(),
     );
   }
 }
@@ -197,7 +202,7 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Zolana local prover'),
+        title: const Text('Proof benchmark'),
         actions: [
           TextButton(
             onPressed: _unlocking ? null : (_locked ? _unlock : _lock),

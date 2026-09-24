@@ -2,7 +2,7 @@
 
 Vendored Mopro BN254 Groth16 with strict input validation and reusable
 native proving keys. See [PROVENANCE.md](PROVENANCE.md) for pinned sources,
-licenses, the limited historical key-name aliases, and fixture changes.
+licenses, and fixtures.
 
 ## Rust API
 
@@ -16,12 +16,18 @@ drop(prover);
 ```
 
 - `PreparedProver::load(r1cs: &str, pk: &str, vk: &str) -> anyhow::Result<Self>`
+- `PreparedProver::load_key(key: &str) -> anyhow::Result<Self>` loads an
+  upstream Zolana `.key` container (header, proving key, verifying key,
+  constraint system) as published, without splitting it. Its header must
+  name the eddsa rail and the shape the constraint system has. The
+  container is read before its sections can be checked against each other,
+  so verify the file against the pinned proving-key lockfile first.
 - `prove(&self, witness_json: &str) -> anyhow::Result<Groth16ProofResult>`
 - `prove_request(&self, request_json: &str) -> anyhow::Result<Groth16ProofResult>`
 - `verify(&self, result: &Groth16ProofResult) -> anyhow::Result<bool>`
 - `Drop` releases the Go handle. The type is `Send`, not `Sync` or `Clone`.
 
-All three load paths are mandatory. Prepared proof calls verify using the
+All three `load` paths are mandatory. Prepared proof calls verify using the
 loaded VK before returning; callers need not repeat verification.
 Load validates PK/VK curve points with `ReadFrom`, preflights the FFT domain
 before its parallel precomputation, and checks key/circuit dimensions.
@@ -72,19 +78,11 @@ Supported types are `transfer-confidential`, `transfer-ring`,
 P256, custom-ring, address-append, and unknown types fail closed.
 
 Structured object fields must have exact spelling and cannot be duplicated.
-All declared fields are required except these non-assigned/rail-unused fields:
-
-- Transfer input/output `isDummy` metadata (the circuit uses UTXO domain).
-- Default confidential transfer's top-level `ringProgramId` and each output's
-  `ownerPkHash` (the assignment uses published owner hashes instead).
-- Ring-authority's `publishedOutputOwnerPkHashes`, output `ownerPkHash`,
-  and output `nullifierPk`.
-- Default merge's `ringProgramId` and `outputRingDataHash`.
-
-Omitted optional fields retain the pinned assignment defaults. Present
-fields cannot be null or empty strings, and all field-element values must
-remain nonnegative and less than the scalar modulus. Numeric arities must
-be unsigned integer JSON numbers. Requests are capped at 8 MiB.
+Every declared field is required, as the Zolana Rust and TypeScript clients
+always send them, and the assignment's variable names must equal the key's
+names exactly. Fields cannot be null or empty strings, and all field-element
+values must be nonnegative and less than the scalar modulus. Numeric arities
+must be unsigned integer JSON numbers. Requests are capped at 8 MiB.
 
 ## Privacy boundary
 
