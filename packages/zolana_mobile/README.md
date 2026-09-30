@@ -146,6 +146,12 @@ await wallet.confirm(tx, signature); // base58 transaction signature
 transactions, until the indexer has it, then syncs. `submit(tx, signatures)`
 sends through the wallet's RPC instead.
 
+- `prepareTransfer` and `prepareWithdrawal` take an optional `feePayer`, for
+  example the application's backend. It pays the network fee instead of
+  this account and signs first: `tx.signers` is `[feePayer, owner]`, and the
+  fee payer's signature is the transaction signature. The proof binds the fee
+  payer, so choose it at prepare. `transfer` and `withdraw` always use this
+  account.
 - The message carries a recent blockhash and expires after about 150 blocks
   (60–90 s). Prepare again when it expires.
 - Prepare one spend at a time. Until a prepared spend is confirmed, the next

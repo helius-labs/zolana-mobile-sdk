@@ -11,6 +11,9 @@
   (was 11).
 * CI runs the clean consumer on an Android API 26 emulator and checks that the
   iOS native library runs on iOS 16.
+* Add `feePayer` to `prepareTransfer` and `prepareWithdrawal`: another
+  account, such as the application's backend, pays the network fee. The
+  signers are then `[feePayer, owner]`.
 * Add SPL Token and Token-2022 assets: `mint` on deposit, transfer and
   withdrawal, `balances()`, `privateBalance()`, `publicBalance()`,
   `prepareTokenAccount()`, and a mint on each activity entry. Amounts are

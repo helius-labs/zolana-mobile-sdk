@@ -93,9 +93,9 @@ Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({require
 
 Future<PendingTransaction?> zolanaMobileMobileWalletPrepareTokenAccount({required MobileWallet that , required String owner , required String mint });
 
-Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({required MobileWallet that , required String recipient , String? mint , required BigInt amount });
+Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({required MobileWallet that , required String recipient , String? mint , required BigInt amount , String? feePayer });
 
-Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({required MobileWallet that , required String recipient , String? mint , required BigInt amount });
+Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({required MobileWallet that , required String recipient , String? mint , required BigInt amount , String? feePayer });
 
 Future<BigInt> zolanaMobileMobileWalletPrivateBalance({required MobileWallet that , String? mint });
 
@@ -346,13 +346,14 @@ sse_encode_String(mint, serializer);
         );
         
 
-@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({required MobileWallet that , required String recipient , String? mint , required BigInt amount })  { return handler.executeNormal(NormalTask(
+@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({required MobileWallet that , required String recipient , String? mint , required BigInt amount , String? feePayer })  { return handler.executeNormal(NormalTask(
             callFfi: (port_) {
               
             final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
 sse_encode_String(recipient, serializer);
 sse_encode_opt_String(mint, serializer);
 sse_encode_u_64(amount, serializer);
+sse_encode_opt_String(feePayer, serializer);
             pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8, port: port_);
             
             },
@@ -363,24 +364,25 @@ sse_encode_u_64(amount, serializer);
         )
         ,
             constMeta: kZolanaMobileMobileWalletPrepareTransferConstMeta,
-            argValues: [that, recipient, mint, amount],
+            argValues: [that, recipient, mint, amount, feePayer],
             apiImpl: this,
         )); }
 
 
         TaskConstMeta get kZolanaMobileMobileWalletPrepareTransferConstMeta => const TaskConstMeta(
             debugName: "MobileWallet_prepare_transfer",
-            argNames: ["that", "recipient", "mint", "amount"],
+            argNames: ["that", "recipient", "mint", "amount", "feePayer"],
         );
         
 
-@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({required MobileWallet that , required String recipient , String? mint , required BigInt amount })  { return handler.executeNormal(NormalTask(
+@override Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({required MobileWallet that , required String recipient , String? mint , required BigInt amount , String? feePayer })  { return handler.executeNormal(NormalTask(
             callFfi: (port_) {
               
             final serializer = SseSerializer(generalizedFrbRustBinding);sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(that, serializer);
 sse_encode_String(recipient, serializer);
 sse_encode_opt_String(mint, serializer);
 sse_encode_u_64(amount, serializer);
+sse_encode_opt_String(feePayer, serializer);
             pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9, port: port_);
             
             },
@@ -391,14 +393,14 @@ sse_encode_u_64(amount, serializer);
         )
         ,
             constMeta: kZolanaMobileMobileWalletPrepareWithdrawalConstMeta,
-            argValues: [that, recipient, mint, amount],
+            argValues: [that, recipient, mint, amount, feePayer],
             apiImpl: this,
         )); }
 
 
         TaskConstMeta get kZolanaMobileMobileWalletPrepareWithdrawalConstMeta => const TaskConstMeta(
             debugName: "MobileWallet_prepare_withdrawal",
-            argNames: ["that", "recipient", "mint", "amount"],
+            argNames: ["that", "recipient", "mint", "amount", "feePayer"],
         );
         
 
@@ -1535,13 +1537,19 @@ sse_encode_bool(self.allowInsecureHttp, serializer);
 /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
 /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
 /// explicit instead.
- Future<PendingTransaction>  prepareTransfer({required String recipient , String? mint , required BigInt amount })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareTransfer(that: this, recipient: recipient, mint: mint, amount: amount);
+///
+/// `fee_payer` pays the network fee, this account when `None`. The proof
+/// binds it, so it cannot change after this call. Another fee payer signs
+/// first, before this account.
+ Future<PendingTransaction>  prepareTransfer({required String recipient , String? mint , required BigInt amount , String? feePayer })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareTransfer(that: this, recipient: recipient, mint: mint, amount: amount, feePayer: feePayer);
 
 
 /// Build and prove a withdrawal of private funds to the public account
 /// `recipient`. Tokens go to its associated token account, which must
 /// exist: [`Self::prepare_token_account`] creates it.
- Future<PendingTransaction>  prepareWithdrawal({required String recipient , String? mint , required BigInt amount })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareWithdrawal(that: this, recipient: recipient, mint: mint, amount: amount);
+///
+/// `fee_payer` works as in [`Self::prepare_transfer`].
+ Future<PendingTransaction>  prepareWithdrawal({required String recipient , String? mint , required BigInt amount , String? feePayer })=>RustLib.instance.api.zolanaMobileMobileWalletPrepareWithdrawal(that: this, recipient: recipient, mint: mint, amount: amount, feePayer: feePayer);
 
 
 /// Spendable private balance of SOL (`mint` `None`) or `mint` as of the

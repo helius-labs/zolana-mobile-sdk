@@ -57,6 +57,7 @@ class FakeWallet implements NativeWallet {
   Object? transferError;
   bool disposed = false;
   List<String> transferSigners = const [owner];
+  String? transferFeePayer;
 
   @override
   Future<String> shieldedAddress() async => 'shielded';
@@ -102,8 +103,10 @@ class FakeWallet implements NativeWallet {
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   ) async {
     events.add('transfer ${mint ?? 'SOL'}');
+    transferFeePayer = feePayer;
     await holdTransfer?.future;
     final error = transferError;
     if (error != null) throw error;
@@ -115,6 +118,7 @@ class FakeWallet implements NativeWallet {
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   ) async => FakePending(Uint8List.fromList([9]));
 
   @override
@@ -224,6 +228,24 @@ void main() {
     final signature = Uint8List.fromList([1]);
     expect(await wallet.submit(transaction, [signature]), 'signature');
     expect(native.submitted.single.$2.single, signature);
+    expect(signer.requests, hasLength(1), reason: 'only the open was signed');
+  });
+
+  test('passes the fee payer to prepare, not to the signing path', () async {
+    final (wallet, native, signer, _) = await openWallet();
+    native.transferSigners = const ['Backend', owner];
+
+    final transaction = await wallet.prepareTransfer(
+      recipient: 'Recipient',
+      amount: BigInt.one,
+      feePayer: 'Backend',
+    );
+    expect(native.transferFeePayer, 'Backend');
+    expect(transaction.signers, ['Backend', owner]);
+
+    final signatures = [Uint8List.fromList([1]), Uint8List.fromList([2])];
+    expect(await wallet.submit(transaction, signatures), 'signature');
+    expect(native.submitted.single.$2, signatures);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
   });
 
