@@ -6,14 +6,19 @@
 //!
 //! 1. once, the Zolana derivation message from [`derivation_message`]. The
 //!    signature is the seed of the wallet's nullifier and viewing keys, which
-//!    stay in this process for syncing and proving.
+//!    stay in this process for reading notes and proving.
 //! 2. each [`PendingTransaction::message_bytes`], the v1 Solana message this
 //!    library built, proved and returned unsigned.
+//!
+//! The wallet keeps no chain state between calls. Balances and spends read the
+//! wallet's spendable notes from the indexer when they run, so they see a
+//! spend by another client, or by the last transaction, as soon as the
+//! indexer has it.
 //!
 //! Proofs are generated on the device with the pinned key for their shape; no
 //! witness is sent to a prover server.
 
-use std::{collections::HashMap, str::FromStr, thread::sleep, time::Duration};
+use std::{cmp::Reverse, collections::HashMap, str::FromStr, thread::sleep, time::Duration};
 
 use reqwest::header::{HeaderName, HeaderValue};
 use solana_commitment_config::CommitmentConfig;
@@ -27,25 +32,27 @@ use solana_rpc_client::{
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 use zolana_client::{
-    compile_message, ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SolanaRpc,
-    ZolanaClient,
+    compile_message,
+    user_registry::{
+        build_registration_transaction_sync, fetch_user_record_optional_checked,
+        resolved_address_from_record, try_resolve_registered_address,
+    },
+    ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SignedPrivateTransaction, SolanaRpc,
+    SpendableUtxos, ZolanaClient,
 };
 use zolana_interface::pda;
-use zolana_keypair::{derivation, PublicKey, ShieldedAddress};
-use zolana_program::instruction::CreateAssociatedTokenAccount;
-use zolana_transaction::AssetRegistry;
-use zolana_wallet::{
-    build_deposit_transaction_sync, build_private_transaction_sync,
-    build_registration_transaction_sync, create_transfer_sync, create_withdrawal,
-    fetch_user_record_optional_checked, get_private_token_balances, get_private_transactions,
-    is_wallet_registered_sync, resolved_address_from_record, sync_wallet,
-    ClientEd25519WalletAuthority, Deposit, DepositParams, PrivateTransactionDirection,
-    PrivateTransactionKind, SyncWalletAuthority, TransferParams, Wallet, WithdrawalLeg,
-    WithdrawalParams,
+use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress};
+use zolana_program::instruction::{
+    AssetDeposit, CreateAssociatedTokenAccount, Deposit, DepositAsset, DepositSplAccounts,
+    TransactInterfaceTransferAccounts, TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
+};
+use zolana_transaction::{
+    instructions::transact::{auto_shapes, ConfidentialTransaction},
+    AssetRegistry, LocalShieldedKeys, SpendableDecryptionResult, WalletUtxo,
 };
 
 use crate::{
-    asset::{mint_name, parse_mint, token_account_amount, Asset},
+    asset::{mint_name, token_account_amount, Asset},
     keys::KeyStore,
     prover::NativeProver,
 };
@@ -69,6 +76,11 @@ pub struct WalletConfig {
     /// The indexer sees the wallet's view tags, so never set this for funds
     /// that matter.
     pub allow_insecure_http: bool,
+    /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
+    /// and a mint named in any call is added for the rest of the session.
+    /// Notes in other mints are left out, as the Zolana SDK leaves out assets
+    /// its registry does not hold.
+    pub mints: Vec<String>,
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -140,30 +152,6 @@ impl PendingTransaction {
     }
 }
 
-/// What a row of the wallet's history did, from this wallet's side.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ActivityKind {
-    /// Public funds moved into the private balance.
-    Shielded,
-    /// Private funds moved to a public account.
-    Unshielded,
-    Sent,
-    Received,
-    /// Notes rearranged within this wallet (change, merges, splits).
-    Internal,
-}
-
-/// Amounts are in base units: lamports for SOL, the mint's smallest unit
-/// otherwise. `mint` is `None` for SOL.
-#[derive(Clone, Debug)]
-pub struct ActivityEntry {
-    pub kind: ActivityKind,
-    pub mint: Option<String>,
-    pub amount: u64,
-    pub signature: String,
-    pub slot: u64,
-}
-
 /// A spendable private balance. `mint` is `None` for SOL.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenBalance {
@@ -171,18 +159,18 @@ pub struct TokenBalance {
     pub amount: u64,
 }
 
-#[derive(Clone, Debug)]
-pub struct SyncSummary {
-    pub stored_utxos: u64,
-    pub balances: Vec<TokenBalance>,
-}
-
-/// A synced private wallet. State is in memory only: reopen and sync after a
-/// restart.
+/// A private wallet. It holds its keys and the asset ids of the mints it has
+/// named, and reads everything else from the chain and the indexer when asked.
 pub struct MobileWallet {
     owner: Pubkey,
-    authority: ClientEd25519WalletAuthority,
-    wallet: Wallet,
+    address: ShieldedAddress,
+    keys: LocalShieldedKeys,
+    /// Completes the spent inputs' nullifiers when proving.
+    nullifier_key: NullifierKey,
+    /// SOL and the mints resolved so far.
+    assets: AssetRegistry,
+    /// Configured mints not resolved into `assets` yet.
+    mints: Vec<String>,
     client: ZolanaClient<SolanaRpc>,
 }
 
@@ -195,16 +183,25 @@ impl MobileWallet {
         derivation_signature: Vec<u8>,
     ) -> Result<MobileWallet, String> {
         let owner = parse_pubkey(&solana_pubkey)?;
-        let seed: [u8; derivation::ED25519_SEED_LEN] =
-            derivation_signature
-                .as_slice()
-                .try_into()
-                .map_err(|_| "derivation_signature_invalid".to_string())?;
-        let authority = ClientEd25519WalletAuthority::from_derivation_seed(owner, &seed)
-            .map_err(|_| "derivation_signature_invalid".to_string())?;
-        let identity = authority.shielded_address().map_err(error)?;
-        let wallet = Wallet::new(identity, AssetRegistry::default()).map_err(error)?;
-        let keys = KeyStore::new(config.proving_key_dir, config.proving_key_url)?;
+        let seed: [u8; derivation::ED25519_SEED_LEN] = derivation_signature
+            .as_slice()
+            .try_into()
+            .map_err(derivation_invalid)?;
+        let signing_pubkey = PublicKey::from_ed25519(&owner.to_bytes());
+        let message = derivation::ed25519_derivation_message(&owner.to_bytes());
+        if !signing_pubkey.verify_message(&message, &seed) {
+            return Err("derivation_signature_invalid".to_string());
+        }
+        let (nullifier_key, viewing_key) =
+            derivation::expand_roles(&seed, Curve::Ed25519).map_err(derivation_invalid)?;
+        let address = ShieldedAddress {
+            signing_pubkey,
+            nullifier_pubkey: nullifier_key.pubkey().map_err(derivation_invalid)?,
+            viewing_pubkey: viewing_key.pubkey(),
+        };
+        let keys = LocalShieldedKeys::new(address, vec![viewing_key], nullifier_key.clone())
+            .map_err(error)?;
+        let proving_keys = KeyStore::new(config.proving_key_dir, config.proving_key_url)?;
         let rpc = solana_rpc(config.rpc_url, config.rpc_headers.unwrap_or_default())?;
         let client = if config.allow_insecure_http {
             ZolanaClient::from_urls_allowing_insecure_http(
@@ -215,11 +212,14 @@ impl MobileWallet {
         } else {
             ZolanaClient::from_urls(rpc, &config.indexer_url, UNUSED_PROVER_URL).map_err(error)?
         }
-        .with_prover(NativeProver::new(keys));
+        .with_prover(NativeProver::new(proving_keys));
         Ok(MobileWallet {
             owner,
-            authority,
-            wallet,
+            address,
+            keys,
+            nullifier_key,
+            assets: AssetRegistry::default(),
+            mints: config.mints,
             client,
         })
     }
@@ -229,7 +229,7 @@ impl MobileWallet {
     }
 
     pub fn shielded_address(&self) -> String {
-        self.wallet.identity.to_string()
+        self.address.to_string()
     }
 
     /// Whether the user registry publishes this wallet's shielded address.
@@ -239,7 +239,7 @@ impl MobileWallet {
         let published = record.map(|record| {
             resolved_address_from_record(self.owner, &record).map(|resolved| resolved.address)
         });
-        Ok(registration_status_of(published, &self.wallet.identity))
+        Ok(registration_status_of(published, &self.address))
     }
 
     /// `None` when the registry already holds this wallet's address. Fails
@@ -254,7 +254,7 @@ impl MobileWallet {
         let message = build_registration_transaction_sync(
             &self.client,
             self.owner,
-            &self.wallet.identity,
+            &self.address,
             None,
             None,
         )
@@ -274,36 +274,41 @@ impl MobileWallet {
         amount: u64,
     ) -> Result<PendingTransaction, String> {
         let asset = self.asset(mint)?;
-        let deposit = Deposit::new(DepositParams {
-            recipient: &self.wallet.identity,
-            asset: asset.mint,
-            amount,
-            spl_token_account: asset.token_account(&self.owner),
-            spl_token_program: asset.token_program,
-            memo: None,
-        })
+        let deposit_asset = match asset.token_program {
+            None => DepositAsset::Sol,
+            Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
+                mint: asset.mint,
+                user_token: asset.token_account(&self.owner).ok_or("mint_invalid")?,
+                token_program,
+            }),
+        };
+        // The wallet's viewing key tags a deposit: it is how the wallet finds
+        // the output without knowing who sent it.
+        let deposit = Deposit {
+            tree: pda::tree(0),
+            depositor: self.owner,
+            deposits: vec![AssetDeposit {
+                asset: deposit_asset,
+                view_tag: self.address.viewing_pubkey.x(),
+                owner: self.address.owner_hash().map_err(error)?,
+                amount,
+                memo: None,
+            }],
+        }
+        .instruction()
         .map_err(error)?;
-        let message = build_deposit_transaction_sync(
-            &self.client,
-            self.owner,
-            pda::tree(0),
-            self.owner,
-            &deposit,
+        let (blockhash, _) = self.client.get_latest_blockhash().map_err(error)?;
+        let message = compile_message(
+            &self.owner,
+            &[deposit],
+            blockhash,
+            ComputeBudgetConfig::for_instruction_count(1),
         )
         .map_err(error)?;
         Ok(PendingTransaction {
             kind: PendingTransactionKind::Deposit,
             message,
             summary: format!("Deposit {} (public)", asset.describe(amount)),
-        })
-    }
-
-    /// Fetch and decrypt this wallet's notes from the indexer.
-    pub fn sync(&mut self) -> Result<SyncSummary, String> {
-        let report = sync_wallet(&mut self.wallet, &self.authority, &self.client).map_err(error)?;
-        Ok(SyncSummary {
-            stored_utxos: report.stored_utxos as u64,
-            balances: self.balances()?,
         })
     }
 
@@ -320,36 +325,13 @@ impl MobileWallet {
         }
     }
 
-    /// History found by the last [`Self::sync`], newest first.
-    pub fn activity(&self) -> Vec<ActivityEntry> {
-        let mut entries: Vec<ActivityEntry> = get_private_transactions(&self.wallet)
-            .iter()
-            .map(|transaction| ActivityEntry {
-                kind: match (transaction.kind, transaction.direction) {
-                    (PrivateTransactionKind::Deposit, _) => ActivityKind::Shielded,
-                    (PrivateTransactionKind::PublicWithdrawal, _) => ActivityKind::Unshielded,
-                    (_, PrivateTransactionDirection::SelfTransfer)
-                    | (PrivateTransactionKind::Merge | PrivateTransactionKind::Split, _) => {
-                        ActivityKind::Internal
-                    }
-                    (_, PrivateTransactionDirection::Inbound) => ActivityKind::Received,
-                    (_, PrivateTransactionDirection::Outbound) => ActivityKind::Sent,
-                },
-                mint: mint_name(&transaction.asset),
-                amount: transaction.amount,
-                signature: transaction.id.signature.clone(),
-                slot: transaction.id.slot,
-            })
-            .collect();
-        entries.sort_by_key(|entry| std::cmp::Reverse(entry.slot));
-        entries
-    }
-
-    /// Spendable private balances as of the last [`Self::sync`], one per
-    /// asset held.
-    pub fn balances(&self) -> Result<Vec<TokenBalance>, String> {
-        Ok(get_private_token_balances(&self.wallet)
-            .map_err(error)?
+    /// Spendable private balances, read from the indexer now: one per asset
+    /// held in SOL, the configured mints and the mints named so far.
+    pub fn balances(&mut self) -> Result<Vec<TokenBalance>, String> {
+        Ok(self
+            .spendable()?
+            .balances
+            .assets
             .iter()
             .map(|balance| TokenBalance {
                 mint: mint_name(&balance.mint),
@@ -358,24 +340,21 @@ impl MobileWallet {
             .collect())
     }
 
-    /// Spendable private balance of SOL (`mint` `None`) or `mint` as of the
-    /// last [`Self::sync`].
-    pub fn private_balance(&self, mint: Option<String>) -> Result<u64, String> {
-        let mint = mint.as_deref().map(parse_mint).transpose()?;
-        let mint = mint.as_ref().and_then(mint_name);
+    /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
+    /// the indexer now.
+    pub fn private_balance(&mut self, mint: Option<String>) -> Result<u64, String> {
+        let asset = self.asset(mint)?;
         Ok(self
-            .balances()?
-            .into_iter()
-            .filter(|balance| balance.mint == mint)
-            .map(|balance| balance.amount)
-            .sum())
+            .spendable()?
+            .balances
+            .get_balance(asset.mint)
+            .map_or(0, |balance| balance.amount))
     }
 
     /// Build and prove a private transfer to a registered wallet.
     ///
-    /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
-    /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
-    /// explicit instead.
+    /// Refuses an unregistered recipient instead of paying it publicly:
+    /// [`Self::prepare_withdrawal`] makes a public payment explicit.
     ///
     /// `fee_payer` pays the network fee, this account when `None`. The proof
     /// binds it, so it cannot change after this call. Another fee payer signs
@@ -390,30 +369,19 @@ impl MobileWallet {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
         let asset = self.asset(mint)?;
-        if !is_wallet_registered_sync(&self.client, recipient).map_err(error)? {
+        let Some(registered) =
+            try_resolve_registered_address(&self.client, recipient).map_err(error)?
+        else {
             return Err("recipient_not_registered".to_string());
+        };
+        let inputs = select_notes(&self.spendable()?, asset, amount)?;
+        let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
+        match asset.token_program {
+            None => transaction.transfer_sol(&registered.address, amount),
+            Some(_) => transaction.transfer(&registered.address, asset.mint, amount),
         }
-        self.sync_before_spending()?;
-        let created = create_transfer_sync(TransferParams {
-            rpc: &self.client,
-            wallet: &self.wallet,
-            payer,
-            recipient,
-            asset: asset.mint,
-            amount,
-        })
         .map_err(error)?;
-        if created.recipient.is_public_withdrawal() {
-            return Err("recipient_not_registered".to_string());
-        }
-        let message = build_private_transaction_sync(
-            created.transaction,
-            &self.wallet,
-            &self.authority,
-            &self.client,
-            payer,
-        )
-        .map_err(error)?;
+        let message = self.prove(transaction, Vec::new(), payer)?;
         Ok(PendingTransaction {
             kind: PendingTransactionKind::Transfer,
             message,
@@ -446,26 +414,10 @@ impl MobileWallet {
                 return Err("recipient_token_account_missing".to_string());
             }
         }
-        self.sync_before_spending()?;
-        let created = create_withdrawal(WithdrawalParams {
-            wallet: &self.wallet,
-            payer,
-            legs: vec![WithdrawalLeg {
-                recipient,
-                asset: asset.mint,
-                amount,
-                spl_token_program: asset.token_program,
-            }],
-        })
-        .map_err(error)?;
-        let message = build_private_transaction_sync(
-            created.transaction,
-            &self.wallet,
-            &self.authority,
-            &self.client,
-            payer,
-        )
-        .map_err(error)?;
+        let inputs = select_notes(&self.spendable()?, asset, amount)?;
+        let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
+        let settlement = withdraw_to(&mut transaction, recipient, asset, amount)?;
+        let message = self.prove(transaction, vec![settlement], payer)?;
         Ok(PendingTransaction {
             kind: PendingTransactionKind::Withdrawal,
             message,
@@ -522,7 +474,38 @@ impl MobileWallet {
     /// SOL for `None`; a mint is added to the wallet's registry the first
     /// time it is used.
     fn asset(&mut self, mint: Option<String>) -> Result<Asset, String> {
-        Asset::resolve(&self.client, &mut self.wallet.registry, mint.as_deref())
+        Asset::resolve(&self.client, &mut self.assets, mint.as_deref())
+    }
+
+    /// The wallet's spendable notes as the indexer has them now, in SOL and
+    /// every mint in the registry.
+    fn spendable(&mut self) -> Result<SpendableDecryptionResult, String> {
+        // Resolve the configured mints once each; one that fails stays for
+        // the next call.
+        while let Some(mint) = self.mints.last().cloned() {
+            self.asset(Some(mint))?;
+            self.mints.pop();
+        }
+        SpendableUtxos::new(&self.keys, &self.assets)
+            .fetch(&self.client)
+            .map_err(error)
+    }
+
+    /// Encrypt and prove `transaction` on the device, and build the Solana
+    /// message `payer` pays for.
+    fn prove(
+        &self,
+        transaction: ConfidentialTransaction,
+        settlement_transfers: Vec<TransactInterfaceTransferAccounts>,
+        payer: Pubkey,
+    ) -> Result<VersionedMessage, String> {
+        let signed = SignedPrivateTransaction {
+            transaction: transaction.encrypt(&self.keys).map_err(error)?,
+            settlement_transfers,
+        };
+        self.client
+            .finish_submission_unsigned_sync(&signed, payer, &self.nullifier_key)
+            .map_err(error)
     }
 
     /// Attach the signatures, send, and wait as [`Self::confirm`] does.
@@ -531,7 +514,7 @@ impl MobileWallet {
     /// `signatures` follows [`PendingTransaction::signers`]; each is checked
     /// before anything is sent.
     pub fn submit(
-        &mut self,
+        &self,
         pending: &PendingTransaction,
         signatures: Vec<Vec<u8>>,
     ) -> Result<String, String> {
@@ -569,17 +552,13 @@ impl MobileWallet {
     }
 
     /// Wait for a transaction the application sent itself: until Solana
-    /// confirms it and, for shielded-pool transactions, the indexer has it.
-    /// A confirmed shielded-pool transaction is synced before this returns,
-    /// so the notes it spent are no longer offered.
+    /// confirms it and, for shielded-pool transactions, the indexer has it,
+    /// so the next balance or spend reads the notes it created and not the
+    /// ones it spent.
     ///
     /// `signature` is the transaction signature, the fee payer's; it is
     /// checked against `pending` before anything is asked.
-    pub fn confirm(
-        &mut self,
-        pending: &PendingTransaction,
-        signature: String,
-    ) -> Result<(), String> {
+    pub fn confirm(&self, pending: &PendingTransaction, signature: String) -> Result<(), String> {
         let signature =
             Signature::from_str(&signature).map_err(|_| "signature_invalid".to_string())?;
         let fee_payer = pending.message.static_account_keys()[0];
@@ -591,7 +570,7 @@ impl MobileWallet {
         self.settle(pending.kind, signature)
     }
 
-    fn settle(&mut self, kind: PendingTransactionKind, signature: Signature) -> Result<(), String> {
+    fn settle(&self, kind: PendingTransactionKind, signature: Signature) -> Result<(), String> {
         if matches!(
             kind,
             PendingTransactionKind::Registration | PendingTransactionKind::TokenAccount
@@ -600,22 +579,95 @@ impl MobileWallet {
         }
         self.client
             .confirm_private_transaction_sync(signature)
-            .map_err(error)?;
-        // Best effort: the transaction has landed, so a failed sync must not
-        // report it as failed. The next spend syncs again first.
-        let _ = sync_wallet(&mut self.wallet, &self.authority, &self.client);
-        Ok(())
-    }
-
-    /// The wallet learns of spends only by syncing, and a note it still
-    /// holds may have been spent since: by the last transaction if its sync
-    /// failed, or by the same account on another device. Selecting one builds
-    /// a transaction the indexer and the program reject.
-    fn sync_before_spending(&mut self) -> Result<(), String> {
-        sync_wallet(&mut self.wallet, &self.authority, &self.client)
-            .map(|_| ())
             .map_err(error)
     }
+}
+
+/// A ring-bound note's commitment covers its ring; the default-ring circuit
+/// does not.
+fn is_default_ring_spendable(entry: &WalletUtxo) -> bool {
+    entry.utxo.ring_program_id.is_none() && entry.ring_data_hash.is_none()
+}
+
+/// The notes a spend of `amount` takes, as the Zolana CLI selects them:
+/// largest first, all on one tree, at most as many as the widest automatic
+/// shape has inputs. A balance spread over trees, or needing more notes, has
+/// to be merged first.
+fn select_notes(
+    spendable: &SpendableDecryptionResult,
+    asset: Asset,
+    amount: u64,
+) -> Result<Vec<WalletUtxo>, String> {
+    let eligible = |entry: &&WalletUtxo| {
+        entry.utxo.asset.asset == asset.mint && is_default_ring_spendable(entry)
+    };
+    let mut trees: Vec<_> = spendable
+        .utxos()
+        .filter(eligible)
+        .map(WalletUtxo::tree_id)
+        .collect();
+    trees.sort();
+    trees.dedup();
+    let tree = match trees.as_slice() {
+        [tree] => *tree,
+        [] => return Err("insufficient_private_balance".to_string()),
+        _ => return Err("merge_required".to_string()),
+    };
+    let max_inputs = auto_shapes()
+        .map(|shape| shape.n_inputs())
+        .max()
+        .unwrap_or(0);
+    let mut candidates: Vec<&WalletUtxo> = spendable
+        .utxos()
+        .filter(eligible)
+        .filter(|entry| entry.tree_id() == tree)
+        .collect();
+    candidates.sort_by_key(|entry| Reverse(entry.utxo.amount));
+    let total: u64 = candidates.iter().map(|entry| entry.utxo.amount).sum();
+    let mut selected = Vec::new();
+    let mut covered = 0u64;
+    for entry in candidates.into_iter().take(max_inputs) {
+        covered += entry.utxo.amount;
+        selected.push(entry.clone());
+        if covered >= amount {
+            return Ok(selected);
+        }
+    }
+    Err(if total >= amount {
+        "merge_required"
+    } else {
+        "insufficient_private_balance"
+    }
+    .to_string())
+}
+
+/// Where a withdrawal settles: the recipient itself for SOL, its associated
+/// token account for SPL, as the Zolana CLI builds it.
+fn withdraw_to(
+    transaction: &mut ConfidentialTransaction,
+    recipient: Pubkey,
+    asset: Asset,
+    amount: u64,
+) -> Result<TransactInterfaceTransferAccounts, String> {
+    let (Some(token_program), Some(user_token_account)) =
+        (asset.token_program, asset.token_account(&recipient))
+    else {
+        transaction.withdraw_sol(amount, recipient).map_err(error)?;
+        return Ok(TransactInterfaceTransferAccounts::Sol(
+            TransactSolTransferAccounts { recipient },
+        ));
+    };
+    transaction
+        .withdraw(asset.mint, amount, user_token_account)
+        .map_err(error)?;
+    Ok(TransactInterfaceTransferAccounts::SplWithdrawal(
+        TransactSplWithdrawalAccounts {
+            mint: asset.mint,
+            spl_interface: pda::spl_interface(&asset.mint),
+            user_token_account,
+            token_program,
+        },
+    ))
 }
 
 /// A Solana RPC client as `SolanaRpc::new` builds it, with `headers` added.
@@ -667,12 +719,17 @@ fn registration_status_of<E>(
     }
 }
 
+/// A derivation signature that does not yield the wallet's keys.
+fn derivation_invalid<E>(_: E) -> String {
+    "derivation_signature_invalid".to_string()
+}
+
 fn parse_pubkey(value: &str) -> Result<Pubkey, String> {
     Pubkey::from_str(value).map_err(|_| "pubkey_invalid".to_string())
 }
 
-/// Errors reach Dart as text. Wallet and client errors describe what failed
-/// without key material; keep it that way when adding variants.
+/// Errors reach Dart as text. Client and transaction errors describe what
+/// failed without key material; keep it that way when adding variants.
 pub(crate) fn error(error: impl Into<ClientError>) -> String {
     error.into().to_string()
 }
@@ -694,6 +751,7 @@ mod tests {
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             allow_insecure_http: false,
+            mints: Vec::new(),
         }
     }
 
@@ -755,7 +813,7 @@ mod tests {
     #[test]
     fn submit_checks_every_signature_before_sending() {
         let signer = Keypair::new();
-        let mut wallet = open(&signer).unwrap();
+        let wallet = open(&signer).unwrap();
         let pending = || unsigned(&signer);
         assert_eq!(pending().signers(), vec![signer.pubkey().to_string()]);
         let valid = signer.sign_message(&pending().message_bytes());
@@ -781,7 +839,7 @@ mod tests {
     #[test]
     fn confirm_accepts_only_the_fee_payer_signature() {
         let signer = Keypair::new();
-        let mut wallet = open(&signer).unwrap();
+        let wallet = open(&signer).unwrap();
         let pending = unsigned(&signer);
         let other = Keypair::new().sign_message(&pending.message_bytes());
         for signature in ["not-a-signature".to_string(), other.to_string()] {
@@ -822,8 +880,8 @@ mod tests {
 
     #[test]
     fn a_record_with_other_keys_is_a_conflict() {
-        let identity = open(&Keypair::new()).unwrap().wallet.identity;
-        let other = open(&Keypair::new()).unwrap().wallet.identity;
+        let identity = open(&Keypair::new()).unwrap().address;
+        let other = open(&Keypair::new()).unwrap().address;
         let status = |published: Option<Result<ShieldedAddress, ()>>| {
             registration_status_of(published, &identity)
         };

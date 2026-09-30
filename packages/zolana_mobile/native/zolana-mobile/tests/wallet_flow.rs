@@ -1,7 +1,7 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
-//! machine with the pinned keys: register, deposit, sync, private transfer,
-//! the recipient's sync, and a withdrawal from a session that is stale, with
-//! its fee paid by another account.
+//! machine with the pinned keys: register, deposit, private transfer, the
+//! recipient's balance, and a withdrawal from a session opened before the
+//! transfer, with its fee paid by another account.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon and the programs), or any cluster that runs the pinned
@@ -65,6 +65,7 @@ fn open(signer: &Keypair) -> MobileWallet {
             proving_key_dir: key_dir,
             proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
             allow_insecure_http: true,
+            mints: Vec::new(),
         },
         pubkey,
         signature.as_ref().to_vec(),
@@ -73,7 +74,7 @@ fn open(signer: &Keypair) -> MobileWallet {
 }
 
 /// Sign as `signers`, which must be the required signers in order.
-fn submit(wallet: &mut MobileWallet, signers: &[&Keypair], pending: PendingTransaction) -> String {
+fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PendingTransaction) -> String {
     let expected: Vec<String> = signers.iter().map(|s| s.pubkey().to_string()).collect();
     assert_eq!(pending.signers(), expected);
     let signatures = signers
@@ -84,8 +85,8 @@ fn submit(wallet: &mut MobileWallet, signers: &[&Keypair], pending: PendingTrans
     wallet.submit(&pending, signatures).expect("submit")
 }
 
-fn synced_sol(wallet: &mut MobileWallet) -> u64 {
-    wallet.sync().expect("sync");
+/// The private SOL balance, read from the indexer now.
+fn private_sol(wallet: &mut MobileWallet) -> u64 {
     wallet.private_balance(None).unwrap()
 }
 
@@ -118,35 +119,34 @@ fn register_deposit_transfer_and_receive() {
     register(&mut sender_wallet, &sender);
     register(&mut recipient_wallet, &recipient);
     // Reused accounts may already hold private balances from earlier runs.
-    let sender_before = synced_sol(&mut sender_wallet);
-    let recipient_before = synced_sol(&mut recipient_wallet);
+    let sender_before = private_sol(&mut sender_wallet);
+    let recipient_before = private_sol(&mut recipient_wallet);
 
     let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
-    submit(&mut sender_wallet, &[&sender], pending);
-    assert_eq!(synced_sol(&mut sender_wallet), sender_before + DEPOSIT);
+    submit(&sender_wallet, &[&sender], pending);
+    assert_eq!(private_sol(&mut sender_wallet), sender_before + DEPOSIT);
 
-    // A second session of the sender, synced before the transfer spends its
+    // A second session of the sender, opened before the transfer spends its
     // notes: the same account on another device.
     let mut stale = open(&sender);
-    stale.sync().unwrap();
 
     let started = std::time::Instant::now();
     let pending = sender_wallet
         .prepare_transfer(recipient.pubkey().to_string(), None, TRANSFER, None)
         .expect("prove transfer");
     println!("built and proved on device in {:?}", started.elapsed());
-    submit(&mut sender_wallet, &[&sender], pending);
+    submit(&sender_wallet, &[&sender], pending);
 
     assert_eq!(
-        synced_sol(&mut sender_wallet),
+        private_sol(&mut sender_wallet),
         sender_before + DEPOSIT - TRANSFER
     );
     assert_eq!(
-        synced_sol(&mut recipient_wallet),
+        private_sol(&mut recipient_wallet),
         recipient_before + TRANSFER
     );
 
-    // The stale session must not pick a note the transfer already spent.
+    // The other session must not pick a note the transfer already spent.
     // The recipient pays the fee, so the sender receives the full amount.
     let public_before = rpc.get_balance(sender.pubkey()).unwrap();
     let pending = stale
@@ -156,8 +156,8 @@ fn register_deposit_transfer_and_receive() {
             WITHDRAWAL,
             Some(recipient.pubkey().to_string()),
         )
-        .expect("a stale session still builds a spendable withdrawal");
-    submit(&mut stale, &[&recipient, &sender], pending);
+        .expect("another session still builds a spendable withdrawal");
+    submit(&stale, &[&recipient, &sender], pending);
     assert_eq!(
         rpc.get_balance(sender.pubkey()).unwrap(),
         public_before + WITHDRAWAL

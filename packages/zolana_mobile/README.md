@@ -52,9 +52,9 @@ use_precompiled_binaries: false
 
 ## Private wallet
 
-`ZolanaWallet` runs the whole flow: registration, deposit, sync, private transfer
-and withdrawal. It builds every transaction with the Zolana Rust client and wallet
-crates and proves it on the device. The Solana secret key never enters the
+`ZolanaWallet` runs the whole flow: registration, deposit, private transfer and
+withdrawal. It builds every transaction with the Zolana Rust client and proves
+it on the device. The Solana secret key never enters the
 package; your `SolanaSigner` (a platform keystore, a wallet adapter, a custodian)
 signs two things:
 
@@ -80,11 +80,11 @@ final wallet = await ZolanaWallet.open(
     indexerUrl: indexerUrl,
     provingKeyDir: '${(await getApplicationSupportDirectory()).path}/keys',
     allowInsecureHttp: false,
+    mints: const [],                  // SPL mints balances() lists
   ),
 );
 await wallet.register();               // once, so others can pay this wallet
 await wallet.deposit(BigInt.from(500000000));
-await wallet.sync();
 await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(100000000));
 ```
 
@@ -96,7 +96,9 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
 - **Tokens**: pass `mint` (base58) for an SPL Token or Token-2022 asset; no
   `mint` is SOL. Amounts are in base units. A mint works once the shielded pool
   has registered it, otherwise calls fail with `asset_not_supported`.
-  `balances()` lists the private balance of each asset held. A token withdrawal
+  `balances()` lists the private balance of SOL and of each mint in
+  `WalletConfig.mints` or named in a call; notes in other mints are left out.
+  A token withdrawal
   goes to the recipient's associated token account: when it fails with
   `recipient_token_account_missing`, `prepareTokenAccount` creates the account.
   Transaction fees are paid in SOL by this account.
@@ -115,9 +117,11 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
 - **Privacy**: deposits and withdrawals are public. Private transfers reveal
   neither amount nor recipient. The indexer learns this wallet's view tags, so
   `allowInsecureHttp` is only for a local test cluster.
-- **Freshness**: a transfer or withdrawal syncs before it selects notes, and a
-  confirmed transaction is synced before `transfer`, `deposit` or `withdraw`
-  returns, so notes spent by another session or device are never picked.
+- **Freshness**: the wallet keeps no chain state. `balances()`,
+  `privateBalance()` and every spend read the wallet's notes from the indexer
+  when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
+  has the transaction, so notes spent by another session or device are never
+  picked.
 - **Errors** are `ZolanaWalletException`s with a code or a client error
   description, never key material.
 
@@ -125,8 +129,7 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   started fail with `wallet_closed`, and nothing is signed or submitted after
   the call. `close()` waits for the running native step (a proof cannot be
   interrupted) and for an open signer prompt, so cancel your prompt on lock.
-  Then it releases the native wallet: its keys, notes and the proving key it
-  loaded. Open the next account after `close()` completes. A transaction
+  Then it releases the native wallet: its keys and the proving key it loaded. Open the next account after `close()` completes. A transaction
   already submitted is not recalled.
 
 ### Signing and sending in the application
@@ -143,7 +146,7 @@ await wallet.confirm(tx, signature); // base58 transaction signature
 
 `confirm` checks that `signature` is the fee payer's signature over
 `tx.message`, waits until Solana confirms it and, for shielded-pool
-transactions, until the indexer has it, then syncs. `submit(tx, signatures)`
+transactions, until the indexer has it. `submit(tx, signatures)`
 sends through the wallet's RPC instead.
 
 - `prepareTransfer` and `prepareWithdrawal` take an optional `feePayer`, for
@@ -158,9 +161,10 @@ sends through the wallet's RPC instead.
   one can select the same notes; the program then rejects the second
   transaction. No funds are lost.
 
-Current limits: wallet state is in memory, so reopen and `sync` after
-a restart; notes are not merged; one prepared prover is loaded per process, so
-close a `LocalProver` before the wallet proves.
+Current limits: notes are not merged, so a spend takes at most 5 notes on one
+tree and fails with `merge_required` beyond that; there is no transaction
+history; one prepared prover is loaded per process, so close a `LocalProver`
+before the wallet proves.
 
 ## Prepare once, prove repeatedly
 

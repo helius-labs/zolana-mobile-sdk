@@ -1,7 +1,7 @@
 # Zolana Mobile SDK
 
 A Flutter SDK for private Zolana payments on Android and iOS. `ZolanaWallet`
-registers, shields, syncs, sends privately and unshields, building every
+registers, shields, sends privately and unshields, building every
 transaction with the Zolana Rust client and proving it on the device with
 Mopro/gnark Groth16. The Solana key stays with the application's signer.
 

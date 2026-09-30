@@ -15,8 +15,8 @@ mod wallet;
 
 pub use keys::DEFAULT_PROVING_KEYS_URL;
 pub use wallet::{
-    derivation_message, ActivityEntry, ActivityKind, MobileWallet, PendingTransaction,
-    PendingTransactionKind, RegistrationStatus, SyncSummary, TokenBalance, WalletConfig,
+    derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind,
+    RegistrationStatus, TokenBalance, WalletConfig,
 };
 
 static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();

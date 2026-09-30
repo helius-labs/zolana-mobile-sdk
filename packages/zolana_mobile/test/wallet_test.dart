@@ -10,6 +10,7 @@ const config = WalletConfig(
   indexerUrl: 'https://indexer.example',
   provingKeyDir: '/keys',
   allowInsecureHttp: false,
+  mints: [],
 );
 
 class RecordingSigner implements SolanaSigner {
@@ -52,7 +53,7 @@ class FakeWallet implements NativeWallet {
   final submitted = <(NativePending, List<Uint8List>)>[];
   final confirmed = <(NativePending, String)>[];
   final events = <String>[];
-  Completer<void>? holdSync;
+  Completer<void>? holdBalances;
   Completer<void>? holdTransfer;
   Object? transferError;
   bool disposed = false;
@@ -68,24 +69,18 @@ class FakeWallet implements NativeWallet {
   Future<RegistrationStatus> registrationStatus() async => status;
 
   @override
-  Future<SyncSummary> sync() async {
-    events.add('sync start');
-    await holdSync?.future;
-    events.add('sync end');
-    return SyncSummary(storedUtxos: BigInt.one, balances: const []);
+  Future<List<TokenBalance>> balances() async {
+    events.add('balances start');
+    await holdBalances?.future;
+    events.add('balances end');
+    return const [];
   }
-
-  @override
-  Future<List<TokenBalance>> balances() async => const [];
 
   @override
   Future<BigInt> privateBalance(String? mint) async => BigInt.two;
 
   @override
   Future<BigInt> publicBalance(String? mint) async => BigInt.one;
-
-  @override
-  Future<List<ActivityEntry>> activity() async => const [];
 
   @override
   Future<NativePending?> prepareRegistration() async => switch (status) {
@@ -313,7 +308,7 @@ void main() {
     native.holdTransfer = Completer();
 
     final transfer = wallet.transfer(recipient: 'R', amount: BigInt.one);
-    final queued = wallet.sync();
+    final queued = wallet.balances();
     await Future<void>.delayed(Duration.zero);
     final closed = wallet.close();
     expect(wallet.isClosed, isTrue);
@@ -339,19 +334,19 @@ void main() {
 
   test('runs operations one at a time and survives a failure', () async {
     final (wallet, native, _, _) = await openWallet();
-    native.holdSync = Completer();
+    native.holdBalances = Completer();
     native.transferError = 'proof_failed';
 
-    final sync = wallet.sync();
+    final balances = wallet.balances();
     final transfer = wallet.transfer(recipient: 'R', amount: BigInt.one);
     final deposit = wallet.deposit(BigInt.one);
     await Future<void>.delayed(Duration.zero);
-    expect(native.events, ['sync start']);
+    expect(native.events, ['balances start']);
 
-    native.holdSync!.complete();
-    await sync;
+    native.holdBalances!.complete();
+    await balances;
     await expectLater(transfer, throwsA(isA<ZolanaWalletException>()));
     expect(await deposit, 'signature');
-    expect(native.events, ['sync start', 'sync end', 'transfer SOL']);
+    expect(native.events, ['balances start', 'balances end', 'transfer SOL']);
   });
 }

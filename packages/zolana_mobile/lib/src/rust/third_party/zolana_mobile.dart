@@ -74,17 +74,14 @@ Future<LocalProofResult> proveAssignment({
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>>
 abstract class MobileWallet implements RustOpaqueInterface {
-  /// History found by the last [`Self::sync`], newest first.
-  Future<List<ActivityEntry>> activity();
-
-  /// Spendable private balances as of the last [`Self::sync`], one per
-  /// asset held.
+  /// Spendable private balances, read from the indexer now: one per asset
+  /// held in SOL, the configured mints and the mints named so far.
   Future<List<TokenBalance>> balances();
 
   /// Wait for a transaction the application sent itself: until Solana
-  /// confirms it and, for shielded-pool transactions, the indexer has it.
-  /// A confirmed shielded-pool transaction is synced before this returns,
-  /// so the notes it spent are no longer offered.
+  /// confirms it and, for shielded-pool transactions, the indexer has it,
+  /// so the next balance or spend reads the notes it created and not the
+  /// ones it spent.
   ///
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
@@ -126,9 +123,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Build and prove a private transfer to a registered wallet.
   ///
-  /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
-  /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
-  /// explicit instead.
+  /// Refuses an unregistered recipient instead of paying it publicly:
+  /// [`Self::prepare_withdrawal`] makes a public payment explicit.
   ///
   /// `fee_payer` pays the network fee, this account when `None`. The proof
   /// binds it, so it cannot change after this call. Another fee payer signs
@@ -152,8 +148,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
     String? feePayer,
   });
 
-  /// Spendable private balance of SOL (`mint` `None`) or `mint` as of the
-  /// last [`Self::sync`].
+  /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
+  /// the indexer now.
   Future<BigInt> privateBalance({String? mint});
 
   /// Public balance of this account, read from the RPC now: lamports, or
@@ -177,9 +173,6 @@ abstract class MobileWallet implements RustOpaqueInterface {
     required PendingTransaction pending,
     required List<Uint8List> signatures,
   });
-
-  /// Fetch and decrypt this wallet's notes from the indexer.
-  Future<SyncSummary> sync_();
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
@@ -194,57 +187,6 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 
   /// Human-readable description to show before asking for a signature.
   Future<String> summary();
-}
-
-/// Amounts are in base units: lamports for SOL, the mint's smallest unit
-/// otherwise. `mint` is `None` for SOL.
-class ActivityEntry {
-  final ActivityKind kind;
-  final String? mint;
-  final BigInt amount;
-  final String signature;
-  final BigInt slot;
-
-  const ActivityEntry({
-    required this.kind,
-    this.mint,
-    required this.amount,
-    required this.signature,
-    required this.slot,
-  });
-
-  @override
-  int get hashCode =>
-      kind.hashCode ^
-      mint.hashCode ^
-      amount.hashCode ^
-      signature.hashCode ^
-      slot.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ActivityEntry &&
-          runtimeType == other.runtimeType &&
-          kind == other.kind &&
-          mint == other.mint &&
-          amount == other.amount &&
-          signature == other.signature &&
-          slot == other.slot;
-}
-
-/// What a row of the wallet's history did, from this wallet's side.
-enum ActivityKind {
-  /// Public funds moved into the private balance.
-  shielded,
-
-  /// Private funds moved to a public account.
-  unshielded,
-  sent,
-  received,
-
-  /// Notes rearranged within this wallet (change, merges, splits).
-  internal,
 }
 
 class GnarkProofResult {
@@ -365,24 +307,6 @@ enum RegistrationStatus {
   conflict,
 }
 
-class SyncSummary {
-  final BigInt storedUtxos;
-  final List<TokenBalance> balances;
-
-  const SyncSummary({required this.storedUtxos, required this.balances});
-
-  @override
-  int get hashCode => storedUtxos.hashCode ^ balances.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SyncSummary &&
-          runtimeType == other.runtimeType &&
-          storedUtxos == other.storedUtxos &&
-          balances == other.balances;
-}
-
 /// A spendable private balance. `mint` is `None` for SOL.
 class TokenBalance {
   final String? mint;
@@ -422,6 +346,12 @@ class WalletConfig {
   /// that matter.
   final bool allowInsecureHttp;
 
+  /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
+  /// and a mint named in any call is added for the rest of the session.
+  /// Notes in other mints are left out, as the Zolana SDK leaves out assets
+  /// its registry does not hold.
+  final List<String> mints;
+
   const WalletConfig({
     required this.rpcUrl,
     this.rpcHeaders,
@@ -429,6 +359,7 @@ class WalletConfig {
     required this.provingKeyDir,
     this.provingKeyUrl,
     required this.allowInsecureHttp,
+    required this.mints,
   });
 
   @override
@@ -438,7 +369,8 @@ class WalletConfig {
       indexerUrl.hashCode ^
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
-      allowInsecureHttp.hashCode;
+      allowInsecureHttp.hashCode ^
+      mints.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -450,5 +382,6 @@ class WalletConfig {
           indexerUrl == other.indexerUrl &&
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
-          allowInsecureHttp == other.allowInsecureHttp;
+          allowInsecureHttp == other.allowInsecureHttp &&
+          mints == other.mints;
 }

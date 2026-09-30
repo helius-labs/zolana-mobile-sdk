@@ -29,6 +29,7 @@ void main() {
       provingKeyDir:
           '${(await getApplicationSupportDirectory()).path}/proving-keys',
       allowInsecureHttp: false,
+      mints: const [],
     ),
   );
 
@@ -46,8 +47,6 @@ void main() {
       RegistrationStatus.registered,
     );
 
-    await sender.sync();
-    await recipient.sync();
     final senderBefore = await sender.privateBalance();
     final recipientBefore = await recipient.privateBalance();
     expect(senderBefore, greaterThanOrEqualTo(lamports));
@@ -63,8 +62,9 @@ void main() {
       '(proving key download, proof, signing, confirmation)',
     );
 
+    // The transfer returned once the indexer had it, so both balances
+    // already read its notes.
     expect(await sender.privateBalance(), senderBefore - lamports);
-    await recipient.sync();
     expect(await recipient.privateBalance(), recipientBefore + lamports);
   }, skip: !_enabled);
 }

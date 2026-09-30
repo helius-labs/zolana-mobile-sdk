@@ -5105,7 +5105,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 [[package]]
 name = "zolana-api"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "reqwest",
  "serde",
@@ -5117,7 +5117,7 @@ dependencies = [
 [[package]]
 name = "zolana-client"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "async-trait",
  "base64",
@@ -5142,6 +5142,7 @@ dependencies = [
  "solana-rpc-client",
  "solana-rpc-client-api",
  "solana-signature",
+ "solana-signer",
  "solana-transaction",
  "solana-transaction-status-client-types",
  "thiserror 2.0.20",
@@ -5157,12 +5158,13 @@ dependencies = [
  "zolana-program",
  "zolana-transaction",
  "zolana-tree",
+ "zolana-user-registry-interface",
 ]
 
 [[package]]
 name = "zolana-event"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "borsh",
  "wincode",
@@ -5171,7 +5173,7 @@ dependencies = [
 [[package]]
 name = "zolana-event-parser"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "borsh",
  "solana-pubkey 4.2.0",
@@ -5182,7 +5184,7 @@ dependencies = [
 [[package]]
 name = "zolana-hasher"
 version = "5.0.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -5197,7 +5199,7 @@ dependencies = [
 [[package]]
 name = "zolana-indexer-api"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "base64",
  "bs58",
@@ -5210,7 +5212,7 @@ dependencies = [
 [[package]]
 name = "zolana-interface"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "arrayvec",
  "borsh",
@@ -5229,7 +5231,7 @@ dependencies = [
 [[package]]
 name = "zolana-keypair"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "aes",
  "bs58",
@@ -5276,13 +5278,12 @@ dependencies = [
  "zolana-keypair",
  "zolana-program",
  "zolana-transaction",
- "zolana-wallet",
 ]
 
 [[package]]
 name = "zolana-program"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "solana-address 2.6.1",
  "solana-instruction",
@@ -5297,7 +5298,7 @@ dependencies = [
 [[package]]
 name = "zolana-transaction"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "borsh",
  "num-bigint",
@@ -5315,7 +5316,7 @@ dependencies = [
 [[package]]
 name = "zolana-tree"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "borsh",
  "bytemuck",
@@ -5330,40 +5331,12 @@ dependencies = [
 [[package]]
 name = "zolana-user-registry-interface"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+source = "git+https://github.com/helius-labs/zolana?rev=fa0eb2b3340a8c0d817438f503429b5b2ac5f573#fa0eb2b3340a8c0d817438f503429b5b2ac5f573"
 dependencies = [
  "borsh",
  "solana-instruction",
  "solana-pubkey 4.2.0",
  "solana-secp256r1-program",
-]
-
-[[package]]
-name = "zolana-wallet"
-version = "0.1.0"
-source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
-dependencies = [
- "async-trait",
- "borsh",
- "futures",
- "solana-account 4.3.2",
- "solana-address 2.6.1",
- "solana-hash",
- "solana-instruction",
- "solana-keypair",
- "solana-message",
- "solana-pubkey 4.2.0",
- "solana-signature",
- "solana-signer",
- "solana-transaction",
- "zolana-client",
- "zolana-event",
- "zolana-event-parser",
- "zolana-interface",
- "zolana-keypair",
- "zolana-program",
- "zolana-transaction",
- "zolana-user-registry-interface",
 ]
 
 [[package]]

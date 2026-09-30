@@ -78,12 +78,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
-  ActivityEntry dco_decode_activity_entry(dynamic raw);
-
-  @protected
-  ActivityKind dco_decode_activity_kind(dynamic raw);
-
-  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
@@ -106,9 +100,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
-
-  @protected
-  List<ActivityEntry> dco_decode_list_activity_entry(dynamic raw);
 
   @protected
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
@@ -151,9 +142,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RegistrationStatus dco_decode_registration_status(dynamic raw);
-
-  @protected
-  SyncSummary dco_decode_sync_summary(dynamic raw);
 
   @protected
   TokenBalance dco_decode_token_balance(dynamic raw);
@@ -227,12 +215,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
-  ActivityEntry sse_decode_activity_entry(SseDeserializer deserializer);
-
-  @protected
-  ActivityKind sse_decode_activity_kind(SseDeserializer deserializer);
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
@@ -259,11 +241,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
-
-  @protected
-  List<ActivityEntry> sse_decode_list_activity_entry(
-    SseDeserializer deserializer,
-  );
 
   @protected
   List<Uint8List> sse_decode_list_list_prim_u_8_strict(
@@ -322,9 +299,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RegistrationStatus sse_decode_registration_status(
     SseDeserializer deserializer,
   );
-
-  @protected
-  SyncSummary sse_decode_sync_summary(SseDeserializer deserializer);
 
   @protected
   TokenBalance sse_decode_token_balance(SseDeserializer deserializer);
@@ -406,12 +380,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
-  void sse_encode_activity_entry(ActivityEntry self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_activity_kind(ActivityKind self, SseSerializer serializer);
-
-  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -444,12 +412,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_list_activity_entry(
-    List<ActivityEntry> self,
-    SseSerializer serializer,
-  );
 
   @protected
   void sse_encode_list_list_prim_u_8_strict(
@@ -523,9 +485,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     RegistrationStatus self,
     SseSerializer serializer,
   );
-
-  @protected
-  void sse_encode_sync_summary(SyncSummary self, SseSerializer serializer);
 
   @protected
   void sse_encode_token_balance(TokenBalance self, SseSerializer serializer);

@@ -15,9 +15,8 @@
   account, such as the application's backend, pays the network fee. The
   signers are then `[feePayer, owner]`.
 * Add SPL Token and Token-2022 assets: `mint` on deposit, transfer and
-  withdrawal, `balances()`, `privateBalance()`, `publicBalance()`,
-  `prepareTokenAccount()`, and a mint on each activity entry. Amounts are
-  `amount` in base units.
+  withdrawal, `balances()`, `privateBalance()`, `publicBalance()` and
+  `prepareTokenAccount()`. Amounts are `amount` in base units.
 * Add `WalletConfig.rpcHeaders`: extra HTTP headers on every Solana RPC
   request.
 * Add `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
@@ -29,11 +28,13 @@
 * Add `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` fails with `registration_conflict` when the user record holds
   other keys, instead of replacing them.
-* Add `ZolanaWallet`: registration, deposit, sync, private transfer and
+* Add `ZolanaWallet`: registration, deposit, private transfer and
   withdrawal, proving on the device with the Solana key held by a
   `SolanaSigner`.
-* Add `activity` for history.
-* Sync before selecting notes to spend and after each confirmed transaction.
+* The wallet keeps no chain state: balances and spends read the spendable
+  notes from the indexer when they run, and `WalletConfig.mints` lists the
+  SPL mints `balances()` reports. A spend takes at most 5 notes on one tree and
+  fails with `merge_required` beyond that.
 * Download proving keys on first use, pinned by the Zolana proving-key lockfile.
 * Remove the synthetic `prepareTransfer` draft and seed-based `shieldedAddress`.
 * Sync the vendored prover, keys and request schema with Zolana `main`.

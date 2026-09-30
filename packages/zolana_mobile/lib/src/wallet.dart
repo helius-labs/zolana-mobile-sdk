@@ -43,11 +43,9 @@ abstract interface class WalletBackend {
 abstract interface class NativeWallet {
   Future<String> shieldedAddress();
   Future<native.RegistrationStatus> registrationStatus();
-  Future<native.SyncSummary> sync();
   Future<List<native.TokenBalance>> balances();
   Future<BigInt> privateBalance(String? mint);
   Future<BigInt> publicBalance(String? mint);
-  Future<List<native.ActivityEntry>> activity();
   Future<NativePending?> prepareRegistration();
   Future<NativePending> prepareDeposit(String? mint, BigInt amount);
   Future<NativePending> prepareTransfer(
@@ -119,9 +117,12 @@ class PreparedTransaction {
 /// works once the shielded pool has registered its mint; otherwise calls fail
 /// with `asset_not_supported`.
 ///
+/// The wallet keeps no chain state: [balances], [privateBalance] and every
+/// spend read the wallet's notes from the indexer when they run.
+///
 /// Every operation runs after the previous one finishes: the native wallet
-/// holds one proving key at a time and its state is updated by [sync].
-/// [close] it when the application locks or switches accounts.
+/// holds one proving key at a time, and two spends in flight would select the
+/// same notes. [close] it when the application locks or switches accounts.
 ///
 /// [register], [deposit], [transfer] and [withdraw] prepare, sign with the
 /// wallet's [SolanaSigner] and submit. An application that signs and sends
@@ -164,13 +165,12 @@ class ZolanaWallet {
   Future<native.RegistrationStatus> registrationStatus() =>
       _serial(_wallet.registrationStatus);
 
-  /// Fetch and decrypt this wallet's notes.
-  Future<native.SyncSummary> sync() => _serial(_wallet.sync);
-
-  /// Spendable private balances as of the last [sync], one per asset held.
+  /// Spendable private balances, read from the indexer now: one per asset
+  /// held in SOL, the configured `WalletConfig.mints` and the mints named so
+  /// far.
   Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
 
-  /// Spendable private balance of [mint] as of the last [sync].
+  /// Spendable private balance of [mint], read from the indexer now.
   Future<BigInt> privateBalance({String? mint}) =>
       _serial(() => _wallet.privateBalance(mint));
 
@@ -178,9 +178,6 @@ class ZolanaWallet {
   /// the amount in its associated token account for [mint] (0 without one).
   Future<BigInt> publicBalance({String? mint}) =>
       _serial(() => _wallet.publicBalance(mint));
-
-  /// History found by the last [sync], newest first.
-  Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with `registration_conflict` when the
@@ -196,7 +193,10 @@ class ZolanaWallet {
       _serial(() => _prepareDeposit(mint, amount));
 
   /// Send private funds to the registered wallet of [recipient] (a Solana
-  /// public key). Syncs, selects notes, builds and proves on the device.
+  /// public key). Reads the spendable notes, takes the largest on one tree,
+  /// builds and proves on the device. Fails with `merge_required` when the
+  /// amount needs more notes than one transaction spends, or the balance is
+  /// spread over trees.
   ///
   /// [feePayer] (a Solana public key, such as the application's backend)
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
@@ -240,8 +240,9 @@ class ZolanaWallet {
 
   /// Wait for a transaction the application sent itself, by its base58
   /// [signature]: until Solana confirms it and, for shielded-pool
-  /// transactions, the indexer has it. Then syncs, so the notes it spent are
-  /// no longer offered. Fails with `signature_invalid` unless [signature] is
+  /// transactions, the indexer has it, so the next balance or spend reads the
+  /// notes it created and not the ones it spent. Fails with
+  /// `signature_invalid` unless [signature] is
   /// the fee payer's signature over [PreparedTransaction.message].
   Future<void> confirm(PreparedTransaction transaction, String signature) =>
       _serial(() => _wallet.confirm(transaction._pending, signature));
@@ -282,7 +283,7 @@ class ZolanaWallet {
   /// Stop this wallet. Operations not yet started fail with `wallet_closed`,
   /// and nothing is signed or submitted after this call. Waits for the
   /// running native step (a proof cannot be interrupted), then releases the
-  /// native wallet: its keys, notes and proving key.
+  /// native wallet: its keys and proving key.
   ///
   /// It does not recall a transaction already submitted.
   Future<void> close() =>
@@ -383,9 +384,6 @@ class _NativeWallet implements NativeWallet {
       _wallet.registrationStatus();
 
   @override
-  Future<native.SyncSummary> sync() => _wallet.sync_();
-
-  @override
   Future<List<native.TokenBalance>> balances() => _wallet.balances();
 
   @override
@@ -395,9 +393,6 @@ class _NativeWallet implements NativeWallet {
   @override
   Future<BigInt> publicBalance(String? mint) =>
       _wallet.publicBalance(mint: mint);
-
-  @override
-  Future<List<native.ActivityEntry>> activity() => _wallet.activity();
 
   @override
   Future<NativePending?> prepareRegistration() async {
