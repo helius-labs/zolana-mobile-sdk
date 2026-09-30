@@ -90,7 +90,7 @@ jobs:
       - run: ./scripts/stage-demo-assets.sh
       - run: bash scripts/test-consumer.sh ios
       - name: Run clean consumer on an iOS simulator
-        timeout-minutes: 75
+        timeout-minutes: 85
         run: bash scripts/test-ios-simulator.sh
       - if: failure()
         uses: actions/upload-artifact@v7

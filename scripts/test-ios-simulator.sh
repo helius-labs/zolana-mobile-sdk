@@ -12,7 +12,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-boot_seconds="${ZOLANA_BOOT_SECONDS:-600}"
+boot_seconds="${ZOLANA_BOOT_SECONDS:-900}"
 log_seconds="${ZOLANA_LOG_STREAM_SECONDS:-300}"
 test_seconds="${ZOLANA_TEST_SECONDS:-2400}"
 diagnostics="${ZOLANA_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ios-simulator-diagnostics}"
@@ -69,9 +69,9 @@ bounded() {
   "$@" &
   local pid=$!
   set +m
-  local waited=0
+  local start=$SECONDS
   while kill -0 "$pid" 2>/dev/null; do
-    if (( waited >= seconds )); then
+    if (( SECONDS - start >= seconds )); then
       echo "::error::$label did not finish in ${seconds}s"
       diagnose "$label"
       kill -TERM -- "-$pid" 2>/dev/null || true
@@ -81,7 +81,6 @@ bounded() {
       return 124
     fi
     sleep 5
-    waited=$((waited + 5))
   done
   wait "$pid"
 }
@@ -94,11 +93,11 @@ log_stream_ready() {
   xcrun simctl spawn "$device" log stream --style json \
     --predicate 'eventType = logEvent AND processImagePath ENDSWITH "Runner"' > "$out.txt" 2> "$out.err" &
   local pid=$!
-  local waited=0
-  while [[ ! -s "$out.txt" ]] && kill -0 "$pid" 2>/dev/null && (( waited < log_seconds )); do
+  local start=$SECONDS
+  while [[ ! -s "$out.txt" ]] && kill -0 "$pid" 2>/dev/null && (( SECONDS - start < log_seconds )); do
     sleep 1
-    waited=$((waited + 1))
   done
+  local waited=$((SECONDS - start))
   local ready=false
   [[ -s "$out.txt" ]] && ready=true
   # `simctl spawn` can ignore SIGTERM while it starts; SIGINT stops it and the
