@@ -9,7 +9,7 @@
    _IOSSimulatorDevicePortForwarder? _portForwarder;
  
    @override
-@@ -488,13 +488,22 @@
+@@ -488,12 +488,22 @@
  
      ProtocolDiscovery? vmServiceDiscovery;
      if (debuggingOptions.debuggingEnabled) {
@@ -21,19 +21,19 @@
          hostPort: debuggingOptions.hostVmServicePort,
          devicePort: debuggingOptions.deviceVmServicePort,
          logger: globals.logger,
-       );
++      );
 +      // Launch the app only after the log stream is ready; otherwise the
-+      // Dart VM Service URL it logs on startup can be missed.
-+      const timeout = Duration(seconds: 30);
++      // Dart VM Service URL it logs on startup can be missed. Upstream waits
++      // 30 seconds, which is not enough on a hosted macOS runner.
++      const timeout = Duration(minutes: 3);
 +      await logReader._ready.future.timeout(
 +        timeout,
 +        onTimeout: () =>
 +            throw TimeoutException('The iOS simulator log stream did not start.', timeout),
-+      );
+       );
      }
  
-     // Launch the updated application in the simulator.
-@@ -622,7 +631,7 @@
+@@ -622,7 +632,7 @@
    }
  
    @override
@@ -42,7 +42,7 @@
      assert(!includePastLogs, 'Past log reading not supported on iOS simulators.');
      return _logReaders.putIfAbsent(app, () => _IOSSimulatorLogReader(this, app));
    }
-@@ -846,6 +855,12 @@
+@@ -846,6 +856,12 @@
      onCancel: _stop,
    );
  
@@ -55,7 +55,7 @@
    @override
    @visibleForTesting
    StreamController<String> get linesController => _linesController;
-@@ -864,7 +879,12 @@
+@@ -864,7 +880,12 @@
      // Unified logging iOS 11 and greater (introduced in iOS 10).
      if (await device.sdkMajorVersion >= 11) {
        _deviceProcess = await launchDeviceUnifiedLogging(device, _appName);
@@ -69,7 +69,7 @@
        _deviceProcess?.stderr.transform(utf8LineDecoder).listen(_onUnifiedLoggingLine);
      } else {
        // Fall back to syslog parsing.
-@@ -886,6 +906,9 @@
+@@ -886,6 +907,9 @@
      // cleanup in the callback.
      unawaited(
        _deviceProcess?.exitCode.whenComplete(() {

@@ -3,8 +3,9 @@
 # on every phase. Hosted macOS runners sometimes never finish a simulator boot,
 # and an unpatched Flutter tool can miss the app's VM Service URL and wait
 # forever (see scripts/patch-flutter-tool.sh); without a deadline the job waits
-# for the 6-hour runner limit. A boot that misses its deadline is retried once
-# on a fresh device. A test that misses its deadline fails, and prints the
+# for the 6-hour runner limit. The simulator is ready once it has booted and
+# `log stream` delivers events; one that misses either deadline is replaced
+# once by a fresh device. A test that misses its deadline fails, and prints the
 # process tree and simulator log so the stuck phase is visible. The test
 # deadline covers the Xcode build, which takes up to 18 minutes on a slow
 # runner.
@@ -12,6 +13,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 boot_seconds="${ZOLANA_BOOT_SECONDS:-600}"
+log_seconds="${ZOLANA_LOG_STREAM_SECONDS:-300}"
 test_seconds="${ZOLANA_TEST_SECONDS:-2400}"
 diagnostics="${ZOLANA_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ios-simulator-diagnostics}"
 mkdir -p "$diagnostics"
@@ -84,6 +86,40 @@ bounded() {
   wait "$pid"
 }
 
+# Waits until `log stream` on the device prints its header, which is when it
+# starts delivering events, and reports how long that took. The Flutter tool
+# reads the app's VM Service URL from the same stream.
+log_stream_ready() {
+  local out="$diagnostics/log-stream-$1"
+  xcrun simctl spawn "$device" log stream --style json \
+    --predicate 'eventType = logEvent AND processImagePath ENDSWITH "Runner"' > "$out.txt" 2> "$out.err" &
+  local pid=$!
+  local waited=0
+  while [[ ! -s "$out.txt" ]] && kill -0 "$pid" 2>/dev/null && (( waited < log_seconds )); do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  local ready=false
+  [[ -s "$out.txt" ]] && ready=true
+  # `simctl spawn` can ignore SIGTERM while it starts; SIGINT stops it and the
+  # `log stream` it runs in the simulator.
+  kill -INT "$pid" 2>/dev/null || true
+  local grace=0
+  while kill -0 "$pid" 2>/dev/null && (( grace < 10 )); do
+    sleep 1
+    grace=$((grace + 1))
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  if $ready; then
+    log "log stream ready after ${waited}s"
+    return 0
+  fi
+  echo "::error::log stream did not start in ${waited}s"
+  diagnose "log-stream-$1"
+  return 1
+}
+
 read -r udid runtime device_type < <(
   xcrun simctl list devices available -j | ruby -rjson -e '
     JSON.parse(STDIN.read).fetch("devices").each do |runtime, devices|
@@ -98,11 +134,12 @@ read -r udid runtime device_type < <(
 for attempt in 1 2; do
   device="$udid"
   log "booting $device ($device_type, $runtime), attempt $attempt"
-  if bounded "$boot_seconds" "boot-$attempt" xcrun simctl bootstatus "$device" -b; then
+  if bounded "$boot_seconds" "boot-$attempt" xcrun simctl bootstatus "$device" -b &&
+    log_stream_ready "$attempt"; then
     break
   fi
   if (( attempt == 2 )); then
-    echo "::error::The simulator did not boot on a fresh device either" >&2
+    echo "::error::The simulator was not ready on a fresh device either" >&2
     exit 1
   fi
   quick xcrun simctl shutdown "$device" >/dev/null 2>&1 || true
