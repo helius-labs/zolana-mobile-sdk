@@ -438,6 +438,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
             let api_recipient = <String>::sse_decode(&mut deserializer);
             let api_mint = <Option<String>>::sse_decode(&mut deserializer);
             let api_amount = <u64>::sse_decode(&mut deserializer);
+            let api_fee_payer = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -460,6 +461,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
                         api_recipient,
                         api_mint,
                         api_amount,
+                        api_fee_payer,
                     )?;
                     Ok(output_ok)
                 })())
@@ -495,6 +497,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
             let api_recipient = <String>::sse_decode(&mut deserializer);
             let api_mint = <Option<String>>::sse_decode(&mut deserializer);
             let api_amount = <u64>::sse_decode(&mut deserializer);
+            let api_fee_payer = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -517,6 +520,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
                         api_recipient,
                         api_mint,
                         api_amount,
+                        api_fee_payer,
                     )?;
                     Ok(output_ok)
                 })())

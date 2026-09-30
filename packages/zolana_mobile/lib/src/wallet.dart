@@ -54,11 +54,13 @@ abstract interface class NativeWallet {
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   );
   Future<NativePending> prepareWithdrawal(
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   );
   Future<NativePending?> prepareTokenAccount(String owner, String mint);
   Future<String> submit(NativePending pending, List<Uint8List> signatures);
@@ -195,21 +197,29 @@ class ZolanaWallet {
 
   /// Send private funds to the registered wallet of [recipient] (a Solana
   /// public key). Syncs, selects notes, builds and proves on the device.
+  ///
+  /// [feePayer] (a Solana public key, such as the application's backend)
+  /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
+  /// so it cannot change afterwards. [PreparedTransaction.signers] is then
+  /// `[feePayer, solanaPublicKey]`.
   Future<PreparedTransaction> prepareTransfer({
     required String recipient,
     required BigInt amount,
     String? mint,
-  }) => _serial(() => _prepareTransfer(recipient, mint, amount));
+    String? feePayer,
+  }) => _serial(() => _prepareTransfer(recipient, mint, amount, feePayer));
 
   /// Move private funds to the public account [recipient]. The recipient,
   /// asset and amount are public. Tokens go to the recipient's associated
   /// token account; without one this fails with
   /// `recipient_token_account_missing` (see [prepareTokenAccount]).
+  /// [feePayer] works as in [prepareTransfer].
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     required BigInt amount,
     String? mint,
-  }) => _serial(() => _prepareWithdrawal(recipient, mint, amount));
+    String? feePayer,
+  }) => _serial(() => _prepareWithdrawal(recipient, mint, amount, feePayer));
 
   /// Create [owner]'s associated token account for [mint], paid by this
   /// account, so a withdrawal can reach it. `null` when it already exists.
@@ -256,7 +266,7 @@ class ZolanaWallet {
     String? mint,
   }) => _serial(
     () async =>
-        _signAndSubmit(await _prepareTransfer(recipient, mint, amount)),
+        _signAndSubmit(await _prepareTransfer(recipient, mint, amount, null)),
   );
 
   /// [prepareWithdrawal], signed and submitted.
@@ -266,7 +276,7 @@ class ZolanaWallet {
     String? mint,
   }) => _serial(
     () async =>
-        _signAndSubmit(await _prepareWithdrawal(recipient, mint, amount)),
+        _signAndSubmit(await _prepareWithdrawal(recipient, mint, amount, null)),
   );
 
   /// Stop this wallet. Operations not yet started fail with `wallet_closed`,
@@ -289,16 +299,18 @@ class ZolanaWallet {
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   ) async => PreparedTransaction._read(
-    await _wallet.prepareTransfer(recipient, mint, amount),
+    await _wallet.prepareTransfer(recipient, mint, amount, feePayer),
   );
 
   Future<PreparedTransaction> _prepareWithdrawal(
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   ) async => PreparedTransaction._read(
-    await _wallet.prepareWithdrawal(recipient, mint, amount),
+    await _wallet.prepareWithdrawal(recipient, mint, amount, feePayer),
   );
 
   Future<String> _signAndSubmit(PreparedTransaction transaction) async {
@@ -402,11 +414,13 @@ class _NativeWallet implements NativeWallet {
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   ) async => _NativePending(
     await _wallet.prepareTransfer(
       recipient: recipient,
       mint: mint,
       amount: amount,
+      feePayer: feePayer,
     ),
   );
 
@@ -415,11 +429,13 @@ class _NativeWallet implements NativeWallet {
     String recipient,
     String? mint,
     BigInt amount,
+    String? feePayer,
   ) async => _NativePending(
     await _wallet.prepareWithdrawal(
       recipient: recipient,
       mint: mint,
       amount: amount,
+      feePayer: feePayer,
     ),
   );
 

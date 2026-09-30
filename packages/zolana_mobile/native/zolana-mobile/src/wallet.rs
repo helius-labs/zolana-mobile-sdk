@@ -376,13 +376,19 @@ impl MobileWallet {
     /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
     /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
     /// explicit instead.
+    ///
+    /// `fee_payer` pays the network fee, this account when `None`. The proof
+    /// binds it, so it cannot change after this call. Another fee payer signs
+    /// first, before this account.
     pub fn prepare_transfer(
         &mut self,
         recipient: String,
         mint: Option<String>,
         amount: u64,
+        fee_payer: Option<String>,
     ) -> Result<PendingTransaction, String> {
         let recipient = parse_pubkey(&recipient)?;
+        let payer = self.fee_payer(fee_payer)?;
         let asset = self.asset(mint)?;
         if !is_wallet_registered_sync(&self.client, recipient).map_err(error)? {
             return Err("recipient_not_registered".to_string());
@@ -391,7 +397,7 @@ impl MobileWallet {
         let created = create_transfer_sync(TransferParams {
             rpc: &self.client,
             wallet: &self.wallet,
-            payer: self.owner,
+            payer,
             recipient,
             asset: asset.mint,
             amount,
@@ -405,7 +411,7 @@ impl MobileWallet {
             &self.wallet,
             &self.authority,
             &self.client,
-            self.owner,
+            payer,
         )
         .map_err(error)?;
         Ok(PendingTransaction {
@@ -418,13 +424,17 @@ impl MobileWallet {
     /// Build and prove a withdrawal of private funds to the public account
     /// `recipient`. Tokens go to its associated token account, which must
     /// exist: [`Self::prepare_token_account`] creates it.
+    ///
+    /// `fee_payer` works as in [`Self::prepare_transfer`].
     pub fn prepare_withdrawal(
         &mut self,
         recipient: String,
         mint: Option<String>,
         amount: u64,
+        fee_payer: Option<String>,
     ) -> Result<PendingTransaction, String> {
         let recipient = parse_pubkey(&recipient)?;
+        let payer = self.fee_payer(fee_payer)?;
         let asset = self.asset(mint)?;
         if let Some(token_account) = asset.token_account(&recipient) {
             if self
@@ -439,7 +449,7 @@ impl MobileWallet {
         self.sync_before_spending()?;
         let created = create_withdrawal(WithdrawalParams {
             wallet: &self.wallet,
-            payer: self.owner,
+            payer,
             legs: vec![WithdrawalLeg {
                 recipient,
                 asset: asset.mint,
@@ -453,7 +463,7 @@ impl MobileWallet {
             &self.wallet,
             &self.authority,
             &self.client,
-            self.owner,
+            payer,
         )
         .map_err(error)?;
         Ok(PendingTransaction {
@@ -503,6 +513,10 @@ impl MobileWallet {
             message,
             summary: format!("Create a {} token account for {owner}", asset.mint),
         }))
+    }
+
+    fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, String> {
+        fee_payer.as_deref().map_or(Ok(self.owner), parse_pubkey)
     }
 
     /// SOL for `None`; a mint is added to the wallet's registry the first
@@ -820,13 +834,22 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_recipients_before_the_network() {
+    fn rejects_malformed_keys_before_the_network() {
         let mut wallet = open(&Keypair::new()).unwrap();
+        let recipient = Keypair::new().pubkey().to_string();
+        let bad = "not-a-pubkey".to_string();
+        let error = |result: Result<PendingTransaction, String>| result.err();
         assert_eq!(
-            wallet
-                .prepare_transfer("not-a-pubkey".into(), None, 1)
-                .err()
+            error(wallet.prepare_transfer(bad.clone(), None, 1, None)).as_deref(),
+            Some("pubkey_invalid")
+        );
+        assert_eq!(
+            error(wallet.prepare_transfer(recipient.clone(), None, 1, Some(bad.clone())))
                 .as_deref(),
+            Some("pubkey_invalid")
+        );
+        assert_eq!(
+            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad))).as_deref(),
             Some("pubkey_invalid")
         );
     }

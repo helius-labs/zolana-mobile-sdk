@@ -78,13 +78,19 @@ static Future<MobileWallet>  open({required WalletConfig config , required Strin
 /// Refuses an unregistered recipient: the wallet SDK turns a transfer to
 /// one into a public withdrawal, which [`Self::prepare_withdrawal`] makes
 /// explicit instead.
- Future<PendingTransaction>  prepareTransfer({required String recipient , String? mint , required BigInt amount });
+///
+/// `fee_payer` pays the network fee, this account when `None`. The proof
+/// binds it, so it cannot change after this call. Another fee payer signs
+/// first, before this account.
+ Future<PendingTransaction>  prepareTransfer({required String recipient , String? mint , required BigInt amount , String? feePayer });
 
 
 /// Build and prove a withdrawal of private funds to the public account
 /// `recipient`. Tokens go to its associated token account, which must
 /// exist: [`Self::prepare_token_account`] creates it.
- Future<PendingTransaction>  prepareWithdrawal({required String recipient , String? mint , required BigInt amount });
+///
+/// `fee_payer` works as in [`Self::prepare_transfer`].
+ Future<PendingTransaction>  prepareWithdrawal({required String recipient , String? mint , required BigInt amount , String? feePayer });
 
 
 /// Spendable private balance of SOL (`mint` `None`) or `mint` as of the

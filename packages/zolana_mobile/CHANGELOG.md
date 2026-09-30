@@ -4,6 +4,9 @@
   build without Rust or Go. Building from source stays the fallback.
 * Include the path dependencies, including the Go prover sources, in the
   cargokit crate hash.
+* Add `feePayer` to `prepareTransfer` and `prepareWithdrawal`: another
+  account, such as the application's backend, pays the network fee. The
+  signers are then `[feePayer, owner]`.
 * Add SPL Token and Token-2022 assets: `mint` on deposit, transfer and
   withdrawal, `balances()`, `privateBalance()`, `publicBalance()`,
   `prepareTokenAccount()`, and a mint on each activity entry. Amounts are
