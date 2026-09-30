@@ -7,7 +7,7 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(RustLib.init);
+  setUpAll(initZolanaMobile);
 
   testWidgets('prepares a compact private transfer in Rust', (tester) async {
     final recipient = await shieldedAddress(seed: List.filled(32, 8));

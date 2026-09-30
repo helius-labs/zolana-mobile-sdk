@@ -7,7 +7,7 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await RustLib.init();
+  await initZolanaMobile();
   runApp(const ZolanaMobileDemo());
 }
 
