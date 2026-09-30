@@ -5,6 +5,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=crates/../go");
     for name in [
+        "GO",
         "RUST_GNARK_GO_ENVS",
         "GOFLAGS",
         "GOTOOLCHAIN",
@@ -59,7 +60,7 @@ fn main() {
         }
     }
 
-    let mut cmd = Command::new("go");
+    let mut cmd = Command::new(go_binary());
     cmd.current_dir(&go_dir).env("CGO_ENABLED", "1").args([
         "build",
         "-trimpath",
@@ -473,4 +474,27 @@ fn link_platform_deps(target: &str) {
         println!("cargo:rustc-link-lib=pthread");
         println!("cargo:rustc-link-lib=resolv");
     }
+}
+
+/// The `go` to build with: `GO` if set, else `go` on `PATH`, else a standard
+/// install location. Xcode runs this build from a GUI-launched build phase
+/// whose `PATH` has none of the Homebrew or Go installer directories.
+fn go_binary() -> PathBuf {
+    if let Some(go) = env::var_os("GO") {
+        return PathBuf::from(go);
+    }
+    let path = env::var_os("PATH").unwrap_or_default();
+    let standard = ["/opt/homebrew/bin", "/usr/local/go/bin", "/usr/local/bin"];
+    env::split_paths(&path)
+        .chain(standard.iter().map(PathBuf::from))
+        .map(|dir| dir.join("go"))
+        .find(|go| go.is_file())
+        .unwrap_or_else(|| {
+            panic!(
+                "Go 1.27.1 or newer is required to build rust-gnark and was not found on PATH \
+                 or in {}. Install it (for example `brew install go`) or set GO to the go \
+                 binary.",
+                standard.join(", ")
+            )
+        })
 }

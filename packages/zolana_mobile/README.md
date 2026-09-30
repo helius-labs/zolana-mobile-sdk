@@ -145,6 +145,22 @@ flutter pub get
 flutter run --release -d YOUR_DEVICE_ID
 ```
 
+To build and run the example from Xcode, install Go 1.27.1 or newer
+(`brew install go`). The pod builds the Rust and Go sources and finds Go outside
+Xcode's `PATH`; set `GO` to use another binary. With the workspace closed:
+
+```sh
+cd packages/zolana_mobile/example
+flutter pub get
+flutter build ios --config-only --simulator
+open ios/Runner.xcworkspace
+```
+
+Open the workspace, not `Runner.xcodeproj`, pick the Runner scheme and a
+simulator, and run. If Xcode reports a missing
+`FlutterGeneratedPluginSwiftPackage`, it resolved packages while Flutter was
+regenerating them: use File → Packages → Reset Package Caches.
+
 From the repository root, `bash scripts/test-consumer.sh android` extracts the
 package into a separate temporary consumer and builds it with fresh pub
 resolution. `ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device`
