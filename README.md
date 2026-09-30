@@ -38,6 +38,13 @@ flutter pub get
 flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
 
+To send privately from A to B on a device or simulator, proving there:
+
+```sh
+flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
+  --dart-define=ZOLANA_E2E=true
+```
+
 `ZOLANA_API_KEY` is optional: a Helius key selects Helius devnet for Solana RPC,
 without one the public devnet endpoint is used. It is compiled into that build
 only; do not commit it.
