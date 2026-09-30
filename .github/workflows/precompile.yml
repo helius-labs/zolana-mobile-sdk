@@ -1,0 +1,128 @@
+name: Precompiled binaries
+
+# Builds the native library for each release target, signs it with the key
+# pinned in packages/zolana_mobile/rust/cargokit.yaml and uploads it to the
+# GitHub release `precompiled_<crate hash>`. Cargokit downloads these binaries
+# when an app builds the plugin.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: 27.2.12479018
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Install the NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - run: dart pub get
+        working-directory: packages/zolana_mobile/cargokit/build_tool
+      - name: Build, sign and upload
+        run: >
+          dart run build_tool precompile-binaries -v
+          --repository=${{ github.repository }}
+          --manifest-dir=../../rust
+          --android-sdk-location="$ANDROID_HOME"
+          --android-ndk-version="$NDK_VERSION"
+          --android-min-sdk-version=21
+          --target=aarch64-linux-android
+          --target=armv7-linux-androideabi
+          --target=x86_64-linux-android
+        working-directory: packages/zolana_mobile/cargokit/build_tool
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIVATE_KEY: ${{ secrets.CARGOKIT_PRIVATE_KEY }}
+
+  ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - run: dart pub get
+        working-directory: packages/zolana_mobile/cargokit/build_tool
+      - name: Build, sign and upload
+        run: >
+          dart run build_tool precompile-binaries -v
+          --repository=${{ github.repository }}
+          --manifest-dir=../../rust
+          --target=aarch64-apple-ios
+          --target=aarch64-apple-ios-sim
+          --target=x86_64-apple-ios
+        working-directory: packages/zolana_mobile/cargokit/build_tool
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRIVATE_KEY: ${{ secrets.CARGOKIT_PRIVATE_KEY }}
+
+  # The example app must build from the uploaded binaries alone.
+  android-prebuilt:
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Remove Rust
+        run: rm -rf ~/.cargo ~/.rustup
+      - run: flutter pub get && flutter build apk --release
+        working-directory: packages/zolana_mobile/example
+        env:
+          CARGOKIT_VERBOSE: 1
+      - name: Check the packaged libraries
+        run: |
+          libs="$(unzip -l build/app/outputs/flutter-apk/app-release.apk)"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            for lib in libmopro_flutter_bindings.so libgnark.so; do
+              grep -q "lib/$abi/$lib" <<< "$libs" || { echo "missing lib/$abi/$lib"; exit 1; }
+            done
+          done
+        working-directory: packages/zolana_mobile/example
+
+  ios-prebuilt:
+    needs: ios
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Remove Rust
+        run: rm -rf ~/.cargo ~/.rustup
+      - run: flutter pub get && flutter build ios --simulator && flutter build ios --release --no-codesign
+        working-directory: packages/zolana_mobile/example
+        env:
+          CARGOKIT_VERBOSE: 1

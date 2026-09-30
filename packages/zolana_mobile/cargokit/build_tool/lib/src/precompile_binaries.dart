@@ -185,17 +185,23 @@ class PrecompileBinaries {
       release = await repo.getReleaseByTagName(repositorySlug, tagName);
     } on ReleaseNotFound {
       _log.info('Release not found - creating release $tagName');
-      release = await repo.createRelease(
-          repositorySlug,
-          CreateRelease.from(
-            tagName: tagName,
-            name: 'Precompiled binaries ${hash.substring(0, 8)}',
-            targetCommitish: null,
-            isDraft: false,
-            isPrerelease: false,
-            body: 'Precompiled binaries for crate $packageName, '
-                'crate hash $hash.',
-          ));
+      try {
+        release = await repo.createRelease(
+            repositorySlug,
+            CreateRelease.from(
+              tagName: tagName,
+              name: 'Precompiled binaries ${hash.substring(0, 8)}',
+              targetCommitish: null,
+              isDraft: false,
+              isPrerelease: false,
+              body: 'Precompiled binaries for crate $packageName, '
+                  'crate hash $hash.',
+            ));
+      } on Exception catch (e) {
+        // Jobs for other targets run in parallel and may create it first.
+        _log.info('Failed to create release $tagName ($e) - fetching it');
+        release = await repo.getReleaseByTagName(repositorySlug, tagName);
+      }
     }
     return release;
   }

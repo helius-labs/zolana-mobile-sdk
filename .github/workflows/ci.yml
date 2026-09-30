@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  build-tool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      # The pinned package:test runner needs frontend_server.dart.snapshot,
+      # which current Dart SDKs no longer ship, so run the test file directly.
+      - run: dart pub get && dart analyze --no-fatal-warnings && dart run test/crate_hash_test.dart
+        working-directory: packages/zolana_mobile/cargokit/build_tool
+
   android:
     runs-on: ubuntu-latest
     steps:
