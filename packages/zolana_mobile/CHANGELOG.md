@@ -1,6 +1,6 @@
 ## Unreleased
 
-* Add `initZolanaMobile()`, which loads the native library on Android and iOS.
+* Add `initZolanaMobile()`, which loads the native library on every platform.
   `RustLib.init()` alone fails on iOS: the pod links the Rust library into the
   plugin framework, not the `mopro_flutter_bindings.framework` it looks for.
 * Download signed precompiled native libraries for Android and iOS, so apps
