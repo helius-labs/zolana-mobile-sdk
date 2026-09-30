@@ -7,6 +7,10 @@
   build without Rust or Go. Building from source stays the fallback.
 * Include the path dependencies, including the Go prover sources, in the
   cargokit crate hash.
+* Declare the Flutter platform minimums: Android API 24 (was 21) and iOS 15
+  (was 11).
+* CI runs the clean consumer on an Android API 26 emulator and checks that the
+  iOS native library runs on iOS 16.
 
 ## 0.1.0
 

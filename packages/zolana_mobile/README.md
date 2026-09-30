@@ -9,6 +9,10 @@ contains its Rust and Go sources; it does not require a sibling Zolana checkout.
 - Flutter with Dart 3.13.0 or newer (CI checks Flutter 3.47.2).
 - Android: the NDK named by the app's `android.ndkVersion`.
 - iOS: Xcode with its license accepted and CocoaPods.
+- Android API 24 or newer and iOS 15 or newer, the Flutter minimums. The Go
+  prover archive targets iOS 13. CI runs the clean consumer on Android API 26
+  and 35 emulators, and checks that every object in the iOS native library runs
+  on iOS 16.
 - Matching `.r1cs`, `.pk`, and `.vk` files from a trusted, checksum-verified
   circuit release. Do not load keys supplied by an untrusted proof request.
 
