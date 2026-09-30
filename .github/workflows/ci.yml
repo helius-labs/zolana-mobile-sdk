@@ -59,6 +59,9 @@ jobs:
         env:
           ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
       - run: cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignored
+      - run: cargo test -p zolana-mobile proves_a_client_request_with_the_pinned_key -- --ignored
+        env:
+          ZOLANA_TEST_KEY_DIR: ${{ github.workspace }}/.cache/proving
       - run: flutter pub get && flutter analyze && flutter test
         working-directory: packages/zolana_mobile
       - run: bash scripts/test-consumer.sh android
@@ -113,3 +116,9 @@ jobs:
           if-no-files-found: ignore
       - run: flutter pub get && flutter build ios --simulator
         working-directory: packages/zolana_mobile/example
+
+  upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: bash scripts/check-upstream.sh
