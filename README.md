@@ -22,8 +22,8 @@ The generated native library keeps Mopro's internal
 
 ## Demo
 
-Install Flutter, Rust, Go 1.27.1 or newer, and the platform toolchain. Then stage
-the ignored proving assets:
+Install Flutter and the platform toolchain. Then stage the ignored proving
+assets:
 
 ```sh
 ./scripts/stage-demo-assets.sh
@@ -32,9 +32,11 @@ flutter pub get
 flutter run
 ```
 
-Android builds compile the gnark bridge from source and require an installed
-NDK. Set both variables to the NDK directory shown by Android Studio's SDK
-Manager before running Flutter, for example:
+The build uses the precompiled native libraries (see below). When no release
+matches the sources, it builds them from source with Rust and Go 1.27.1 or
+newer. Android source builds require an installed NDK. Set both variables to the
+NDK directory shown by Android Studio's SDK Manager before running Flutter, for
+example:
 
 ```sh
 export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/27.1.12297006"
@@ -81,6 +83,26 @@ runs it on every push. To move to a newer Zolana revision, re-vendor
 `go/protocol` from `prover/server`, regenerate its `UPSTREAM_FILES.sha256`, bump
 the Cargo pins and the key checksums in `stage-demo-assets.sh`, and regenerate
 the 2→3 fixtures as described in the rust-gnark provenance file.
+
+## Precompiled binaries
+
+The `Precompiled binaries` workflow runs on every push to `main`:
+
+1. It computes the crate hash of `packages/zolana_mobile/rust` and its path
+   dependencies (`native/zolana-mobile`, `native/rust-gnark` with the Go
+   sources).
+2. It builds the library with the Go prover for Android (`aarch64`, `armv7`,
+   `x86_64`) and iOS (device, `arm64` and `x86_64` simulator).
+3. It signs every file and uploads it to the release `precompiled_<hash>`.
+   Targets that the release already has are skipped.
+4. It builds the example app for Android and iOS without Rust, from the
+   uploaded files only.
+
+The signing key is the repository secret `CARGOKIT_PRIVATE_KEY`, 64 bytes as
+hex. Its public key is pinned in `packages/zolana_mobile/rust/cargokit.yaml`. To
+rotate the key, run `dart run build_tool gen-key` in
+`packages/zolana_mobile/cargokit/build_tool`, then replace the secret and the
+public key together. Releases signed with the old key stop verifying.
 
 ## Current boundary
 

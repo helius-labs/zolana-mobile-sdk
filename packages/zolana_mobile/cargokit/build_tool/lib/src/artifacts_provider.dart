@@ -64,7 +64,7 @@ class ArtifactProvider {
     }
 
     final rustup = Rustup();
-    for (final target in targets) {
+    for (final target in pendingTargets) {
       final builder = RustBuilder(target: target, environment: environment);
       builder.prepare(rustup);
       _log.info('Building ${environment.crateInfo.packageName} for $target');
@@ -91,15 +91,6 @@ class ArtifactProvider {
               ))
           .where((element) => File(element.path).existsSync())
           .toList();
-      if (target.android != null) {
-        final gnarkLibrary = path.join(targetDir, 'libgnark.so');
-        if (File(gnarkLibrary).existsSync()) {
-          artifacts.add(Artifact(
-            path: gnarkLibrary,
-            finalFileName: 'libgnark.so',
-          ));
-        }
-      }
       result[target] = artifacts;
     }
     return result;
@@ -142,12 +133,16 @@ class ArtifactProvider {
         if (!File(downloadedPath).existsSync()) {
           final signatureFileName =
               PrecompileBinaries.signatureFileName(target, artifact);
-          await _tryDownloadArtifacts(
-            crateHash: crateHash,
-            fileName: fileName,
-            signatureFileName: signatureFileName,
-            finalPath: downloadedPath,
-          );
+          try {
+            await _tryDownloadArtifacts(
+              crateHash: crateHash,
+              fileName: fileName,
+              signatureFileName: signatureFileName,
+              finalPath: downloadedPath,
+            );
+          } on Exception catch (e) {
+            _log.warning('Failed to download $fileName: $e');
+          }
         }
         if (File(downloadedPath).existsSync()) {
           artifactsForTarget.add(Artifact(
@@ -267,7 +262,11 @@ List<String> getArtifactNames({
     if (aritifactType == AritifactType.staticlib) {
       return ['lib$libraryName.a'];
     } else {
-      return ['lib$libraryName.so'];
+      return [
+        'lib$libraryName.so',
+        // On Android the Go prover is a separate shared library.
+        if (target.android != null) 'libgnark.so',
+      ];
     }
   } else {
     throw Exception("Unsupported target: ${target.rust}");

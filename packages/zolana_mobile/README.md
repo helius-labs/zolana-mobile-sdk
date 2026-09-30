@@ -6,16 +6,43 @@ contains its Rust and Go sources; it does not require a sibling Zolana checkout.
 
 ## Requirements
 
-- Flutter with Dart 3.13.3 or newer, Rust stable, and Go 1.27.1 or newer.
-- Android: an installed NDK. Set `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to its
-  directory if the SDK installation cannot be discovered automatically.
-- iOS: Xcode with its license accepted, CocoaPods, and the Rust iOS target.
+- Flutter with Dart 3.13.3 or newer.
+- Android: the NDK named by the app's `android.ndkVersion`.
+- iOS: Xcode with its license accepted and CocoaPods.
 - Matching `.r1cs`, `.pk`, and `.vk` files from a trusted, checksum-verified
   circuit release. Do not load keys supplied by an untrusted proof request.
+
+Rust and Go are needed only for a build from source, see
+[Native libraries](#native-libraries).
 
 The Dart runtime, Rust runtime, and generated Flutter Rust Bridge code are pinned
 to **2.11.1** together. Do not override only one of these versions. Regenerate
 bindings when upgrading them.
+
+## Native libraries
+
+The plugin downloads precompiled native libraries from the GitHub releases of
+this repository:
+
+- Android: `arm64-v8a`, `armeabi-v7a` and `x86_64`.
+- iOS: device (`arm64`) and simulator (`arm64`, `x86_64`).
+
+Each file is signed. Cargokit checks the signature with the Ed25519 public key
+in `rust/cargokit.yaml` and ignores a file with an invalid signature.
+
+The release name contains a hash of the Rust and Go sources of the plugin. If no
+release matches the sources, for example after a local change, the plugin builds
+the library from source. A build from source needs:
+
+- Rust stable with the target of the platform, and Go 1.27.1 or newer.
+- Android: an installed NDK. Set `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to its
+  directory if the SDK installation cannot be discovered automatically.
+
+To always build from source, add `cargokit_options.yaml` to the app directory:
+
+```yaml
+use_precompiled_binaries: false
+```
 
 ## Prepare once, prove repeatedly
 
