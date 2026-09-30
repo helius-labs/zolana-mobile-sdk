@@ -71,7 +71,7 @@ class KeystoreSigner implements SolanaSigner {
       /* ask the user, then sign with Ed25519 */;
 }
 
-await RustLib.init();
+await initZolanaMobile();
 final wallet = await ZolanaWallet.open(
   signer: KeystoreSigner(),
   config: WalletConfig(
