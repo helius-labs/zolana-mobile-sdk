@@ -6,7 +6,7 @@ asset_dir="$repo_root/packages/zolana_mobile/example/assets/proving"
 key_name="transfer_confidential_2_3.key"
 key="$repo_root/.cache/proving/$key_name"
 witness="$repo_root/fixtures/witness-2x3.json"
-key_checksum="55bc6b864955505d443f69a6c7ccde982ac4df75a2a48989611f41cd4475f9ed"
+key_checksum="dc40be6315c921ff9c69651e51d891ca3cef936630d98873bb0a767c039ab0dd"
 pk_checksum="47b4f31c9bbc3c6251a99cb94eccfc4f667223fe57d0eb95e6950d2df4a778df"
 vk_checksum="77bdbb4dd66e6f32c71884fc6794192a0a42eb0fa25dc60aa242855ff4fcfa3f"
 r1cs_checksum="1488963e03cf968dea4083a8e3f86395ccbdb7338afc31aa067163ff4df4c51c"
@@ -46,7 +46,7 @@ if [[ ! -f "$key" ]] || [[ "$(sha256 "$key")" != "$key_checksum" ]]; then
   temporary_key="$(mktemp)"
   trap 'rm -f "$temporary_key"' EXIT
   echo "downloading $key_name"
-  curl -fsSL "$base_url/proving-keys/7765d8fa45c5416c/$key_name" -o "$temporary_key"
+  curl -fsSL "$base_url/proving-keys/11b65848058386ad/$key_name" -o "$temporary_key"
   if [[ "$(sha256 "$temporary_key")" != "$key_checksum" ]]; then
     echo "downloaded proving key checksum does not match the lockfile" >&2
     exit 1
