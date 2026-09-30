@@ -12,7 +12,7 @@ void main() {
   testWidgets(
     'clean consumer initializes, proves a request, and drains on lock',
     (tester) async {
-      await RustLib.init();
+      await initZolanaMobile();
       final directory = await Directory.systemTemp.createTemp(
         'zolana-consumer-',
       );

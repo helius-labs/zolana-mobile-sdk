@@ -22,7 +22,7 @@ bindings when upgrading them.
 ```dart
 import 'package:zolana_mobile/zolana_mobile.dart';
 
-await RustLib.init();
+await initZolanaMobile();
 final prover = await LocalProver.load(
   r1csPath: circuitPath,
   provingKeyPath: provingKeyPath,
@@ -43,6 +43,10 @@ locally and returns the canonical `{ar, bs, krs}` proof JSON consumed by Zolana.
 It verifies the proof locally before returning. The SDK does not acquire wallet
 state, authorize a transaction, sign, or submit it. Keep those operations in the
 wallet's existing Zolana transaction flow.
+
+Load the native library with `initZolanaMobile()`, not `RustLib.init()`. On iOS
+the pod links the Rust library into the plugin framework, which the default
+loader does not look in.
 
 The structured adapter supports `transfer-confidential`, `transfer-ring`,
 `transfer-ring-authority`, `merge`, and `merge-ring`, with a matching supported
