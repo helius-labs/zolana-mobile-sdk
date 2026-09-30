@@ -6,7 +6,7 @@ contains its Rust and Go sources; it does not require a sibling Zolana checkout.
 
 ## Requirements
 
-- Flutter with Dart 3.13.3 or newer.
+- Flutter with Dart 3.13.0 or newer (CI checks Flutter 3.47.2).
 - Android: the NDK named by the app's `android.ndkVersion`.
 - iOS: Xcode with its license accepted and CocoaPods.
 - Matching `.r1cs`, `.pk`, and `.vk` files from a trusted, checksum-verified
