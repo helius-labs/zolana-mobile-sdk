@@ -5256,7 +5256,6 @@ dependencies = [
 name = "zolana-mobile"
 version = "0.1.0"
 dependencies = [
- "getrandom 0.3.4",
  "mopro-ffi",
  "reqwest",
  "rust-gnark",
@@ -5264,15 +5263,22 @@ dependencies = [
  "serde_json",
  "sha2",
  "solana-address 2.6.1",
+ "solana-commitment-config",
+ "solana-message",
  "solana-pubkey 4.2.0",
+ "solana-rpc-client",
  "solana-secp256r1-program",
  "solana-signature",
+ "solana-transaction",
  "wincode",
  "zeroize",
  "zolana-client",
  "zolana-hasher",
+ "zolana-interface",
  "zolana-keypair",
+ "zolana-program",
  "zolana-transaction",
+ "zolana-wallet",
 ]
 
 [[package]]
@@ -5321,6 +5327,45 @@ dependencies = [
  "zerocopy",
  "zolana-event",
  "zolana-hasher",
+]
+
+[[package]]
+name = "zolana-user-registry-interface"
+version = "0.1.0"
+source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+dependencies = [
+ "borsh",
+ "solana-instruction",
+ "solana-pubkey 4.2.0",
+ "solana-secp256r1-program",
+]
+
+[[package]]
+name = "zolana-wallet"
+version = "0.1.0"
+source = "git+https://github.com/helius-labs/zolana?rev=a7846c611d4effa41f1256dd5f1367c076117be5#a7846c611d4effa41f1256dd5f1367c076117be5"
+dependencies = [
+ "async-trait",
+ "borsh",
+ "futures",
+ "solana-account 4.3.2",
+ "solana-address 2.6.1",
+ "solana-hash",
+ "solana-instruction",
+ "solana-keypair",
+ "solana-message",
+ "solana-pubkey 4.2.0",
+ "solana-signature",
+ "solana-signer",
+ "solana-transaction",
+ "zolana-client",
+ "zolana-event",
+ "zolana-event-parser",
+ "zolana-interface",
+ "zolana-keypair",
+ "zolana-program",
+ "zolana-transaction",
+ "zolana-user-registry-interface",
 ]
 
 [[package]]
