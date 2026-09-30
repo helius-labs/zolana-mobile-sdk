@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use zolana_client::{prover::ExpectedProvingKey, ClientError, Delivery, Proof, Prover};
+use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
 
 use crate::{init_gnark, keys, Loaded, PREPARED};
 
@@ -72,23 +72,36 @@ impl Drop for NativeProver {
     }
 }
 
+/// Proves in the calling thread, so [`ProveRequest::delivery`] does not apply.
 impl Prover for NativeProver {
-    fn prove_body(
-        &self,
-        body: &str,
-        _delivery: Delivery,
-        key: &ExpectedProvingKey,
-    ) -> Result<Proof, ClientError> {
-        let proof_json = self.prove_json(body, key).map_err(ClientError::Prover)?;
+    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
+        let body = request.body()?;
+        let key = request.proving_key()?;
+        let proof_json = self.prove_json(&body, &key).map_err(ClientError::Prover)?;
         Proof::from_gnark_json(&proof_json)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use zolana_client::{Delivery, Prover};
+    use zeroize::Zeroizing;
 
     use super::*;
+
+    /// The captured 2→3 client body, with the key it asks for.
+    struct Captured(ExpectedProvingKey);
+
+    impl ProveRequest for Captured {
+        fn body(&self) -> Result<Zeroizing<String>, ClientError> {
+            Ok(Zeroizing::new(
+                include_str!("../../../../../fixtures/prove-request-2x3.json").to_string(),
+            ))
+        }
+
+        fn proving_key(&self) -> Result<ExpectedProvingKey, ClientError> {
+            Ok(self.0.clone())
+        }
+    }
 
     /// Downloads `transfer_confidential_2_3.key` into `ZOLANA_TEST_KEY_DIR`
     /// (or a temp directory) unless it is already there and pinned.
@@ -102,19 +115,15 @@ mod tests {
                 .to_string()
         });
         let prover = NativeProver::new(keys::KeyStore::new(dir, None).unwrap());
-        let request = include_str!("../../../../../fixtures/prove-request-2x3.json");
-        let key = transfer_2_3_key();
         let proof = prover
-            .prove_body(request, Delivery::InResponse, &key)
+            .prove(&Captured(transfer_2_3_key()))
             .expect("prove the captured client request");
         assert!(
             proof.commitment.is_none(),
             "the eddsa rail has no BSB22 commitment"
         );
         // The same key serves the next proof without reloading.
-        prover
-            .prove_body(request, Delivery::InResponse, &key)
-            .unwrap();
+        prover.prove(&Captured(transfer_2_3_key())).unwrap();
     }
 
     fn transfer_2_3_key() -> ExpectedProvingKey {

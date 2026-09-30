@@ -35,7 +35,8 @@ which the Rust `zolana-*` git dependencies pin as well. It must be a commit on
 from that commit, module `zolana/prover`, plus the `prover-test` packages the
 merge fixture test needs. Every Go file is copied byte for byte from
 `prover/server/<same path>`; unused files of a package (key download, lazy
-key management, setup) are omitted. go.mod is reduced to the dependencies
+key management, setup, and the GPU backend behind the `aeglos` build tag)
+are omitted. go.mod is reduced to the dependencies
 used by this closure at the same gnark and gnark-crypto versions as upstream;
 the gnark-lean-extractor replacement remains pinned to
 `github.com/Lightprotocol/gnark-lean-extractor/v3`
@@ -63,7 +64,7 @@ keys. Native asset loading uses validated ReadFrom exclusively.
   request captured from the pinned revision's own Rust client
   (`zolana-client`, `sdk-libs/client/tests/transaction_proving.rs` harness:
   inputs of 100 and 50 lamports, a 60 lamport send, declared 2→3 shape) by
-  pointing `ProverClient` at a local capture server. Keys and blindings are
+  proving it with a `Prover` that records the request body. Keys and blindings are
   random test values. fixtures/prove-request-2x3.json is the same bytes plus a
   trailing newline.
 - go/testdata/witness-2x3.json (and fixtures/witness-2x3.json) is that request
