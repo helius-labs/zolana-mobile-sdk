@@ -73,9 +73,21 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
+      - name: Run clean consumer on an API 35 emulator
+        uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Run clean consumer on an API 26 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 26
           arch: x86_64
           target: google_apis
           disable-animations: true
@@ -116,6 +128,8 @@ jobs:
           if-no-files-found: ignore
       - run: flutter pub get && flutter build ios --simulator
         working-directory: packages/zolana_mobile/example
+      - name: Check that the native library runs on iOS 16
+        run: bash scripts/check-ios-minimum.sh "$(find packages/zolana_mobile/example/build/ios -name libmopro_flutter_bindings.a | head -1)" 16.0
 
   upstream:
     runs-on: ubuntu-latest
