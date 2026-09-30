@@ -63,12 +63,17 @@ impl KeyStore {
     }
 
     /// Path of `name` in the store, downloading it first if it is missing or
-    /// does not match the lockfile.
-    pub fn ensure(&self, name: &str) -> Result<PathBuf, String> {
+    /// does not match the lockfile. Fails unless the lockfile pins `name` to
+    /// `sha256`, the digest the on-chain verifier expects.
+    pub fn ensure(&self, name: &str, sha256: &[u8; 32]) -> Result<PathBuf, String> {
         let entry = lockfile()
             .keys
             .get(name)
             .ok_or_else(|| "proving_key_unknown".to_string())?;
+        let expected: String = sha256.iter().map(|byte| format!("{byte:02x}")).collect();
+        if entry.sha256 != expected {
+            return Err("proving_key_mismatch".to_string());
+        }
         let path = self.dir.join(name);
         if self
             .verified

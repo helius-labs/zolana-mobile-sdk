@@ -2,13 +2,13 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use zolana_client::{ClientError, Delivery, Proof, Prover};
+use zolana_client::{ClientError, Proof, ProveRequest, Prover};
 
 use crate::{init_gnark, keys, Loaded, PREPARED};
 
-/// Proves each `/prove` body with the pinned key for its shape, loading that
-/// key into the shared prepared slot when the shape changes. Request bodies
-/// carry nullifier secrets and never leave the process.
+/// Proves each request with the key it names, loading that key into the
+/// shared prepared slot when the shape changes. Request bodies carry
+/// nullifier secrets and never leave the process.
 pub(crate) struct NativeProver {
     keys: keys::KeyStore,
     /// Id of the prepared system this prover loaded last; 0 before the first.
@@ -23,14 +23,19 @@ impl NativeProver {
         }
     }
 
-    fn prove_json(&self, body: &str) -> Result<String, String> {
-        let name = keys::key_name_for_request(body)?;
-        let path = self.keys.ensure(&name)?;
+    /// Proves `body` with the key `name`, which must be the key the body's
+    /// circuit and shape need, pinned to `sha256`, the digest the on-chain
+    /// verifier expects.
+    fn prove_json(&self, body: &str, name: &str, sha256: &[u8; 32]) -> Result<String, String> {
+        if keys::key_name_for_request(body)? != name {
+            return Err("proving_key_mismatch".to_string());
+        }
+        let path = self.keys.ensure(name, sha256)?;
         let mut state = PREPARED
             .lock()
             .map_err(|_| "prover_unavailable".to_string())?;
         let loaded_key = state.loaded.as_ref().map(|loaded| loaded.key.as_deref());
-        if loaded_key != Some(Some(name.as_str())) {
+        if loaded_key != Some(Some(name)) {
             if loaded_key == Some(None) {
                 // The application holds its own prepared system; leave it.
                 return Err("prover_busy".to_string());
@@ -45,7 +50,7 @@ impl NativeProver {
             self.loaded.store(id, Ordering::Relaxed);
             state.loaded = Some(Loaded {
                 id,
-                key: Some(name),
+                key: Some(name.to_string()),
                 prover,
             });
         }
@@ -72,18 +77,52 @@ impl Drop for NativeProver {
     }
 }
 
+/// Proves in the calling thread, so [`ProveRequest::delivery`] does not apply.
 impl Prover for NativeProver {
-    fn prove_body(&self, body: &str, _delivery: Delivery) -> Result<Proof, ClientError> {
-        let proof_json = self.prove_json(body).map_err(ClientError::Prover)?;
+    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
+        let body = request.body()?;
+        let key = request.proving_key()?;
+        let proof_json = self
+            .prove_json(&body, &key.name, &key.sha256)
+            .map_err(ClientError::Prover)?;
         Proof::from_gnark_json(&proof_json)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use zolana_client::{Delivery, Prover};
+    use zeroize::Zeroizing;
+    use zolana_client::prover::{known_proving_keys, ExpectedProvingKey};
 
     use super::*;
+
+    const KEY: &str = "transfer_confidential_2_3.key";
+
+    /// The captured 2→3 client body, with the key it asks for.
+    struct Captured(ExpectedProvingKey);
+
+    impl ProveRequest for Captured {
+        fn body(&self) -> Result<Zeroizing<String>, ClientError> {
+            Ok(Zeroizing::new(
+                include_str!("../../../../../fixtures/prove-request-2x3.json").to_string(),
+            ))
+        }
+
+        fn proving_key(&self) -> Result<ExpectedProvingKey, ClientError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// The key the on-chain verifier pins for the captured body.
+    fn pinned() -> ExpectedProvingKey {
+        let (name, sha256) = known_proving_keys()
+            .find(|(name, _)| *name == KEY)
+            .expect("the verifier pins the 2→3 key");
+        ExpectedProvingKey {
+            name: name.to_string(),
+            sha256,
+        }
+    }
 
     /// Downloads `transfer_confidential_2_3.key` into `ZOLANA_TEST_KEY_DIR`
     /// (or a temp directory) unless it is already there and pinned.
@@ -97,15 +136,26 @@ mod tests {
                 .to_string()
         });
         let prover = NativeProver::new(keys::KeyStore::new(dir, None).unwrap());
-        let request = include_str!("../../../../../fixtures/prove-request-2x3.json");
         let proof = prover
-            .prove_body(request, Delivery::InResponse)
+            .prove(&Captured(pinned()))
             .expect("prove the captured client request");
         assert!(
             proof.commitment.is_none(),
             "the eddsa rail has no BSB22 commitment"
         );
         // The same key serves the next proof without reloading.
-        prover.prove_body(request, Delivery::InResponse).unwrap();
+        prover.prove(&Captured(pinned())).unwrap();
+    }
+
+    #[test]
+    fn refuses_a_key_the_verifier_does_not_pin() {
+        let prover = NativeProver::new(keys::KeyStore::new(std::env::temp_dir(), None).unwrap());
+        let mut key = pinned();
+        key.sha256[0] ^= 1;
+        let error = prover.prove(&Captured(key)).unwrap_err();
+        assert!(
+            matches!(&error, ClientError::Prover(message) if message == "proving_key_mismatch"),
+            "{error:?}"
+        );
     }
 }

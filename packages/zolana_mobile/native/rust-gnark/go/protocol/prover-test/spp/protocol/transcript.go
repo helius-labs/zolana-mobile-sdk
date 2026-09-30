@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"zolana/prover/prover-test/poseidon"
+	prooftranscript "zolana/prover/prover/transcript"
 )
 
 // HashChain folds values from left to right:
@@ -42,49 +43,49 @@ func HashChain(inputs []*big.Int) (*big.Int, error) {
 // Every call is the 4-input permutation; a short trailing group is zero
 // padded. Only chains whose length the compiled circuit fixes may use it.
 func HashChain4(inputs []*big.Int) (*big.Int, error) {
-	if len(inputs) == 0 {
-		return new(big.Int), nil
-	}
-	for i, input := range inputs {
-		if err := validateFieldElement(fmt.Sprintf("input[%d]", i), input); err != nil {
-			return nil, fmt.Errorf("spp: hash chain 4: %w", err)
-		}
-	}
-
-	h := new(big.Int).Set(inputs[0])
-	for start := 1; start < len(inputs); start += 3 {
-		group := []*big.Int{h, new(big.Int), new(big.Int), new(big.Int)}
-		for j := 0; j < 3 && start+j < len(inputs); j++ {
-			group[1+j] = inputs[start+j]
-		}
-		next, err := poseidon.Hash(group)
-		if err != nil {
-			return nil, fmt.Errorf("spp: hash chain 4 step %d: %w", start, err)
-		}
-		h = next
-	}
-	return h, nil
+	return prooftranscript.HashChain4(inputs)
 }
 
 // RightHashChain folds values from right to left. The fixed-width signer
 // transcript uses this direction so the on-chain verifier can start from a
 // precomputed all-zero suffix.
 func RightHashChain(inputs []*big.Int) (*big.Int, error) {
+	return prooftranscript.RightHashChain(inputs)
+}
+
+// RightHashChain4 mirrors gadget.RightHashChain4: h = inputs[len-1], then,
+// walking the preceding elements backwards in groups of up to three that keep
+// their order, h = Poseidon(g[0], g[1] or 0, g[2] or 0, h). The short group is
+// the leftmost one and its elements stay left-aligned, so an all-zero suffix
+// folds to a constant of its length alone. The cached-commitment chain uses
+// this direction; only chains whose length the compiled circuit fixes may use
+// it.
+func RightHashChain4(inputs []*big.Int) (*big.Int, error) {
 	if len(inputs) == 0 {
 		return new(big.Int), nil
 	}
 	for i, input := range inputs {
 		if err := validateFieldElement(fmt.Sprintf("input[%d]", i), input); err != nil {
-			return nil, fmt.Errorf("spp: right hash chain: %w", err)
+			return nil, fmt.Errorf("spp: right hash chain 4: %w", err)
 		}
 	}
+
 	h := new(big.Int).Set(inputs[len(inputs)-1])
-	for i := len(inputs) - 2; i >= 0; i-- {
-		next, err := poseidon.Hash([]*big.Int{inputs[i], h})
+	for end := len(inputs) - 1; end > 0; {
+		start := end - 3
+		if start < 0 {
+			start = 0
+		}
+		group := []*big.Int{new(big.Int), new(big.Int), new(big.Int), h}
+		for j := start; j < end; j++ {
+			group[j-start] = inputs[j]
+		}
+		next, err := poseidon.Hash(group)
 		if err != nil {
-			return nil, fmt.Errorf("spp: right hash chain step %d: %w", i, err)
+			return nil, fmt.Errorf("spp: right hash chain 4 step %d: %w", start, err)
 		}
 		h = next
+		end = start
 	}
 	return h, nil
 }

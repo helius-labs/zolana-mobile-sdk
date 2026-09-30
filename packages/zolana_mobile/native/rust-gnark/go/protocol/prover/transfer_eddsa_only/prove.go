@@ -6,11 +6,17 @@ import (
 
 	txcircuit "zolana/prover/circuits/spp_transaction/shared"
 	"zolana/prover/prover/common"
+	"zolana/prover/prover/timing"
 
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/frontend"
+	"zolana/prover/prover/backend"
 )
+
+type TransferProof struct {
+	System     *common.TransferProofSystem
+	Parameters *TransferParameters
+	Timing     *timing.Trace
+}
 
 func (p *TransferParameters) ValidateShape() error {
 	if len(p.Inputs) != int(p.NInputs) {
@@ -33,7 +39,9 @@ func (p *TransferParameters) ValidateShape() error {
 	// SelectTreeSlot, and a slot the packed InputFlags does not publish inside
 	// the flag decode, both as opaque proving errors; reject them as request
 	// errors.
-	if err := common.ValidateTreeSlots(p.TreeSlots, inputSlots, txcircuit.InputTrees); err != nil {
+	if err := common.ValidateTreeSlotRoots(
+		p.TreeSlots, inputSlots, txcircuit.InputTrees, p.needsStateRoot,
+	); err != nil {
 		return err
 	}
 	if err := common.ValidateInputFlags(p.InputFlags, inputSlots); err != nil {
@@ -42,32 +50,26 @@ func (p *TransferParameters) ValidateShape() error {
 	if p.OutputTreeID == nil {
 		return fmt.Errorf("spp: outputTreeId is required")
 	}
+	if err := p.Cache.Validate(int(p.NInputs)); err != nil {
+		return err
+	}
 	return nil
 }
 
-func ProveTransfer(ps *common.TransferProofSystem, params *TransferParameters) (*common.Proof, error) {
-	if params == nil {
-		panic("params cannot be nil")
-	}
-
-	if err := params.ValidateShape(); err != nil {
+func (request TransferProof) Prove() (*common.Proof, error) {
+	ps, params := request.System, request.Parameters
+	proof, err := backend.ProveAssignment(request.Timing, ps.ConstraintSystem, ps.ProvingKey, func() (frontend.Circuit, error) {
+		if err := params.ValidateShape(); err != nil {
+			return nil, err
+		}
+		assignment, err := params.CreateWitness()
+		if err != nil {
+			return nil, fmt.Errorf("create transfer witness: %w", err)
+		}
+		return assignment, nil
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	assignment, err := params.CreateWitness()
-	if err != nil {
-		return nil, fmt.Errorf("error creating circuit: %v", err)
-	}
-
-	witness, err := frontend.NewWitness(assignment, ecc.BN254.ScalarField())
-	if err != nil {
-		return nil, fmt.Errorf("error creating witness: %v", err)
-	}
-
-	proof, err := groth16.Prove(ps.ConstraintSystem, ps.ProvingKey, witness)
-	if err != nil {
-		return nil, fmt.Errorf("error proving: %v", err)
-	}
-
-	return &common.Proof{Proof: proof}, nil
+	return &common.Proof{Proof: proof, ProvingKeySha256: ps.ProvingKeySha256}, nil
 }

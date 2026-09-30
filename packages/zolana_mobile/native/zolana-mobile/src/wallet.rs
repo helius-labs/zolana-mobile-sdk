@@ -30,8 +30,9 @@ use zolana_client::{
     compile_message, ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SolanaRpc,
     ZolanaClient,
 };
-use zolana_interface::{instruction::CreateAssociatedTokenAccount, pda};
+use zolana_interface::pda;
 use zolana_keypair::{derivation, PublicKey, ShieldedAddress};
+use zolana_program::instruction::CreateAssociatedTokenAccount;
 use zolana_transaction::AssetRegistry;
 use zolana_wallet::{
     build_deposit_transaction_sync, build_private_transaction_sync,
@@ -254,6 +255,7 @@ impl MobileWallet {
             &self.client,
             self.owner,
             &self.wallet.identity,
+            None,
             None,
         )
         .map_err(error)?;
@@ -725,7 +727,7 @@ mod tests {
             Default::default(),
             ComputeBudgetConfig {
                 cu_limit: 200_000,
-                cu_price_micro_lamports: None,
+                priority_fee_lamports: None,
             },
         )
         .unwrap();

@@ -30,14 +30,15 @@ solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30", features = ["std"] }
-zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30", features = ["solana"] }
-zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30" }
-zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30", features = ["client"] }
-zolana-wallet = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30" }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5", features = ["std"] }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5", features = ["borsh"] }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
+zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5", features = ["client"] }
+zolana-wallet = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
 # Off-chain, this crate links OpenSSL; mobile targets have no system copy.
 solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
-zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "88c5cdc0e457a963580ced47f842d94901eb0e30" }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
 
 [dev-dependencies]
 solana-account = "4.3"
