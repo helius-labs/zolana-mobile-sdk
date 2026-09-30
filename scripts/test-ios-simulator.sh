@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Runs the clean consumer integration test on an iOS simulator with a deadline
 # on every phase. Hosted macOS runners sometimes never finish a simulator boot,
-# or leave `flutter test` waiting on an app that never reports back; without a
-# deadline the job waits for the 6-hour runner limit. A boot that misses its
-# deadline is retried once on a fresh device. A test that misses its deadline
-# fails, and prints the process tree and simulator log so the stuck phase is
-# visible.
+# and an unpatched Flutter tool can miss the app's VM Service URL and wait
+# forever (see scripts/patch-flutter-tool.sh); without a deadline the job waits
+# for the 6-hour runner limit. A boot that misses its deadline is retried once
+# on a fresh device. A test that misses its deadline fails, and prints the
+# process tree and simulator log so the stuck phase is visible. The test
+# deadline covers the Xcode build, which takes up to 18 minutes on a slow
+# runner.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 boot_seconds="${ZOLANA_BOOT_SECONDS:-600}"
-test_seconds="${ZOLANA_TEST_SECONDS:-1500}"
+test_seconds="${ZOLANA_TEST_SECONDS:-2400}"
 diagnostics="${ZOLANA_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ios-simulator-diagnostics}"
 mkdir -p "$diagnostics"
 
