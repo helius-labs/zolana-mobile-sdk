@@ -46,7 +46,7 @@ jobs:
           --manifest-dir=../../rust
           --android-sdk-location="$ANDROID_HOME"
           --android-ndk-version="$NDK_VERSION"
-          --android-min-sdk-version=21
+          --android-min-sdk-version=24
           --target=aarch64-linux-android
           --target=armv7-linux-androideabi
           --target=x86_64-linux-android
@@ -84,6 +84,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PRIVATE_KEY: ${{ secrets.CARGOKIT_PRIVATE_KEY }}
+          # The podspec minimum. Xcode sets it for source builds; without it,
+          # C code the cc crate compiles targets the runner's SDK version.
+          IPHONEOS_DEPLOYMENT_TARGET: "15.0"
 
   # The example app must build from the uploaded binaries alone.
   android-prebuilt:
