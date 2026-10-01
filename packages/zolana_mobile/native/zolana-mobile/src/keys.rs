@@ -10,7 +10,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
-    io::{Read, Write},
+    io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
@@ -18,6 +18,8 @@ use std::{
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use zolana_client::prover::ExpectedProvingKey;
+
+use crate::transport::{Transport, TransportRequest};
 
 /// The upstream prover's default key host.
 pub const DEFAULT_PROVING_KEYS_URL: &str = "https://d3gbdb0egjwcw9.cloudfront.net";
@@ -45,13 +47,19 @@ fn lockfile() -> &'static Lockfile {
 pub struct KeyStore {
     dir: PathBuf,
     base_url: String,
+    /// Downloads go through it when there is one.
+    transport: Option<Transport>,
     /// Keys whose digest was checked this process. Re-hashing a 240 MB merge
     /// key before every proof would cost more than the proof.
     verified: Mutex<HashSet<String>>,
 }
 
 impl KeyStore {
-    pub fn new(dir: impl Into<PathBuf>, base_url: Option<String>) -> Result<Self, String> {
+    pub fn new(
+        dir: impl Into<PathBuf>,
+        base_url: Option<String>,
+        transport: Option<Transport>,
+    ) -> Result<Self, String> {
         let base_url = base_url.unwrap_or_else(|| DEFAULT_PROVING_KEYS_URL.to_string());
         if !is_allowed_url(&base_url) {
             return Err("proving_key_url_insecure".to_string());
@@ -59,6 +67,7 @@ impl KeyStore {
         Ok(Self {
             dir: dir.into(),
             base_url: base_url.trim_end_matches('/').to_string(),
+            transport,
             verified: Mutex::new(HashSet::new()),
         })
     }
@@ -96,13 +105,7 @@ impl KeyStore {
     }
 
     fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), String> {
-        let url = format!("{}/{}/{name}", self.base_url, lockfile().prefix);
-        let mut response = reqwest::blocking::Client::builder()
-            .timeout(None)
-            .build()
-            .and_then(|client| client.get(url).send())
-            .and_then(reqwest::blocking::Response::error_for_status)
-            .map_err(|_| "proving_key_download_failed".to_string())?;
+        let mut response = self.fetch(format!("{}/{}/{name}", self.base_url, lockfile().prefix))?;
         let partial = path.with_extension("key.partial");
         let result = (|| {
             let mut file = File::create(&partial).map_err(|_| "proving_key_dir_unwritable")?;
@@ -118,6 +121,36 @@ impl KeyStore {
         }
         result
     }
+
+    /// The body of `url`. Through the transport it arrives whole, before it
+    /// is checked.
+    fn fetch(&self, url: String) -> Result<Box<dyn Read>, String> {
+        let Some(transport) = &self.transport else {
+            let response = reqwest::blocking::Client::builder()
+                .timeout(None)
+                .build()
+                .and_then(|client| client.get(url).send())
+                .and_then(reqwest::blocking::Response::error_for_status)
+                .map_err(download_failed)?;
+            return Ok(Box::new(response));
+        };
+        let response = transport
+            .send_blocking(TransportRequest {
+                method: "GET".to_string(),
+                url,
+                headers: HashMap::new(),
+                body: Vec::new(),
+            })
+            .map_err(download_failed)?;
+        if !(200..300).contains(&response.status) {
+            return Err(download_failed(response.status));
+        }
+        Ok(Box::new(Cursor::new(response.body)))
+    }
+}
+
+fn download_failed<E>(_: E) -> String {
+    "proving_key_download_failed".to_string()
 }
 
 /// Whether the file at `path` exists and hashes to `entry`.
@@ -206,7 +239,7 @@ mod tests {
 
     #[test]
     fn a_key_the_verifying_key_does_not_pin_is_refused() {
-        let store = KeyStore::new(std::env::temp_dir(), None).unwrap();
+        let store = KeyStore::new(std::env::temp_dir(), None, None).unwrap();
         let unknown = ExpectedProvingKey {
             name: "transfer_confidential_9_9.key".into(),
             sha256: [0; 32],
@@ -240,10 +273,59 @@ mod tests {
     }
 
     #[test]
+    fn downloads_through_the_transport() {
+        use crate::transport::tests::{fake, ok};
+
+        let dir = std::env::temp_dir().join(format!("zolana-key-transport-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("k.key");
+        let entry = LockEntry {
+            // sha256("abc")
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+            size: 3,
+        };
+        let store = |transport| KeyStore::new(&dir, None, Some(transport)).unwrap();
+
+        let (transport, requests) = fake(|_| ok("abc"));
+        store(transport).download("k.key", &entry, &path).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"abc");
+        let request = requests.lock().unwrap().pop().unwrap();
+        assert_eq!(request.method, "GET");
+        assert_eq!(
+            request.url,
+            format!("{DEFAULT_PROVING_KEYS_URL}/{}/k.key", lockfile().prefix)
+        );
+        assert!(request.headers.is_empty() && request.body.is_empty());
+
+        fs::remove_file(&path).unwrap();
+        let (missing, _) = fake(|_| {
+            Ok(crate::TransportResponse {
+                status: 404,
+                body: b"abc".to_vec(),
+            })
+        });
+        let (tampered, _) = fake(|_| ok("abd"));
+        for (transport, expected) in [
+            (missing, "proving_key_download_failed"),
+            (tampered, "proving_key_checksum_mismatch"),
+        ] {
+            assert_eq!(
+                store(transport)
+                    .download("k.key", &entry, &path)
+                    .unwrap_err(),
+                expected
+            );
+            assert!(!path.exists());
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn plaintext_key_hosts_are_refused() {
-        assert!(KeyStore::new("/tmp", Some("http://keys.example.com".into())).is_err());
-        assert!(KeyStore::new("/tmp", Some("http://localhost.evil.com".into())).is_err());
-        assert!(KeyStore::new("/tmp", Some("http://127.0.0.1:9000".into())).is_ok());
-        assert!(KeyStore::new("/tmp", None).is_ok());
+        let store = |url: Option<&str>| KeyStore::new("/tmp", url.map(Into::into), None);
+        assert!(store(Some("http://keys.example.com")).is_err());
+        assert!(store(Some("http://localhost.evil.com")).is_err());
+        assert!(store(Some("http://127.0.0.1:9000")).is_ok());
+        assert!(store(None).is_ok());
     }
 }

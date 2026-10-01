@@ -9,13 +9,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
+import 'package:zolana_mobile_demo/http_client_transport.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
 /// device or simulator running the test, with A reopened from its exported
 /// keys and the transfer signed by the test after a blockhash refresh, as an
 /// application that signs itself does; one proved by a backend that forwards
-/// the request to the Helius prover. Opt in, since it spends devnet SOL and
+/// the request to the Helius prover. In both, A sends every request through a
+/// `dart:io` transport, as an application with its own networking does; B
+/// uses the wallet's HTTP clients. Opt in, since it spends devnet SOL and
 /// needs A funded and a Helius key for devnet:
 ///
 /// ```sh
@@ -102,10 +105,13 @@ void main() {
     final signed = await open(demoAccounts[0]);
     final keys = await signed.exportKeys();
     await signed.close();
+    final transport = HttpClientTransport();
+    addTearDown(transport.close);
     final sender = await ZolanaWallet.openWithKeys(
       config: await config(),
       solanaPublicKey: demoAccounts[0].publicKey,
       keys: keys,
+      transport: transport.send,
     );
     addTearDown(sender.close);
     expect(sender.shieldedAddress, signed.shieldedAddress);
@@ -145,6 +151,13 @@ void main() {
     // already read its notes.
     expect(await sender.privateBalance(), senderBefore - lamports);
     expect(await recipient.privateBalance(), recipientBefore + lamports);
+    // ignore: avoid_print
+    print(
+      'the sender sent ${transport.sent.length} requests through Dart, '
+      'key downloads: ${transport.sent.where((r) => r.startsWith('GET '))}',
+    );
+    expect(transport.sent, contains('POST /'));
+    expect(transport.sent, contains('POST /v1/zolana/getMerkleProofs'));
   }, skip: !_enabled);
 
   testWidgets('sends privately from A to B, proved by the backend', (
@@ -152,10 +165,13 @@ void main() {
   ) async {
     final lamports = BigInt.from(1000000);
     RemoteProver backend = (_) => throw const SocketException('unreachable');
+    final transport = HttpClientTransport();
+    addTearDown(transport.close);
     final sender = await ZolanaWallet.open(
       signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),
       config: await config(),
       remoteProver: (request) => backend(request),
+      transport: transport.send,
     );
     addTearDown(sender.close);
     final recipient = await open(demoAccounts[1]);
@@ -191,5 +207,10 @@ void main() {
     );
     expect(await sender.privateBalance(), senderBefore - lamports);
     expect(await recipient.privateBalance(), recipientBefore + lamports);
+    // ignore: avoid_print
+    print('the sender sent ${transport.sent.length} requests through Dart');
+    expect(transport.sent, contains('POST /'));
+    expect(transport.sent, contains('POST /v1/zolana/getMerkleProofs'));
+    expect(transport.sent.where((r) => r.startsWith('GET ')), isEmpty);
   }, skip: !_enabled);
 }

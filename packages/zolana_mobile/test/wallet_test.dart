@@ -234,6 +234,7 @@ class FakeBackend implements WalletBackend {
   final FakeWallet wallet;
   Uint8List? openedWith;
   WalletKeys? openedWithKeys;
+  ZolanaTransport? transport;
 
   @override
   Future<Uint8List> derivationMessage(String solanaPubkey) async =>
@@ -244,8 +245,10 @@ class FakeBackend implements WalletBackend {
     WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
+    ZolanaTransport? transport,
   ) async {
     openedWith = derivationSignature;
+    this.transport = transport;
     return wallet;
   }
 
@@ -254,8 +257,10 @@ class FakeBackend implements WalletBackend {
     WalletConfig config,
     String solanaPubkey,
     WalletKeys keys,
+    ZolanaTransport? transport,
   ) async {
     openedWithKeys = keys;
+    this.transport = transport;
     return wallet;
   }
 }
@@ -288,6 +293,46 @@ void main() {
       backend.openedWith,
       Uint8List.fromList(owner.codeUnits.reversed.toList()),
     );
+  });
+
+  test('hands the application transport to the native wallet', () async {
+    final requests = <TransportRequest>[];
+    Future<TransportResponse> transport(TransportRequest request) async {
+      requests.add(request);
+      return TransportResponse(status: 200, body: Uint8List.fromList([7]));
+    }
+
+    final request = TransportRequest(
+      method: 'POST',
+      url: 'https://rpc.example',
+      headers: const {'x-token': 'token'},
+      body: Uint8List.fromList([1]),
+    );
+    final opened = FakeBackend(FakeWallet());
+    await ZolanaWallet.open(
+      config: config,
+      signer: RecordingSigner(),
+      transport: transport,
+      backend: opened,
+    );
+    final response = await opened.transport!(request);
+    expect(response.status, 200);
+    expect(response.body, [7]);
+
+    final reopened = FakeBackend(FakeWallet());
+    await ZolanaWallet.openWithKeys(
+      config: config,
+      solanaPublicKey: owner,
+      keys: savedKeys,
+      transport: transport,
+      backend: reopened,
+    );
+    await reopened.transport!(request);
+    expect(requests, [request, request]);
+
+    // Without one the native wallet uses its own HTTP clients.
+    final (_, _, _, backend) = await openWallet();
+    expect(backend.transport, isNull);
   });
 
   test('opens from saved keys without asking for a signature', () async {

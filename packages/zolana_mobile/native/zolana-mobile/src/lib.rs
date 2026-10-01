@@ -10,11 +10,13 @@ mod activity;
 mod asset;
 mod keys;
 mod prover;
+mod transport;
 mod wallet;
 
 pub use activity::{ActivityEntry, ActivityKind};
 pub use keys::DEFAULT_PROVING_KEYS_URL;
 pub use prover::Proving;
+pub use transport::{Transport, TransportRequest, TransportResponse};
 pub use wallet::{
     derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind,
     RegistrationStatus, TokenBalance, WalletConfig, WalletKeys,

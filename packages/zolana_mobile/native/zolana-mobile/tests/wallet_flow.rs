@@ -83,7 +83,7 @@ fn config() -> WalletConfig {
 fn open(signer: &Keypair) -> MobileWallet {
     let pubkey = signer.pubkey().to_string();
     let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
-    MobileWallet::open(config(), pubkey, signature.as_ref().to_vec()).expect("open wallet")
+    MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), None).expect("open wallet")
 }
 
 /// Sign as `signers`, which must be the required signers in order.
@@ -224,6 +224,7 @@ fn register_deposit_transfer_and_receive() {
         config(),
         sender.pubkey().to_string(),
         sender_wallet.export_keys(),
+        None,
     )
     .expect("open from saved keys");
     assert_eq!(stale.shielded_address(), sender_wallet.shielded_address());

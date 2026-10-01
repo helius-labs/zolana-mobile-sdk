@@ -35,6 +35,9 @@ Unreleased.
   verifying key before it builds the message. `WalletConfig.proving` sets the
   default; `proving` on `prepareTransfer`, `prepareWithdrawal`, `transfer` and
   `withdraw` chooses per call.
+* `transport` on `ZolanaWallet.open` and `ZolanaWallet.openWithKeys`: the
+  wallet sends every request (Solana RPC, indexer, proving-key downloads)
+  through the application's own networking, with those headers added.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile.
 * Errors carry no key material, and `api-key` values in them are masked.

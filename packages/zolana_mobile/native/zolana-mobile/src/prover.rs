@@ -1,15 +1,12 @@
 //! The [`Prover`] the wallet hands to `ZolanaClient::with_prover`: the
 //! device's own, or the application's backend for a spend that asks for it.
 
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Mutex, PoisonError,
-    },
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex, PoisonError,
 };
 
+use flutter_rust_bridge::DartFnFuture;
 use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
 
 use crate::{init_gnark, keys, Loaded, PREPARED};
@@ -26,10 +23,6 @@ pub enum Proving {
     /// included.
     Remote,
 }
-
-/// flutter_rust_bridge's `DartFnFuture`, the result of a Dart callback. Its
-/// code generator recognizes a callback by this name.
-pub(crate) type DartFnFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 /// The `/prove` request body in, the prover's proof out, `None` when it failed.
 type ProveRemotely = dyn Fn(Vec<u8>) -> DartFnFuture<Option<Vec<u8>>> + Send + Sync;
@@ -273,7 +266,8 @@ mod tests {
             let (backend, received) = backend(Some(response));
             let prover = WalletProver {
                 native: NativeProver::new(
-                    keys::KeyStore::new(std::env::temp_dir().display().to_string(), None).unwrap(),
+                    keys::KeyStore::new(std::env::temp_dir().display().to_string(), None, None)
+                        .unwrap(),
                 ),
                 remote: Arc::new(Mutex::new(Some(Arc::new(backend)))),
             };
@@ -418,7 +412,7 @@ mod tests {
                 .display()
                 .to_string()
         });
-        let prover = NativeProver::new(keys::KeyStore::new(dir, None).unwrap());
+        let prover = NativeProver::new(keys::KeyStore::new(dir, None, None).unwrap());
         let proof = prover
             .prove(&Captured(transfer_2_3_key()))
             .expect("prove the captured client request");

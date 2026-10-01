@@ -30,6 +30,15 @@ abstract interface class SolanaSigner {
 /// wallet from it.
 typedef RemoteProver = Future<Uint8List> Function(Uint8List request);
 
+/// Sends one HTTP request of the wallet through the application's own
+/// networking: Solana RPC and indexer calls (`POST`, JSON) and proving-key
+/// downloads (`GET`, files of several MB). Returns the server's response
+/// whatever its status, and throws only when there is none. The wallet waits
+/// for it, so it must not call the wallet.
+typedef ZolanaTransport = Future<native.TransportResponse> Function(
+  native.TransportRequest request,
+);
+
 /// A failure reported by the native wallet, such as
 /// `recipient_not_registered` or `signature_invalid`, or a client error
 /// describing what failed. It never contains key material.
@@ -49,11 +58,13 @@ abstract interface class WalletBackend {
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
+    ZolanaTransport? transport,
   );
   Future<native.MobileWallet> openWithKeys(
     native.WalletConfig config,
     String solanaPubkey,
     native.WalletKeys keys,
+    ZolanaTransport? transport,
   );
 }
 
@@ -146,10 +157,15 @@ class ZolanaWallet {
   /// derivation message; the resulting keys stay in memory for this session.
   ///
   /// [remoteProver] proves the spends that ask for `Proving.remote`.
+  ///
+  /// With a [transport], every request of the wallet goes through it, with
+  /// `WalletConfig.rpcHeaders` and `WalletConfig.indexerHeaders` added; the
+  /// wallet opens no connection itself.
   static Future<ZolanaWallet> open({
     required native.WalletConfig config,
     required SolanaSigner signer,
     RemoteProver? remoteProver,
+    ZolanaTransport? transport,
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
     final message = await backend.derivationMessage(signer.publicKey);
@@ -157,7 +173,12 @@ class ZolanaWallet {
       message,
       purpose: 'Open your private Zolana wallet',
     );
-    final wallet = await backend.open(config, signer.publicKey, signature);
+    final wallet = await backend.open(
+      config,
+      signer.publicKey,
+      signature,
+      transport,
+    );
     await _setRemoteProver(wallet, remoteProver);
     return ZolanaWallet._(
       signer.publicKey,
@@ -174,19 +195,25 @@ class ZolanaWallet {
   /// Without a [signer], [register], [deposit], [transfer] and [withdraw] fail
   /// with `signer_missing`; the `prepare` methods, [submit] and [confirm]
   /// work. A [signer] for another account fails with `signer_mismatch`.
-  /// [remoteProver] works as in [open].
+  /// [remoteProver] and [transport] work as in [open].
   static Future<ZolanaWallet> openWithKeys({
     required native.WalletConfig config,
     required String solanaPublicKey,
     required native.WalletKeys keys,
     SolanaSigner? signer,
     RemoteProver? remoteProver,
+    ZolanaTransport? transport,
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
     if (signer != null && signer.publicKey != solanaPublicKey) {
       throw const ZolanaWalletException('signer_mismatch');
     }
-    final wallet = await backend.openWithKeys(config, solanaPublicKey, keys);
+    final wallet = await backend.openWithKeys(
+      config,
+      solanaPublicKey,
+      keys,
+      transport,
+    );
     await _setRemoteProver(wallet, remoteProver);
     return ZolanaWallet._(
       solanaPublicKey,
@@ -514,10 +541,12 @@ class _NativeBackend implements WalletBackend {
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
-  ) => native.MobileWallet.open(
+    ZolanaTransport? transport,
+  ) async => native.MobileWallet.open(
     config: config,
     solanaPubkey: solanaPubkey,
     derivationSignature: derivationSignature,
+    transport: await _transport(transport),
   );
 
   @override
@@ -525,9 +554,15 @@ class _NativeBackend implements WalletBackend {
     native.WalletConfig config,
     String solanaPubkey,
     native.WalletKeys keys,
-  ) => native.MobileWallet.openWithKeys(
+    ZolanaTransport? transport,
+  ) async => native.MobileWallet.openWithKeys(
     config: config,
     solanaPubkey: solanaPubkey,
     keys: keys,
+    transport: await _transport(transport),
   );
+
+  /// A native transport per wallet: opening a wallet consumes it.
+  static Future<native.Transport?> _transport(ZolanaTransport? send) async =>
+      send == null ? null : native.Transport.newInstance(send: send);
 }

@@ -74,28 +74,33 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<WalletKeys> exportKeys();
 
   /// Open the wallet of `solana_pubkey` from its signature over
-  /// [`derivation_message`].
+  /// [`derivation_message`]. With a `transport`, every request goes through
+  /// it, with the configured headers added.
   static Future<MobileWallet> open({
     required WalletConfig config,
     required String solanaPubkey,
     required List<int> derivationSignature,
+    Transport? transport,
   }) => RustLib.instance.api.zolanaMobileMobileWalletOpen(
     config: config,
     solanaPubkey: solanaPubkey,
     derivationSignature: derivationSignature,
+    transport: transport,
   );
 
   /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
   /// returned. Fails with `wallet_keys_invalid` unless each private key
-  /// yields its public key.
+  /// yields its public key. `transport` works as in [`Self::open`].
   static Future<MobileWallet> openWithKeys({
     required WalletConfig config,
     required String solanaPubkey,
     required WalletKeys keys,
+    Transport? transport,
   }) => RustLib.instance.api.zolanaMobileMobileWalletOpenWithKeys(
     config: config,
     solanaPubkey: solanaPubkey,
     keys: keys,
+    transport: transport,
   );
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -229,6 +234,17 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 
   /// Human-readable description to show before asking for a signature.
   Future<String> summary();
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>
+abstract class Transport implements RustOpaqueInterface {
+  // HINT: Make it `#[frb(sync)]` to let it become the default constructor of Dart class.
+  /// `send` answers a request with the server's response, and fails only
+  /// when there is none. The wallet waits for it, so it must not call the
+  /// wallet.
+  static Future<Transport> newInstance({
+    required FutureOr<TransportResponse> Function(TransportRequest) send,
+  }) => RustLib.instance.api.zolanaMobileTransportNew(send: send);
 }
 
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit
@@ -413,6 +429,57 @@ class TokenBalance {
           runtimeType == other.runtimeType &&
           mint == other.mint &&
           amount == other.amount;
+}
+
+/// One HTTP request of the wallet.
+class TransportRequest {
+  /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
+  final String method;
+  final String url;
+  final Map<String, String> headers;
+
+  /// Empty for a `GET`.
+  final Uint8List body;
+
+  const TransportRequest({
+    required this.method,
+    required this.url,
+    required this.headers,
+    required this.body,
+  });
+
+  @override
+  int get hashCode =>
+      method.hashCode ^ url.hashCode ^ headers.hashCode ^ body.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportRequest &&
+          runtimeType == other.runtimeType &&
+          method == other.method &&
+          url == other.url &&
+          headers == other.headers &&
+          body == other.body;
+}
+
+/// The server's response, whatever its status.
+class TransportResponse {
+  final int status;
+  final Uint8List body;
+
+  const TransportResponse({required this.status, required this.body});
+
+  @override
+  int get hashCode => status.hashCode ^ body.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportResponse &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          body == other.body;
 }
 
 /// Where the wallet reads chain state and stores proving keys.

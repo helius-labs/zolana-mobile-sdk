@@ -94,7 +94,8 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
 ```
 
 - **Proving keys** download on first use from the Zolana key host into
-  `provingKeyDir`, and are used only after they match the proving-key lockfile of
+  `provingKeyDir` (through the application's transport when it has one, see
+  below), and are used only after they match the proving-key lockfile of
   the pinned Zolana revision. The wallet picks the circuit shape, so the first
   transfer of a new shape downloads its key (8–240 MB); keep the directory
   across launches.
@@ -275,6 +276,45 @@ await wallet.transfer(
 Current limits: notes are not merged, so a spend takes at most 5 notes on one
 tree and fails with `merge_required` beyond that; one prepared prover is
 loaded per process, so close a `LocalProver` before the wallet proves.
+
+### Networking through the app
+
+By default the wallet sends its requests with its own HTTP clients. An
+application that sends all traffic through its own networking stack (a proxy,
+certificate pinning, its backend) passes a `transport` to `ZolanaWallet.open`
+or `ZolanaWallet.openWithKeys`:
+
+```dart
+Future<TransportResponse> send(TransportRequest request) async {
+  // Send request.method to request.url with request.headers and request.body.
+  final response = await appHttp.send(request);
+  return TransportResponse(status: response.statusCode, body: response.bytes);
+}
+
+final wallet = await ZolanaWallet.open(
+  signer: KeystoreSigner(),
+  config: config,
+  transport: send,
+);
+```
+
+- Every request of the wallet goes through the transport: Solana RPC and
+  indexer calls (`POST`, JSON) and proving-key downloads (`GET`, the key files
+  above, returned whole and checked against the lockfile). The wallet opens no
+  connection itself.
+- A `remoteProver` is not a transport request: the wallet hands it the
+  `/prove` request body directly, and the application sends it to its backend.
+- `request.headers` already holds `WalletConfig.rpcHeaders` or
+  `WalletConfig.indexerHeaders` and the content type; send them as they are.
+  The URL keeps its `api-key` parameter.
+- Return the response whatever its status. Throw only when there is no
+  response (no network, DNS, TLS). The wallet then fails with
+  `transport failed: ` and the exception message, `api-key` values masked.
+- Timeouts are the transport's; the wallet's own 30-second limit does not
+  apply. The wallet waits for each answer, so the transport must not call the
+  wallet.
+- `example/lib/http_client_transport.dart` is a transport on `dart:io`'s
+  `HttpClient`.
 
 ## Prepare once, prove repeatedly
 
