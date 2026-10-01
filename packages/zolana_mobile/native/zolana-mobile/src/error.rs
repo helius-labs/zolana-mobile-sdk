@@ -27,8 +27,8 @@ pub enum WalletError {
     /// `recipient` has not registered a shielded address. A withdrawal pays
     /// it publicly.
     RecipientNotRegistered { recipient: String },
-    /// `recipient` has no associated token account for `mint`.
-    /// `prepare_token_account` creates it.
+    /// `recipient` has no associated token account for `mint`. The
+    /// application's Solana client creates it.
     RecipientTokenAccountMissing { recipient: String, mint: String },
     /// The user registry holds other keys for `owner`. The wallet never
     /// replaces them.
@@ -45,8 +45,6 @@ pub enum WalletError {
     InvalidTokenProgram { mint: String, token_program: String },
     /// `value` is not a base58 public key.
     InvalidPubkey { value: String },
-    /// The data of `account` is not a token account's.
-    InvalidTokenAccount { account: String },
     /// The derivation signature is not the account's signature over the
     /// derivation message.
     InvalidDerivationSignature,

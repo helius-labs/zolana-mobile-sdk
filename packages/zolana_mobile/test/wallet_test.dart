@@ -161,9 +161,6 @@ class FakeWallet implements MobileWallet {
   Future<BigInt> privateBalance({String? mint}) async => BigInt.two;
 
   @override
-  Future<BigInt> publicBalance({String? mint}) async => BigInt.one;
-
-  @override
   Future<List<ActivityEntry>> activity() async => const [];
 
   @override
@@ -211,12 +208,6 @@ class FakeWallet implements MobileWallet {
     proved.add(proving);
     return FakePending(Uint8List.fromList([9]));
   }
-
-  @override
-  Future<PendingTransaction?> prepareTokenAccount({
-    required String owner,
-    required String mint,
-  }) async => null;
 
   @override
   Future<String> submit({

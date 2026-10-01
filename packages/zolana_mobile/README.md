@@ -125,10 +125,12 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   Token nor Token-2022 fails `open` with `WalletError.invalidTokenProgram`.
   `balances()` lists the private balance of SOL and of each configured mint;
   notes in other mints are left out.
-  A token withdrawal goes to the recipient's associated token account: when it
-  fails with `WalletError.recipientTokenAccountMissing`, `prepareTokenAccount`
-  creates the account.
-  Transaction fees are paid in SOL by this account.
+  A token withdrawal goes to the recipient's associated token account and
+  fails with `WalletError.recipientTokenAccountMissing`, before proving, when
+  the account does not exist. Transaction fees are paid in SOL by this
+  account.
+- **Public accounts**: read public SOL and token balances, and create
+  associated token accounts, with your application's own Solana client.
 - **Registration**: `registrationStatus()` is `notRegistered`, `registered` or
   `conflict`. A conflict means the account's user record holds other keys: set
   by another app, by a key rotation, or derived by a signer whose signatures
@@ -187,7 +189,6 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `invalidMint` | `mint` | not a base58 key |
 | `invalidTokenProgram` | `mint`, `tokenProgram` | the configured token program is neither SPL Token nor Token-2022 |
 | `invalidPubkey` | `value` | not a base58 public key |
-| `invalidTokenAccount` | `account` | the account's data is not a token account's |
 | `invalidDerivationSignature` | | the signature is not the account's over the derivation message |
 | `invalidWalletKeys` | | saved keys are malformed or do not match their public keys |
 | `rpcUrlInsecure`, `indexerUrlInsecure`, `provingKeyUrlInsecure` | `url` | with the default transport, a plaintext URL off loopback without `allowInsecureHttp` |
