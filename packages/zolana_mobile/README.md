@@ -103,10 +103,11 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   has registered it, otherwise calls fail with `asset_not_supported`.
   `balances()` lists the private balance of SOL and of each mint in
   `WalletConfig.mints` or named in a call; notes in other mints are left out.
-  A token withdrawal
-  goes to the recipient's associated token account: when it fails with
-  `recipient_token_account_missing`, `prepareTokenAccount` creates the account.
-  Transaction fees are paid in SOL by this account.
+  A token withdrawal goes to the recipient's associated token account and
+  fails with `recipient_token_account_missing`, before proving, when the
+  account does not exist. Transaction fees are paid in SOL by this account.
+- **Public accounts**: read public SOL and token balances, and create
+  associated token accounts, with your application's own Solana client.
 - **Request headers**: `WalletConfig.rpcHeaders` adds HTTP headers to every
   Solana RPC request, and `WalletConfig.indexerHeaders` to every indexer
   request, for example an auth token for your proxy. The values are marked

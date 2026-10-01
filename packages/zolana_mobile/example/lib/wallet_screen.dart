@@ -117,7 +117,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _finishSetup(int generation) async {
     try {
       final wallet = _wallet!;
-      final public = await wallet.publicBalance();
+      final public = await _publicBalance(wallet);
       if (!_current(generation)) return;
       setState(() => _public = public);
       final registration = await wallet.registrationStatus();
@@ -156,7 +156,7 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() => _refreshing = true);
     try {
       final private = await wallet.privateBalance();
-      final public = await wallet.publicBalance();
+      final public = await _publicBalance(wallet);
       final activity = await wallet.activity();
       if (!_current(generation)) return;
       setState(() {
@@ -176,6 +176,10 @@ class _WalletScreenState extends State<WalletScreen> {
       if (_current(generation)) setState(() => _refreshing = false);
     }
   }
+
+  /// Public SOL is plain Solana state, read with the app's own RPC client.
+  Future<BigInt> _publicBalance(ZolanaWallet wallet) =>
+      TestClusterRpc(_network.rpcUrl).balance(wallet.solanaPublicKey);
 
   Future<void> _airdrop() async {
     final wallet = _wallet;

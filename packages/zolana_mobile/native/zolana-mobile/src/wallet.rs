@@ -58,8 +58,8 @@ use zolana_client::{
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
 use zolana_program::instruction::{
-    AssetDeposit, CreateAssociatedTokenAccount, Deposit, DepositAsset, DepositSplAccounts,
-    TransactInterfaceTransferAccounts, TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
+    AssetDeposit, Deposit, DepositAsset, DepositSplAccounts, TransactInterfaceTransferAccounts,
+    TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
 };
 use zolana_transaction::{
     instructions::transact::{auto_shapes, ConfidentialTransaction},
@@ -68,7 +68,7 @@ use zolana_transaction::{
 
 use crate::{
     activity::{self, ActivityEntry},
-    asset::{mint_name, token_account_amount, Asset},
+    asset::{mint_name, Asset},
     keys::KeyStore,
     prover::{
         proving_error, DartFnFuture, NativeProver, Proving, RemoteProver, SpendProver, WalletProver,
@@ -143,8 +143,6 @@ pub enum PendingTransactionKind {
     /// Moves private funds to a public account. Public: recipient, asset,
     /// amount.
     Withdrawal,
-    /// Creates an associated token account so it can receive a withdrawal.
-    TokenAccount,
 }
 
 /// A built, and where needed proved, v1 transaction awaiting signatures.
@@ -457,19 +455,6 @@ impl MobileWallet {
         )
     }
 
-    /// Public balance of this account, read from the RPC now: lamports, or
-    /// the amount in its associated token account for `mint` (0 without one).
-    pub fn public_balance(&mut self, mint: Option<String>) -> Result<u64, String> {
-        let asset = self.asset(mint)?;
-        let Some(token_account) = asset.token_account(&self.owner) else {
-            return self.client.get_balance(self.owner).map_err(error);
-        };
-        match self.client.get_account(token_account).map_err(error)? {
-            Some(account) => token_account_amount(&account.data),
-            None => Ok(0),
-        }
-    }
-
     /// Spendable private balances, read from the indexer now: one per asset
     /// held in SOL, the configured mints and the mints named so far.
     pub fn balances(&mut self) -> Result<Vec<TokenBalance>, String> {
@@ -554,8 +539,10 @@ impl MobileWallet {
     }
 
     /// Build and prove a withdrawal of private funds to the public account
-    /// `recipient`. Tokens go to its associated token account, which must
-    /// exist: [`Self::prepare_token_account`] creates it.
+    /// `recipient`. Tokens go to its associated token account. Without one
+    /// the withdrawal could not settle, so it fails with
+    /// `recipient_token_account_missing` before proving; the application
+    /// creates the account with its own Solana client.
     ///
     /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
     pub fn prepare_withdrawal(
@@ -593,38 +580,6 @@ impl MobileWallet {
             ),
         )?;
         Ok(self.reserve(pending, spends))
-    }
-
-    /// Create `owner`'s associated token account for `mint`, paid by this
-    /// account, so a withdrawal can reach it. `None` when it already exists.
-    pub fn prepare_token_account(
-        &mut self,
-        owner: String,
-        mint: String,
-    ) -> Result<Option<PendingTransaction>, String> {
-        let owner = parse_pubkey(&owner)?;
-        let asset = self.asset(Some(mint))?;
-        let token_program = asset.token_program.ok_or("mint_invalid")?;
-        let create = CreateAssociatedTokenAccount {
-            payer: self.owner,
-            owner,
-            mint: asset.mint,
-            token_program,
-        };
-        if self
-            .client
-            .get_account(create.address())
-            .map_err(error)?
-            .is_some()
-        {
-            return Ok(None);
-        }
-        self.pending(
-            PendingTransactionKind::TokenAccount,
-            self.message(create.instruction())?,
-            format!("Create a {} token account for {owner}", asset.mint),
-        )
-        .map(Some)
     }
 
     fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, String> {
@@ -873,10 +828,7 @@ impl MobileWallet {
 
     /// Once it settles, a spend's notes are spent and no longer reserved.
     fn settle(&self, pending: &PendingTransaction, signature: Signature) -> Result<(), String> {
-        if matches!(
-            pending.kind,
-            PendingTransactionKind::Registration | PendingTransactionKind::TokenAccount
-        ) {
+        if pending.kind == PendingTransactionKind::Registration {
             return wait_for_confirmation(&self.client, signature);
         }
         self.client
@@ -1386,7 +1338,7 @@ mod tests {
         };
         let mut wallet = open_with(&Keypair::new(), config).unwrap();
         for error in [
-            wallet.public_balance(None).unwrap_err(),
+            wallet.registration_status().unwrap_err(),
             wallet.private_balance(None).unwrap_err(),
         ] {
             assert!(error.contains("api-key=redacted"), "{error}");

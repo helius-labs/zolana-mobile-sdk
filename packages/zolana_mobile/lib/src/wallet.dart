@@ -216,11 +216,6 @@ class ZolanaWallet {
   Future<BigInt> privateBalance({String? mint}) =>
       _serial(() => _wallet.privateBalance(mint: mint));
 
-  /// Public balance of [solanaPublicKey], read from the RPC now: lamports, or
-  /// the amount in its associated token account for [mint] (0 without one).
-  Future<BigInt> publicBalance({String? mint}) =>
-      _serial(() => _wallet.publicBalance(mint: mint));
-
   /// Transaction history, read from the indexer now, newest first: one entry
   /// per asset each transaction moved. A spend whose outputs are all this
   /// wallet's own is listed as unshielded, one with another wallet's output
@@ -275,8 +270,9 @@ class ZolanaWallet {
   /// Move private funds to the public account [recipient]. The recipient,
   /// asset and amount are public. Tokens go to the recipient's associated
   /// token account; without one this fails with
-  /// `recipient_token_account_missing` (see [prepareTokenAccount]).
-  /// [feePayer] and [proving] work as in [prepareTransfer].
+  /// `recipient_token_account_missing` before proving. Create the account
+  /// with the application's Solana client first. [feePayer] and [proving]
+  /// work as in [prepareTransfer].
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     required BigInt amount,
@@ -293,16 +289,6 @@ class ZolanaWallet {
         proving: proving,
       ),
     ),
-  );
-
-  /// Create [owner]'s associated token account for [mint], paid by this
-  /// account, so a withdrawal can reach it. `null` when it already exists.
-  Future<PreparedTransaction?> prepareTokenAccount({
-    required String owner,
-    required String mint,
-  }) => _serial(
-    () =>
-        _prepareOptional(_wallet.prepareTokenAccount(owner: owner, mint: mint)),
   );
 
   /// [transaction] with a new blockhash and the same proof, for an approval
