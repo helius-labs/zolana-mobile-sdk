@@ -4,12 +4,12 @@
 import 'dart:io';
 
 import 'package:ed25519_edwards/ed25519_edwards.dart';
-import 'package:http/http.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
 
 import 'builder.dart';
 import 'crate_hash.dart';
+import 'download.dart';
 import 'options.dart';
 import 'precompile_binaries.dart';
 import 'rustup.dart';
@@ -164,27 +164,6 @@ class ArtifactProvider {
     return res;
   }
 
-  static Future<Response> _get(Uri url, {Map<String, String>? headers}) async {
-    int attempt = 0;
-    const maxAttempts = 10;
-    while (true) {
-      try {
-        return await get(url, headers: headers);
-      } on SocketException catch (e) {
-        // Try to detect reset by peer error and retry.
-        if (attempt++ < maxAttempts &&
-            (e.osError?.errorCode == 54 || e.osError?.errorCode == 10054)) {
-          _log.severe(
-              'Failed to download $url: $e, attempt $attempt of $maxAttempts, will retry...');
-          await Future.delayed(Duration(seconds: 1));
-          continue;
-        } else {
-          rethrow;
-        }
-      }
-    }
-  }
-
   Future<void> _tryDownloadArtifacts({
     required String crateHash,
     required String fileName,
@@ -196,7 +175,7 @@ class ArtifactProvider {
     final url = Uri.parse('$prefix$crateHash/$fileName');
     final signatureUrl = Uri.parse('$prefix$crateHash/$signatureFileName');
     _log.fine('Downloading signature from $signatureUrl');
-    final signature = await _get(signatureUrl);
+    final signature = await getWithRetry(signatureUrl);
     if (signature.statusCode == 404) {
       _log.warning(
           'Precompiled binaries not available for crate hash $crateHash ($fileName)');
@@ -208,7 +187,7 @@ class ArtifactProvider {
       return;
     }
     _log.fine('Downloading binary from $url');
-    final res = await _get(url);
+    final res = await getWithRetry(url);
     if (res.statusCode != 200) {
       _log.severe('Failed to download binary $url: status ${res.statusCode}');
       return;
