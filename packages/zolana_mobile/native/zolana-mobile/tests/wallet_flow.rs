@@ -1,8 +1,8 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
 //! machine with the pinned keys: register, deposit, private transfer, the
 //! recipient's balance, and a withdrawal from a session opened before the
-//! transfer, with its fee paid by another account. Each step is the newest
-//! entry of its wallets' history.
+//! transfer from the sender's saved keys, with its fee paid by another
+//! account. Each step is the newest entry of its wallets' history.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon and the programs), or any cluster that runs the pinned
@@ -50,29 +50,28 @@ fn account(seed_var: &str) -> Keypair {
     Keypair::new_from_array(bytes.try_into().expect("32-byte seed"))
 }
 
-fn open(signer: &Keypair) -> MobileWallet {
+fn config() -> WalletConfig {
     let key_dir = env::var("ZOLANA_E2E_KEY_DIR").unwrap_or_else(|_| {
         env::temp_dir()
             .join("zolana-e2e-keys")
             .display()
             .to_string()
     });
+    WalletConfig {
+        rpc_url: required("ZOLANA_E2E_RPC_URL"),
+        rpc_headers: None,
+        indexer_url: required("ZOLANA_E2E_INDEXER_URL"),
+        proving_key_dir: key_dir,
+        proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
+        allow_insecure_http: true,
+        mints: Vec::new(),
+    }
+}
+
+fn open(signer: &Keypair) -> MobileWallet {
     let pubkey = signer.pubkey().to_string();
     let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
-    MobileWallet::open(
-        WalletConfig {
-            rpc_url: required("ZOLANA_E2E_RPC_URL"),
-            rpc_headers: None,
-            indexer_url: required("ZOLANA_E2E_INDEXER_URL"),
-            proving_key_dir: key_dir,
-            proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
-            allow_insecure_http: true,
-            mints: Vec::new(),
-        },
-        pubkey,
-        signature.as_ref().to_vec(),
-    )
-    .expect("open wallet")
+    MobileWallet::open(config(), pubkey, signature.as_ref().to_vec()).expect("open wallet")
 }
 
 /// Sign as `signers`, which must be the required signers in order.
@@ -151,8 +150,15 @@ fn register_deposit_transfer_and_receive() {
     );
 
     // A second session of the sender, opened before the transfer spends its
-    // notes: the same account on another device.
-    let mut stale = open(&sender);
+    // notes from the keys the first one exported: the same account on another
+    // device.
+    let mut stale = MobileWallet::open_with_keys(
+        config(),
+        sender.pubkey().to_string(),
+        sender_wallet.export_keys(),
+    )
+    .expect("open from saved keys");
+    assert_eq!(stale.shielded_address(), sender_wallet.shielded_address());
 
     let started = std::time::Instant::now();
     let pending = sender_wallet

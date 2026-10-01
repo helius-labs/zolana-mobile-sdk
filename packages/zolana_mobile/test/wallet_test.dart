@@ -15,6 +15,13 @@ const config = WalletConfig(
   mints: [],
 );
 
+final savedKeys = WalletKeys(
+  viewingPrivateKey: Uint8List.fromList([1]),
+  viewingPublicKey: Uint8List.fromList([2]),
+  nullifierPrivateKey: Uint8List.fromList([3]),
+  nullifierPublicKey: Uint8List.fromList([4]),
+);
+
 class RecordingSigner implements SolanaSigner {
   final requests = <(Uint8List, String)>[];
 
@@ -71,6 +78,9 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<String> shieldedAddress() async => 'shielded';
+
+  @override
+  Future<WalletKeys> exportKeys() async => savedKeys;
 
   RegistrationStatus status = RegistrationStatus.registered;
 
@@ -171,6 +181,7 @@ class FakeBackend implements WalletBackend {
 
   final FakeWallet wallet;
   Uint8List? openedWith;
+  WalletKeys? openedWithKeys;
 
   @override
   Future<Uint8List> derivationMessage(String solanaPubkey) async =>
@@ -183,6 +194,16 @@ class FakeBackend implements WalletBackend {
     Uint8List derivationSignature,
   ) async {
     openedWith = derivationSignature;
+    return wallet;
+  }
+
+  @override
+  Future<MobileWallet> openWithKeys(
+    WalletConfig config,
+    String solanaPubkey,
+    WalletKeys keys,
+  ) async {
+    openedWithKeys = keys;
     return wallet;
   }
 }
@@ -214,6 +235,58 @@ void main() {
     expect(
       backend.openedWith,
       Uint8List.fromList(owner.codeUnits.reversed.toList()),
+    );
+  });
+
+  test('opens from saved keys without asking for a signature', () async {
+    final native = FakeWallet();
+    final backend = FakeBackend(native);
+    final wallet = await ZolanaWallet.openWithKeys(
+      config: config,
+      solanaPublicKey: owner,
+      keys: savedKeys,
+      backend: backend,
+    );
+
+    expect(backend.openedWithKeys, savedKeys);
+    expect(wallet.solanaPublicKey, owner);
+    expect(wallet.shieldedAddress, 'shielded');
+    expect(await wallet.exportKeys(), savedKeys);
+    // Without a signer the application signs the prepared transactions.
+    final prepared = await wallet.prepareTransfer(
+      recipient: 'Recipient',
+      amount: BigInt.one,
+    );
+    expect(prepared.signers, [owner]);
+    await expectLater(
+      wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
+      throwsWalletError('signer_missing'),
+    );
+    expect(native.submitted, isEmpty);
+  });
+
+  test('signs with the signer passed with the saved keys', () async {
+    final native = FakeWallet();
+    final signer = RecordingSigner();
+    final wallet = await ZolanaWallet.openWithKeys(
+      config: config,
+      solanaPublicKey: owner,
+      keys: savedKeys,
+      signer: signer,
+      backend: FakeBackend(native),
+    );
+
+    expect(await wallet.deposit(BigInt.one), 'signature');
+    expect(signer.requests.single.$2, 'summary of 1');
+    await expectLater(
+      ZolanaWallet.openWithKeys(
+        config: config,
+        solanaPublicKey: 'Other',
+        keys: savedKeys,
+        signer: signer,
+        backend: FakeBackend(FakeWallet()),
+      ),
+      throwsWalletError('signer_mismatch'),
     );
   });
 

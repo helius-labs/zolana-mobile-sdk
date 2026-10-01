@@ -98,6 +98,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw);
 
   @protected
+  WalletKeys dco_decode_box_autoadd_wallet_keys(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -170,6 +173,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   WalletConfig dco_decode_wallet_config(dynamic raw);
 
   @protected
+  WalletKeys dco_decode_wallet_keys(dynamic raw);
+
+  @protected
   MobileWallet
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
     SseDeserializer deserializer,
@@ -238,6 +244,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   WalletConfig sse_decode_box_autoadd_wallet_config(
     SseDeserializer deserializer,
   );
+
+  @protected
+  WalletKeys sse_decode_box_autoadd_wallet_keys(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -330,6 +339,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   WalletConfig sse_decode_wallet_config(SseDeserializer deserializer);
 
   @protected
+  WalletKeys sse_decode_wallet_keys(SseDeserializer deserializer);
+
+  @protected
   void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
     MobileWallet self,
@@ -406,6 +418,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_wallet_config(
     WalletConfig self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_wallet_keys(
+    WalletKeys self,
     SseSerializer serializer,
   );
 
@@ -514,6 +532,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_wallet_config(WalletConfig self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_wallet_keys(WalletKeys self, SseSerializer serializer);
 }
 
 // Section: wire_class

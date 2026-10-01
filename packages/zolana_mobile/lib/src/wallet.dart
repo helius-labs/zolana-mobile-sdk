@@ -29,13 +29,18 @@ class ZolanaWalletException implements Exception {
   String toString() => 'Zolana wallet: $message';
 }
 
-/// The native calls [ZolanaWallet.open] makes; replaced in tests.
+/// The native calls that open a [ZolanaWallet]; replaced in tests.
 abstract interface class WalletBackend {
   Future<Uint8List> derivationMessage(String solanaPubkey);
   Future<native.MobileWallet> open(
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
+  );
+  Future<native.MobileWallet> openWithKeys(
+    native.WalletConfig config,
+    String solanaPubkey,
+    native.WalletKeys keys,
   );
 }
 
@@ -93,9 +98,14 @@ class PreparedTransaction {
 /// transactions itself uses the `prepare` methods, then [submit] or, after
 /// sending, [confirm].
 class ZolanaWallet {
-  ZolanaWallet._(this._signer, this._wallet, this.shieldedAddress);
+  ZolanaWallet._(
+    this.solanaPublicKey,
+    this._signer,
+    this._wallet,
+    this.shieldedAddress,
+  );
 
-  final SolanaSigner _signer;
+  final SolanaSigner? _signer;
   final native.MobileWallet _wallet;
   Future<void> _last = Future.value();
   Future<void>? _closing;
@@ -103,7 +113,8 @@ class ZolanaWallet {
   /// The address other Zolana wallets pay, once [register] has published it.
   final String shieldedAddress;
 
-  String get solanaPublicKey => _signer.publicKey;
+  /// Base58 public key of the Solana account this wallet belongs to.
+  final String solanaPublicKey;
 
   bool get isClosed => _closing != null;
 
@@ -120,8 +131,44 @@ class ZolanaWallet {
       purpose: 'Open your private Zolana wallet',
     );
     final wallet = await backend.open(config, signer.publicKey, signature);
-    return ZolanaWallet._(signer, wallet, await wallet.shieldedAddress());
+    return ZolanaWallet._(
+      signer.publicKey,
+      signer,
+      wallet,
+      await wallet.shieldedAddress(),
+    );
   });
+
+  /// Open the wallet of [solanaPublicKey] from [keys] that [exportKeys]
+  /// returned, without asking for a signature. Fails with
+  /// `wallet_keys_invalid` unless each private key yields its public key.
+  ///
+  /// Without a [signer], [register], [deposit], [transfer] and [withdraw] fail
+  /// with `signer_missing`; the `prepare` methods, [submit] and [confirm]
+  /// work. A [signer] for another account fails with `signer_mismatch`.
+  static Future<ZolanaWallet> openWithKeys({
+    required native.WalletConfig config,
+    required String solanaPublicKey,
+    required native.WalletKeys keys,
+    SolanaSigner? signer,
+    WalletBackend backend = const _NativeBackend(),
+  }) => _native(() async {
+    if (signer != null && signer.publicKey != solanaPublicKey) {
+      throw const ZolanaWalletException('signer_mismatch');
+    }
+    final wallet = await backend.openWithKeys(config, solanaPublicKey, keys);
+    return ZolanaWallet._(
+      solanaPublicKey,
+      signer,
+      wallet,
+      await wallet.shieldedAddress(),
+    );
+  });
+
+  /// The keys [openWithKeys] opens this wallet from. They cannot move funds,
+  /// but they show its balances and history and link its spends: keep them
+  /// in the device's secure storage only, per account and network.
+  Future<native.WalletKeys> exportKeys() => _serial(_wallet.exportKeys);
 
   /// Whether the user registry publishes [shieldedAddress]. A `conflict`
   /// means it holds other keys: payments to this account go to them, not to
@@ -314,11 +361,15 @@ class ZolanaWallet {
       _signAndSubmit(await _prepare(prepared));
 
   Future<String> _signAndSubmit(PreparedTransaction transaction) async {
+    final signer = _signer;
+    if (signer == null) {
+      throw const ZolanaWalletException('signer_missing');
+    }
     final signers = transaction.signers;
-    if (signers.length != 1 || signers.single != _signer.publicKey) {
+    if (signers.length != 1 || signers.single != solanaPublicKey) {
       throw const ZolanaWalletException('unexpected_signers');
     }
-    final signature = await _signer.signMessage(
+    final signature = await signer.signMessage(
       transaction.message,
       purpose: transaction.summary,
     );
@@ -367,5 +418,16 @@ class _NativeBackend implements WalletBackend {
     config: config,
     solanaPubkey: solanaPubkey,
     derivationSignature: derivationSignature,
+  );
+
+  @override
+  Future<native.MobileWallet> openWithKeys(
+    native.WalletConfig config,
+    String solanaPubkey,
+    native.WalletKeys keys,
+  ) => native.MobileWallet.openWithKeys(
+    config: config,
+    solanaPubkey: solanaPubkey,
+    keys: keys,
   );
 }

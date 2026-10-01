@@ -16,6 +16,8 @@ Unreleased.
   another account pay the network fee of a transfer or withdrawal.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
+* `exportKeys()` and `ZolanaWallet.openWithKeys()`: open the wallet from its
+  saved derived keys, without a derivation signature; the signer is optional.
 * `close()` for lock and account switch: it rejects queued operations and a
   `prepare` call that is proving at the time, never signs or submits after the
   call, and releases the native wallet once the running step ends.
