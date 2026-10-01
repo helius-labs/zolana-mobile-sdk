@@ -72,12 +72,6 @@ impl PreparedProver {
         })
     }
 
-    pub fn prove(&self, witness_json: &str) -> Result<Groth16ProofResult> {
-        let input = input_string(witness_json)?;
-        let raw = unsafe { bind::gnark_prepared_prove(self.handle, input.as_ptr().cast_mut()) };
-        read_proof_result(raw)
-    }
-
     pub fn prove_request(&self, request_json: &str) -> Result<Groth16ProofResult> {
         let input = input_string(request_json)?;
         let raw =
@@ -110,42 +104,6 @@ pub fn init() -> Result<()> {
         bail!("gnark initialization failed");
     }
     Ok(())
-}
-
-pub fn groth16_prove(
-    r1cs_path: &str,
-    pk_path: &str,
-    witness_json: &str,
-) -> Result<Groth16ProofResult> {
-    init()?;
-    let r1cs = input_string(r1cs_path)?;
-    let pk = input_string(pk_path)?;
-    let witness = input_string(witness_json)?;
-    let raw = unsafe {
-        bind::gnark_groth16_prove(
-            r1cs.as_ptr().cast_mut(),
-            pk.as_ptr().cast_mut(),
-            witness.as_ptr().cast_mut(),
-        )
-    };
-    read_proof_result(raw)
-}
-
-pub fn groth16_verify(r1cs_path: &str, vk_path: &str, result: &Groth16ProofResult) -> Result<bool> {
-    init()?;
-    let r1cs = input_string(r1cs_path)?;
-    let vk = input_string(vk_path)?;
-    let proof = input_string(&result.proof)?;
-    let public_inputs = input_string(&result.public_inputs)?;
-    let error = unsafe {
-        bind::gnark_groth16_verify(
-            r1cs.as_ptr().cast_mut(),
-            vk.as_ptr().cast_mut(),
-            proof.as_ptr().cast_mut(),
-            public_inputs.as_ptr().cast_mut(),
-        )
-    };
-    read_verification(error)
 }
 
 fn input_string(input: &str) -> Result<CString> {
