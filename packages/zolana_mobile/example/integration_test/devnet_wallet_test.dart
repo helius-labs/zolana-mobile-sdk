@@ -8,7 +8,8 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// A private send from demo account A to B on Zolana devnet, proved on the
 /// device or simulator running the test, with A reopened from its exported
-/// keys. Opt in, since it spends devnet SOL and needs A funded and a Helius
+/// keys and the transfer signed by the test after a blockhash refresh, as an
+/// application that signs itself does. Opt in, since it spends devnet SOL and needs A funded and a Helius
 /// key for devnet:
 ///
 /// ```sh
@@ -46,6 +47,7 @@ void main() {
       reason: 'pass --dart-define=ZOLANA_API_KEY=...',
     );
     final lamports = BigInt.from(1000000);
+    final signer = await DemoSigner.fromSeedHex(demoAccounts[0].seedHex);
     final signed = await open(demoAccounts[0]);
     final keys = await signed.exportKeys();
     await signed.close();
@@ -53,7 +55,6 @@ void main() {
       config: await config(),
       solanaPublicKey: demoAccounts[0].publicKey,
       keys: keys,
-      signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),
     );
     addTearDown(sender.close);
     expect(sender.shieldedAddress, signed.shieldedAddress);
@@ -67,10 +68,22 @@ void main() {
     expect(senderBefore, greaterThanOrEqualTo(lamports));
 
     final started = DateTime.now();
-    final signature = await sender.transfer(
+    final prepared = await sender.prepareTransfer(
       recipient: demoAccounts[1].publicKey,
       amount: lamports,
     );
+    // A slow approval: the same proof under a new blockhash.
+    final transaction = await sender.refresh(prepared);
+    expect(
+      transaction.lastValidBlockHeight,
+      greaterThanOrEqualTo(prepared.lastValidBlockHeight),
+    );
+    final signature = await sender.submit(transaction, [
+      await signer.signMessage(
+        transaction.message,
+        purpose: transaction.summary,
+      ),
+    ]);
     // ignore: avoid_print
     print(
       'sent $signature in ${DateTime.now().difference(started).inMilliseconds} ms '

@@ -39,10 +39,14 @@ class RecordingSigner implements SolanaSigner {
 }
 
 class FakePending implements PendingTransaction {
-  FakePending(this.bytes, {this.signerKeys = const [owner]});
+  FakePending(this.bytes, {this.signerKeys = const [owner], this.height = 100});
 
   final Uint8List bytes;
   final List<String> signerKeys;
+  final int height;
+
+  @override
+  Future<BigInt> lastValidBlockHeight() async => BigInt.from(height);
 
   @override
   void dispose() {}
@@ -81,6 +85,19 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<WalletKeys> exportKeys() async => savedKeys;
+
+  /// A new blockhash: new message bytes and a later height, same signers.
+  @override
+  Future<PendingTransaction> refresh({
+    required PendingTransaction pending,
+  }) async {
+    final old = pending as FakePending;
+    return FakePending(
+      Uint8List.fromList([...old.bytes, 0]),
+      signerKeys: old.signerKeys,
+      height: old.height + 150,
+    );
+  }
 
   RegistrationStatus status = RegistrationStatus.registered;
 
@@ -287,6 +304,32 @@ void main() {
         backend: FakeBackend(FakeWallet()),
       ),
       throwsWalletError('signer_mismatch'),
+    );
+  });
+
+  test('refreshes the blockhash of a prepared transaction', () async {
+    final (wallet, native, _, _) = await openWallet();
+    final prepared = await wallet.prepareTransfer(
+      recipient: 'Recipient',
+      amount: BigInt.one,
+    );
+    expect(prepared.lastValidBlockHeight, BigInt.from(100));
+
+    final refreshed = await wallet.refresh(prepared);
+    expect(refreshed.lastValidBlockHeight, BigInt.from(250));
+    expect(refreshed.message, isNot(prepared.message));
+    expect(refreshed.signers, prepared.signers);
+    expect(refreshed.summary, prepared.summary);
+
+    await wallet.submit(refreshed, [Uint8List(64)]);
+    expect(
+      (native.submitted.single.$1 as FakePending).bytes,
+      refreshed.message,
+    );
+    await wallet.close();
+    await expectLater(
+      wallet.refresh(prepared),
+      throwsWalletError('wallet_closed'),
     );
   });
 

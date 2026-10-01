@@ -152,6 +152,16 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// the amount in its associated token account for `mint` (0 without one).
   Future<BigInt> publicBalance({String? mint});
 
+  /// `pending` with a new blockhash and the same proof, for an approval that
+  /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
+  /// over the old message do not apply to the new one.
+  ///
+  /// The proof stays valid while the trees still hold the roots it was built
+  /// on: a state tree keeps its last 500 roots, about its last 500
+  /// transactions, and a nullifier tree its last 100 batch roots. After that
+  /// the program rejects the proof as stale, and the spend is prepared again.
+  Future<PendingTransaction> refresh({required PendingTransaction pending});
+
   /// Whether the user registry publishes this wallet's shielded address.
   /// Others can only send to a registered wallet.
   Future<RegistrationStatus> registrationStatus();
@@ -172,6 +182,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
 abstract class PendingTransaction implements RustOpaqueInterface {
   Future<PendingTransactionKind> kind();
+
+  /// The last block height at which the message can still land. Past it,
+  /// [`MobileWallet::refresh`] gives it a new blockhash.
+  Future<BigInt> lastValidBlockHeight();
 
   /// The bytes every signer signs with Ed25519.
   Future<Uint8List> messageBytes();

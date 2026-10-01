@@ -201,8 +201,13 @@ sends through the wallet's RPC instead.
   fee payer's signature is the transaction signature. The proof binds the fee
   payer, so choose it at prepare. `transfer` and `withdraw` always use this
   account.
-- The message carries a recent blockhash and expires after about 150 blocks
-  (60–90 s). Prepare again when it expires.
+- The message carries a recent blockhash: `tx.lastValidBlockHeight` is the
+  last block height at which it can land, about 150 blocks (60–90 s) after it
+  was prepared. For a slower approval, `wallet.refresh(tx)` returns it with a
+  new blockhash and the same proof; sign the new `message`. The proof stays
+  valid while the trees still hold the roots it was built on (a state tree
+  keeps its last 500); after that the program rejects it as stale, and the
+  spend is prepared again.
 - Prepare one spend at a time. Until a prepared spend is confirmed, the next
   one can select the same notes; the program then rejects the second
   transaction. No funds are lost.

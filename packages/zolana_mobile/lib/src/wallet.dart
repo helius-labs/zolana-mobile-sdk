@@ -53,6 +53,7 @@ class PreparedTransaction {
     this.summary,
     this.message,
     this.signers,
+    this.lastValidBlockHeight,
   );
 
   static Future<PreparedTransaction> _read(
@@ -63,6 +64,7 @@ class PreparedTransaction {
     await pending.summary(),
     await pending.messageBytes(),
     await pending.signers(),
+    await pending.lastValidBlockHeight(),
   );
 
   final native.PendingTransaction _pending;
@@ -77,6 +79,10 @@ class PreparedTransaction {
   /// Base58 public keys that must sign, in signature order. The first is the
   /// fee payer, whose signature is the transaction signature.
   final List<String> signers;
+
+  /// The last block height at which [message] can still land. Past it,
+  /// [ZolanaWallet.refresh] gives it a new blockhash without a new proof.
+  final BigInt lastValidBlockHeight;
 }
 
 /// A private wallet for SOL and SPL tokens that proves on the device.
@@ -265,6 +271,17 @@ class ZolanaWallet {
     () =>
         _prepareOptional(_wallet.prepareTokenAccount(owner: owner, mint: mint)),
   );
+
+  /// [transaction] with a new blockhash and the same proof, for an approval
+  /// that outlived [PreparedTransaction.lastValidBlockHeight]. Sign the new
+  /// [PreparedTransaction.message]: signatures over the old one do not apply.
+  ///
+  /// The proof stays valid while the trees still hold the roots it was built
+  /// on: a state tree keeps its last 500 roots, about its last 500
+  /// transactions. After that the program rejects the proof as stale; prepare
+  /// the spend again.
+  Future<PreparedTransaction> refresh(PreparedTransaction transaction) =>
+      _serial(() => _prepare(_wallet.refresh(pending: transaction._pending)));
 
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
   /// wait as [confirm] does. Returns the transaction signature.
