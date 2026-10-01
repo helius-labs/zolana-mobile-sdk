@@ -3261,7 +3261,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// [`Self::balances`] reports.
   ///
   /// The indexer does not say which spends were withdrawals: a spend whose
-  /// outputs are all this wallet's own is listed as unshielded, one with
+  /// outputs are all this wallet's own is listed as a withdrawal, one with
   /// another wallet's output as sent.
   Future<List<ActivityEntry>> activity() =>
       RustLib.instance.api.zolanaMobileMobileWalletActivity(that: this);

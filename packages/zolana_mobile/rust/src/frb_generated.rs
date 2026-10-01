@@ -1901,11 +1901,11 @@ impl SseDecode for zolana_mobile::ActivityKind {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <i32>::sse_decode(deserializer);
         return match inner {
-            0 => zolana_mobile::ActivityKind::Shielded,
-            1 => zolana_mobile::ActivityKind::Unshielded,
+            0 => zolana_mobile::ActivityKind::Deposit,
+            1 => zolana_mobile::ActivityKind::Received,
             2 => zolana_mobile::ActivityKind::Sent,
-            3 => zolana_mobile::ActivityKind::Received,
-            4 => zolana_mobile::ActivityKind::Internal,
+            3 => zolana_mobile::ActivityKind::Withdrawal,
+            4 => zolana_mobile::ActivityKind::SelfTransfer,
             _ => unreachable!("Invalid variant for ActivityKind: {}", inner),
         };
     }
@@ -2491,11 +2491,11 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::ActivityEntry>>
 impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::ActivityKind> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
-            zolana_mobile::ActivityKind::Shielded => 0.into_dart(),
-            zolana_mobile::ActivityKind::Unshielded => 1.into_dart(),
+            zolana_mobile::ActivityKind::Deposit => 0.into_dart(),
+            zolana_mobile::ActivityKind::Received => 1.into_dart(),
             zolana_mobile::ActivityKind::Sent => 2.into_dart(),
-            zolana_mobile::ActivityKind::Received => 3.into_dart(),
-            zolana_mobile::ActivityKind::Internal => 4.into_dart(),
+            zolana_mobile::ActivityKind::Withdrawal => 3.into_dart(),
+            zolana_mobile::ActivityKind::SelfTransfer => 4.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -2861,11 +2861,11 @@ impl SseEncode for zolana_mobile::ActivityKind {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(
             match self {
-                zolana_mobile::ActivityKind::Shielded => 0,
-                zolana_mobile::ActivityKind::Unshielded => 1,
+                zolana_mobile::ActivityKind::Deposit => 0,
+                zolana_mobile::ActivityKind::Received => 1,
                 zolana_mobile::ActivityKind::Sent => 2,
-                zolana_mobile::ActivityKind::Received => 3,
-                zolana_mobile::ActivityKind::Internal => 4,
+                zolana_mobile::ActivityKind::Withdrawal => 3,
+                zolana_mobile::ActivityKind::SelfTransfer => 4,
                 _ => {
                     unimplemented!("");
                 }

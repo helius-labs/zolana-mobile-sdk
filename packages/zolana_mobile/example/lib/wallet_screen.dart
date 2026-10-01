@@ -172,7 +172,7 @@ class _WalletScreenState extends State<WalletScreen> {
         _activity = activity
             .where(
               (entry) =>
-                  entry.mint == null && entry.kind != ActivityKind.internal,
+                  entry.mint == null && entry.kind != ActivityKind.selfTransfer,
             )
             .toList();
       });
@@ -542,13 +542,13 @@ class _ActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, title, route, sign) = switch (entry.kind) {
-      ActivityKind.shielded => (
+      ActivityKind.deposit => (
         Icons.shield_outlined,
         'Shielded',
         'Public → Private',
         '+',
       ),
-      ActivityKind.unshielded => (
+      ActivityKind.withdrawal => (
         Icons.lock_open,
         'Unshielded',
         'Private → Public',
@@ -561,7 +561,7 @@ class _ActivityRow extends StatelessWidget {
         'Private transfer',
         '+',
       ),
-      ActivityKind.internal => (Icons.swap_horiz, 'Internal', '', ''),
+      ActivityKind.selfTransfer => (Icons.swap_horiz, 'Self transfer', '', ''),
     };
     return ListTile(
       contentPadding: EdgeInsets.zero,

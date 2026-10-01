@@ -303,7 +303,7 @@ class ZolanaWallet {
 
   /// Transaction history, read from the indexer now, newest first: one entry
   /// per asset each transaction moved. A spend whose outputs are all this
-  /// wallet's own is listed as unshielded, one with another wallet's output
+  /// wallet's own is listed as a withdrawal, one with another wallet's output
   /// as sent; the indexer does not say which spends were withdrawals.
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
@@ -321,10 +321,10 @@ class ZolanaWallet {
       );
 
   /// Send private funds to the registered wallet of [recipient] (a Solana
-  /// public key). Reads the spendable notes, takes the largest on one tree,
-  /// builds and proves on the device. Fails with `merge_required` when the
-  /// amount needs more notes than one transaction spends, or the balance is
-  /// spread over trees.
+  /// public key). Reads the spendable notes, takes the largest first, builds
+  /// and proves on the device. Fails with `merge_required` when the amount
+  /// needs more notes than one transaction spends (40), or notes from more
+  /// than two trees.
   ///
   /// [feePayer] (a Solana public key, such as the application's backend)
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
