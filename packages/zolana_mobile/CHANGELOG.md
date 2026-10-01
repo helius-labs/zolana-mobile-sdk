@@ -16,9 +16,9 @@ Unreleased.
   another account pay the network fee of a transfer or withdrawal.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
-* `close()` for lock and account switch: it rejects queued operations, never
-  signs or submits after the call, and releases the native wallet once the
-  running step ends.
+* `close()` for lock and account switch: it rejects queued operations and a
+  `prepare` call that is proving at the time, never signs or submits after the
+  call, and releases the native wallet once the running step ends.
 * `WalletConfig.rpcHeaders`: extra HTTP headers on every Solana RPC request.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile.
