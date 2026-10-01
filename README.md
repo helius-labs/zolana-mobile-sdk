@@ -10,11 +10,9 @@ Mopro/gnark Groth16. The Solana key stays with the application's signer.
 - `packages/zolana_mobile/native/zolana-mobile`: the native wallet, on-device
   prover, proving-key store, and lower-level prover handles.
 - `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
-  strict witness validation, prepared keys, `.key` loading, and the structured
-  request adapter.
+  prepared keys, `.key` loading, and the structured request adapter.
 - `packages/zolana_mobile`: the Flutter plugin, and an example devnet wallet.
-- `fixtures`: a 2→3 `/prove` request captured from the Zolana client, and its
-  flattened witness.
+- `fixtures`: a 2→3 `/prove` request captured from the Zolana client.
 - `scripts`: asset staging and the upstream drift check.
 
 The generated native library keeps Mopro's internal

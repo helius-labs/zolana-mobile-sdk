@@ -22,7 +22,6 @@ drop(prover);
   name the eddsa rail and the shape the constraint system has. The
   container is read before its sections can be checked against each other,
   so verify the file against the pinned proving-key lockfile first.
-- `prove(&self, witness_json: &str) -> anyhow::Result<Groth16ProofResult>`
 - `prove_request(&self, request_json: &str) -> anyhow::Result<Groth16ProofResult>`
 - `verify(&self, result: &Groth16ProofResult) -> anyhow::Result<bool>`
 - `Drop` releases the Go handle. The type is `Send`, not `Sync` or `Clone`.
@@ -33,7 +32,7 @@ Load validates PK/VK curve points with `ReadFrom`, preflights the FFT domain
 before its parallel precomputation, and checks key/circuit dimensions.
 Warm calls never reopen the assets. One prepared handle is permitted per
 process; drop it before loading another. IDs are not reused. A Go mutex
-serializes all backend operations, including release and compatibility calls.
+serializes all backend operations, including release.
 
 `Groth16ProofResult` derives `Debug, Clone, Default` and contains:
 
@@ -54,25 +53,14 @@ copies, and time queued behind the backend mutex. Generic gnark circuits
 have `shape_known=false`; wallet core must reject that rather than treating
 zero placeholder counts as a Zolana shape.
 
-`groth16_prove(r1cs, pk, witness_json)` and
-`groth16_verify(r1cs, vk, &result)` remain available. The legacy prove call
-has no VK and therefore cannot self-verify. Verification consumes only
-`proof` and `public_inputs`; constructing the remaining fields with
-`..Default::default()` is supported. `proof_json` is a generated output,
-not a second verification input.
+Verification consumes only `proof` and `public_inputs`; constructing the
+remaining fields with `..Default::default()` is supported. `proof_json` is a
+generated output, not a second verification input.
 
 ## Inputs
 
-Flattened input is one object mapping every embedded public/secret variable
-name (except the constant wire) to a decimal JSON STRING. Accepted integers
-match `0|[1-9][0-9]*` and are smaller than the BN254 scalar modulus.
-Numbers including `3` and `3.9`, fractional strings, negatives, signs,
-whitespace in values, prefixes, leading zeroes, out-of-range integers,
-duplicate/unknown/missing names, trailing JSON, nulls and containers fail
-with the fixed error `invalid witness`.
-
-Structured input is the ordinary Zolana `/prove` request, using pinned
-protocol hexadecimal strings rather than flattened decimal strings.
+Input is the ordinary Zolana `/prove` request, using the pinned protocol's
+hexadecimal strings.
 Supported types are `transfer-confidential`, `transfer-ring`,
 `transfer-ring-authority`, `merge`, and `merge-ring`.
 P256, custom-ring, address-append, and unknown types fail closed.
@@ -115,10 +103,10 @@ cargo package --allow-dirty --offline
 ```
 
 To exercise deployed transfer keys, set `ZOLANA_TEST_KEYS` to a directory
-containing `transfer_confidential_2_3.{r1cs,pk,vk}` and `witness-2x3.json`.
-The staged-key test checks the pinned structured fixture against the
-canonical flattened vector, proves twice using the retained handle, checks
-the compatibility API, and verifies native/web JSON interoperability.
+containing `transfer_confidential_2_3.{r1cs,pk,vk}`. The staged-key test
+checks the witness built from the pinned request against the canonical
+flattened vector in `go/testdata/witness-2x3.json`, proves twice using the
+retained handle, and verifies native/web JSON interoperability.
 
 On the supplied macOS host, set SDKROOT to Xcode's MacOSX.sdk and CC/AR to
 Xcode's explicit clang/ar paths; use `GOFLAGS=-buildvcs=false`.

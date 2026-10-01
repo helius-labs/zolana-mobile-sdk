@@ -67,7 +67,7 @@ keys. Native asset loading uses validated ReadFrom exclusively.
   proving it with a `Prover` that records the request body. Keys and blindings are
   random test values. fixtures/prove-request-2x3.json is the same bytes plus a
   trailing newline.
-- go/testdata/witness-2x3.json (and fixtures/witness-2x3.json) is that request
+- go/testdata/witness-2x3.json is that request
   assigned onto the staged `transfer_confidential_2_3` constraint system and
   flattened to canonical decimal strings keyed by the key's variable names.
 - go/merge_fixture_test.go is the pinned

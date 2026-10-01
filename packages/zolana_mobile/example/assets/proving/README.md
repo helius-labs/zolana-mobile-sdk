@@ -8,4 +8,4 @@ From the repository root, run:
 
 The script downloads and verifies `transfer_confidential_2_3.key`, splits its
 `.pk`, `.vk`, and `.r1cs` sections at locked byte offsets, and copies the
-committed witness JSON. All staged assets are ignored by Git.
+committed proof request. All staged assets are ignored by Git.
