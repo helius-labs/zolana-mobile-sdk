@@ -1,7 +1,8 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
 //! machine with the pinned keys: register, deposit, private transfer, the
 //! recipient's balance, and a withdrawal from a session opened before the
-//! transfer, with its fee paid by another account.
+//! transfer, with its fee paid by another account. Each step is the newest
+//! entry of its wallets' history.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon and the programs), or any cluster that runs the pinned
@@ -24,7 +25,8 @@ use solana_keypair::Keypair;
 use solana_signer::Signer;
 use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{
-    derivation_message, MobileWallet, PendingTransaction, RegistrationStatus, WalletConfig,
+    derivation_message, ActivityKind, MobileWallet, PendingTransaction, RegistrationStatus,
+    WalletConfig,
 };
 
 const FUNDING: u64 = 1_000_000_000;
@@ -90,6 +92,22 @@ fn private_sol(wallet: &mut MobileWallet) -> u64 {
     wallet.private_balance(None).unwrap()
 }
 
+/// The newest history entry is the transaction `signature`, moving `amount`
+/// SOL as `kind`.
+fn newest(wallet: &mut MobileWallet, signature: &str, kind: ActivityKind, amount: u64) {
+    let activity = wallet.activity().unwrap();
+    let entry = activity.first().expect("an activity entry");
+    assert_eq!(
+        (
+            entry.signature.as_str(),
+            entry.kind,
+            entry.mint.as_deref(),
+            entry.amount
+        ),
+        (signature, kind, None, amount)
+    );
+}
+
 fn register(wallet: &mut MobileWallet, signer: &Keypair) {
     if let Some(pending) = wallet.prepare_registration().expect("prepare registration") {
         submit(wallet, &[signer], pending);
@@ -123,8 +141,14 @@ fn register_deposit_transfer_and_receive() {
     let recipient_before = private_sol(&mut recipient_wallet);
 
     let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
-    submit(&sender_wallet, &[&sender], pending);
+    let deposit = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(private_sol(&mut sender_wallet), sender_before + DEPOSIT);
+    newest(
+        &mut sender_wallet,
+        &deposit,
+        ActivityKind::Shielded,
+        DEPOSIT,
+    );
 
     // A second session of the sender, opened before the transfer spends its
     // notes: the same account on another device.
@@ -135,7 +159,7 @@ fn register_deposit_transfer_and_receive() {
         .prepare_transfer(recipient.pubkey().to_string(), None, TRANSFER, None)
         .expect("prove transfer");
     println!("built and proved on device in {:?}", started.elapsed());
-    submit(&sender_wallet, &[&sender], pending);
+    let transfer = submit(&sender_wallet, &[&sender], pending);
 
     assert_eq!(
         private_sol(&mut sender_wallet),
@@ -144,6 +168,13 @@ fn register_deposit_transfer_and_receive() {
     assert_eq!(
         private_sol(&mut recipient_wallet),
         recipient_before + TRANSFER
+    );
+    newest(&mut sender_wallet, &transfer, ActivityKind::Sent, TRANSFER);
+    newest(
+        &mut recipient_wallet,
+        &transfer,
+        ActivityKind::Received,
+        TRANSFER,
     );
 
     // The other session must not pick a note the transfer already spent.
@@ -157,10 +188,16 @@ fn register_deposit_transfer_and_receive() {
             Some(recipient.pubkey().to_string()),
         )
         .expect("another session still builds a spendable withdrawal");
-    submit(&stale, &[&recipient, &sender], pending);
+    let withdrawal = submit(&stale, &[&recipient, &sender], pending);
     assert_eq!(
         rpc.get_balance(sender.pubkey()).unwrap(),
         public_before + WITHDRAWAL
+    );
+    newest(
+        &mut stale,
+        &withdrawal,
+        ActivityKind::Unshielded,
+        WITHDRAWAL,
     );
     assert_eq!(
         stale.private_balance(None).unwrap(),

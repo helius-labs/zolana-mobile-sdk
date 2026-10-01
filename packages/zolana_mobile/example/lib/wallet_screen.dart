@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
@@ -51,6 +52,7 @@ class _WalletScreenState extends State<WalletScreen> {
   ZolanaWallet? _wallet;
   BigInt? _public;
   BigInt? _private;
+  List<ActivityEntry> _activity = const [];
   bool _refreshing = false;
   int _generation = 0;
 
@@ -77,10 +79,8 @@ class _WalletScreenState extends State<WalletScreen> {
       _wallet = null;
       _public = null;
       _private = null;
+      _activity = const [];
     });
-    try {
-      // Release the previous account before this one proves.
-      await previous?.close();
     if (identical(_network, Network.devnet) && _apiKey.isEmpty) {
       await previous?.close();
       _fail(
@@ -90,6 +90,9 @@ class _WalletScreenState extends State<WalletScreen> {
       );
       return;
     }
+    try {
+      // Release the previous account before this one proves.
+      await previous?.close();
       final signer = await DemoSigner.fromSeedHex(_account.seedHex);
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';
@@ -163,10 +166,18 @@ class _WalletScreenState extends State<WalletScreen> {
       // Both are read from the chain and the indexer now.
       final private = await wallet.privateBalance();
       final public = await wallet.publicBalance();
+      final activity = await wallet.activity();
       if (!_current(generation)) return;
       setState(() {
         _private = private;
         _public = public;
+        // The demo shows SOL only.
+        _activity = activity
+            .where(
+              (entry) =>
+                  entry.mint == null && entry.kind != ActivityKind.internal,
+            )
+            .toList();
       });
     } catch (error) {
       if (_current(generation)) _snack(friendlyError(error));
@@ -419,6 +430,30 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 32),
+              Text('Activity', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              if (_activity.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
+                    _refreshing
+                        ? 'Loading…'
+                        : 'Nothing yet. Shield some SOL to start.',
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                for (final entry in _activity)
+                  _ActivityRow(
+                    entry: entry,
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: explorerUrl(entry.signature)),
+                      );
+                      _snack('Explorer link copied');
+                    },
+                  ),
             ],
           ),
         ),
@@ -489,6 +524,50 @@ class _ActionButton extends StatelessWidget {
         const SizedBox(height: 8),
         Text(label, style: Theme.of(context).textTheme.labelMedium),
       ],
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.entry, required this.onTap});
+
+  final ActivityEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, title, route, sign) = switch (entry.kind) {
+      ActivityKind.shielded => (
+        Icons.shield_outlined,
+        'Shielded',
+        'Public → Private',
+        '+',
+      ),
+      ActivityKind.unshielded => (
+        Icons.lock_open,
+        'Unshielded',
+        'Private → Public',
+        '−',
+      ),
+      ActivityKind.sent => (Icons.north_east, 'Sent', 'Private transfer', '−'),
+      ActivityKind.received => (
+        Icons.south_west,
+        'Received',
+        'Private transfer',
+        '+',
+      ),
+      ActivityKind.internal => (Icons.swap_horiz, 'Internal', '', ''),
+    };
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(child: Icon(icon, size: 20)),
+      title: Text(title),
+      subtitle: Text(route),
+      trailing: Text(
+        '$sign${formatSol(entry.amount)}',
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+      onTap: onTap,
     );
   }
 }

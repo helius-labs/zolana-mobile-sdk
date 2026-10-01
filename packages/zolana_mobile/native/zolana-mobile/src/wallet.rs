@@ -10,8 +10,8 @@
 //! 2. each [`PendingTransaction::message_bytes`], the v1 Solana message this
 //!    library built, proved and returned unsigned.
 //!
-//! The wallet keeps no chain state between calls. Balances and spends read the
-//! wallet's spendable notes from the indexer when they run, so they see a
+//! The wallet keeps no chain state between calls. Balances, spends and history
+//! read the wallet's notes from the indexer when they run, so they see a
 //! spend by another client, or by the last transaction, as soon as the
 //! indexer has it.
 //!
@@ -52,6 +52,7 @@ use zolana_transaction::{
 };
 
 use crate::{
+    activity::{self, ActivityEntry},
     asset::{mint_name, token_account_amount, Asset},
     keys::KeyStore,
     prover::NativeProver,
@@ -351,6 +352,18 @@ impl MobileWallet {
             .map_or(0, |balance| balance.amount))
     }
 
+    /// Transaction history, read from the indexer now, newest first: one
+    /// entry per asset each transaction moved, in SOL and every mint
+    /// [`Self::balances`] reports.
+    ///
+    /// The indexer does not say which spends were withdrawals: a spend whose
+    /// outputs are all this wallet's own is listed as unshielded, one with
+    /// another wallet's output as sent.
+    pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, String> {
+        self.resolve_mints()?;
+        activity::fetch(&self.keys, &self.assets, &self.client).map_err(error)
+    }
+
     /// Build and prove a private transfer to a registered wallet.
     ///
     /// Refuses an unregistered recipient instead of paying it publicly:
@@ -480,15 +493,20 @@ impl MobileWallet {
     /// The wallet's spendable notes as the indexer has them now, in SOL and
     /// every mint in the registry.
     fn spendable(&mut self) -> Result<SpendableDecryptionResult, String> {
-        // Resolve the configured mints once each; one that fails stays for
-        // the next call.
+        self.resolve_mints()?;
+        SpendableUtxos::new(&self.keys, &self.assets)
+            .fetch(&self.client)
+            .map_err(error)
+    }
+
+    /// Resolve the configured mints once each; one that fails stays for the
+    /// next call.
+    fn resolve_mints(&mut self) -> Result<(), String> {
         while let Some(mint) = self.mints.last().cloned() {
             self.asset(Some(mint))?;
             self.mints.pop();
         }
-        SpendableUtxos::new(&self.keys, &self.assets)
-            .fetch(&self.client)
-            .map_err(error)
+        Ok(())
     }
 
     /// Encrypt and prove `transaction` on the device, and build the Solana
@@ -909,24 +927,6 @@ mod tests {
     }
 
     #[test]
-    fn a_record_with_other_keys_is_a_conflict() {
-        let identity = open(&Keypair::new()).unwrap().address;
-        let other = open(&Keypair::new()).unwrap().address;
-        let status = |published: Option<Result<ShieldedAddress, ()>>| {
-            registration_status_of(published, &identity)
-        };
-        assert_eq!(status(None), RegistrationStatus::NotRegistered);
-        assert_eq!(status(Some(Ok(identity))), RegistrationStatus::Registered);
-        assert_eq!(status(Some(Ok(other))), RegistrationStatus::Conflict);
-        assert_eq!(status(Some(Err(()))), RegistrationStatus::Conflict);
-    }
-
-    #[test]
-    fn rejects_malformed_keys_before_the_network() {
-        let mut wallet = open(&Keypair::new()).unwrap();
-        let recipient = Keypair::new().pubkey().to_string();
-        let bad = "not-a-pubkey".to_string();
-    #[test]
     fn errors_mask_api_keys_in_urls() {
         let signer = Keypair::new();
         let pubkey = signer.pubkey().to_string();
@@ -950,6 +950,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_record_with_other_keys_is_a_conflict() {
+        let identity = open(&Keypair::new()).unwrap().address;
+        let other = open(&Keypair::new()).unwrap().address;
+        let status = |published: Option<Result<ShieldedAddress, ()>>| {
+            registration_status_of(published, &identity)
+        };
+        assert_eq!(status(None), RegistrationStatus::NotRegistered);
+        assert_eq!(status(Some(Ok(identity))), RegistrationStatus::Registered);
+        assert_eq!(status(Some(Ok(other))), RegistrationStatus::Conflict);
+        assert_eq!(status(Some(Err(()))), RegistrationStatus::Conflict);
+    }
+
+    #[test]
+    fn rejects_malformed_keys_before_the_network() {
+        let mut wallet = open(&Keypair::new()).unwrap();
+        let recipient = Keypair::new().pubkey().to_string();
+        let bad = "not-a-pubkey".to_string();
         let error = |result: Result<PendingTransaction, String>| result.err();
         assert_eq!(
             error(wallet.prepare_transfer(bad.clone(), None, 1, None)).as_deref(),

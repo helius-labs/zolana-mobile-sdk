@@ -46,6 +46,7 @@ abstract interface class NativeWallet {
   Future<List<native.TokenBalance>> balances();
   Future<BigInt> privateBalance(String? mint);
   Future<BigInt> publicBalance(String? mint);
+  Future<List<native.ActivityEntry>> activity();
   Future<NativePending?> prepareRegistration();
   Future<NativePending> prepareDeposit(String? mint, BigInt amount);
   Future<NativePending> prepareTransfer(
@@ -117,8 +118,8 @@ class PreparedTransaction {
 /// works once the shielded pool has registered its mint; otherwise calls fail
 /// with `asset_not_supported`.
 ///
-/// The wallet keeps no chain state: [balances], [privateBalance] and every
-/// spend read the wallet's notes from the indexer when they run.
+/// The wallet keeps no chain state: [balances], [privateBalance], [activity]
+/// and every spend read the wallet's notes from the indexer when they run.
 ///
 /// Every operation runs after the previous one finishes: the native wallet
 /// holds one proving key at a time, and two spends in flight would select the
@@ -178,6 +179,12 @@ class ZolanaWallet {
   /// the amount in its associated token account for [mint] (0 without one).
   Future<BigInt> publicBalance({String? mint}) =>
       _serial(() => _wallet.publicBalance(mint));
+
+  /// Transaction history, read from the indexer now, newest first: one entry
+  /// per asset each transaction moved. A spend whose outputs are all this
+  /// wallet's own is listed as unshielded, one with another wallet's output
+  /// as sent; the indexer does not say which spends were withdrawals.
+  Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with `registration_conflict` when the
@@ -286,15 +293,13 @@ class ZolanaWallet {
   /// native wallet: its keys and proving key.
   ///
   /// It does not recall a transaction already submitted.
-  Future<void> close() =>
-      _closing ??= _last.then((_) => _wallet.dispose());
+  Future<void> close() => _closing ??= _last.then((_) => _wallet.dispose());
 
   Future<PreparedTransaction> _prepareDeposit(
     String? mint,
     BigInt amount,
-  ) async => PreparedTransaction._read(
-    await _wallet.prepareDeposit(mint, amount),
-  );
+  ) async =>
+      PreparedTransaction._read(await _wallet.prepareDeposit(mint, amount));
 
   Future<PreparedTransaction> _prepareTransfer(
     String recipient,
@@ -393,6 +398,9 @@ class _NativeWallet implements NativeWallet {
   @override
   Future<BigInt> publicBalance(String? mint) =>
       _wallet.publicBalance(mint: mint);
+
+  @override
+  Future<List<native.ActivityEntry>> activity() => _wallet.activity();
 
   @override
   Future<NativePending?> prepareRegistration() async {

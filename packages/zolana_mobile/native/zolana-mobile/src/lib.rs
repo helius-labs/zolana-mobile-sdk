@@ -8,11 +8,13 @@ use std::{
 use zeroize::Zeroizing;
 use zolana_hasher::{Hasher, Poseidon};
 
+mod activity;
 mod asset;
 mod keys;
 mod prover;
 mod wallet;
 
+pub use activity::{ActivityEntry, ActivityKind};
 pub use keys::DEFAULT_PROVING_KEYS_URL;
 pub use wallet::{
     derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind,

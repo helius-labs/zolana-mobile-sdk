@@ -74,6 +74,15 @@ Future<LocalProofResult> proveAssignment({
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>>
 abstract class MobileWallet implements RustOpaqueInterface {
+  /// Transaction history, read from the indexer now, newest first: one
+  /// entry per asset each transaction moved, in SOL and every mint
+  /// [`Self::balances`] reports.
+  ///
+  /// The indexer does not say which spends were withdrawals: a spend whose
+  /// outputs are all this wallet's own is listed as unshielded, one with
+  /// another wallet's output as sent.
+  Future<List<ActivityEntry>> activity();
+
   /// Spendable private balances, read from the indexer now: one per asset
   /// held in SOL, the configured mints and the mints named so far.
   Future<List<TokenBalance>> balances();
@@ -187,6 +196,58 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 
   /// Human-readable description to show before asking for a signature.
   Future<String> summary();
+}
+
+/// Amounts are in base units: lamports for SOL, the mint's smallest unit
+/// otherwise. `mint` is `None` for SOL. Sent and unshielded amounts are what
+/// left the private balance, change excluded.
+class ActivityEntry {
+  final ActivityKind kind;
+  final String? mint;
+  final BigInt amount;
+  final String signature;
+  final BigInt slot;
+
+  const ActivityEntry({
+    required this.kind,
+    this.mint,
+    required this.amount,
+    required this.signature,
+    required this.slot,
+  });
+
+  @override
+  int get hashCode =>
+      kind.hashCode ^
+      mint.hashCode ^
+      amount.hashCode ^
+      signature.hashCode ^
+      slot.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ActivityEntry &&
+          runtimeType == other.runtimeType &&
+          kind == other.kind &&
+          mint == other.mint &&
+          amount == other.amount &&
+          signature == other.signature &&
+          slot == other.slot;
+}
+
+/// What a history entry did, from this wallet's side.
+enum ActivityKind {
+  /// Public funds moved into the private balance.
+  shielded,
+
+  /// Private funds moved to a public account.
+  unshielded,
+  sent,
+  received,
+
+  /// Notes rearranged within this wallet: a merge, or a transfer to itself.
+  internal,
 }
 
 class GnarkProofResult {

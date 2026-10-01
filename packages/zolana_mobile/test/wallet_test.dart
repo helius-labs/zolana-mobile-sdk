@@ -83,6 +83,9 @@ class FakeWallet implements NativeWallet {
   Future<BigInt> publicBalance(String? mint) async => BigInt.one;
 
   @override
+  Future<List<ActivityEntry>> activity() async => const [];
+
+  @override
   Future<NativePending?> prepareRegistration() async => switch (status) {
     RegistrationStatus.registered => null,
     RegistrationStatus.conflict => throw 'registration_conflict',
@@ -238,7 +241,10 @@ void main() {
     expect(native.transferFeePayer, 'Backend');
     expect(transaction.signers, ['Backend', owner]);
 
-    final signatures = [Uint8List.fromList([1]), Uint8List.fromList([2])];
+    final signatures = [
+      Uint8List.fromList([1]),
+      Uint8List.fromList([2]),
+    ];
     expect(await wallet.submit(transaction, signatures), 'signature');
     expect(native.submitted.single.$2, signatures);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');

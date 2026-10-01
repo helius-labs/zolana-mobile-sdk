@@ -117,9 +117,14 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
 - **Privacy**: deposits and withdrawals are public. Private transfers reveal
   neither amount nor recipient. The indexer learns this wallet's view tags, so
   `allowInsecureHttp` is only for a local test cluster.
+- **History**: `activity()` lists the transactions that moved this wallet's
+  notes, newest first, as `shielded`, `unshielded`, `sent`, `received` or
+  `internal` (merges and transfers to itself), one entry per asset. The indexer
+  does not mark withdrawals: a spend whose outputs are all this wallet's own is
+  `unshielded`, one with another wallet's output `sent`.
 - **Freshness**: the wallet keeps no chain state. `balances()`,
-  `privateBalance()` and every spend read the wallet's notes from the indexer
-  when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
+  `privateBalance()`, `activity()` and every spend read the wallet's notes from
+  the indexer when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
   has the transaction, so notes spent by another session or device are never
   picked.
 - **Errors** are `ZolanaWalletException`s with a code or a client error
@@ -162,9 +167,8 @@ sends through the wallet's RPC instead.
   transaction. No funds are lost.
 
 Current limits: notes are not merged, so a spend takes at most 5 notes on one
-tree and fails with `merge_required` beyond that; there is no transaction
-history; one prepared prover is loaded per process, so close a `LocalProver`
-before the wallet proves.
+tree and fails with `merge_required` beyond that; one prepared prover is
+loaded per process, so close a `LocalProver` before the wallet proves.
 
 ## Prepare once, prove repeatedly
 
