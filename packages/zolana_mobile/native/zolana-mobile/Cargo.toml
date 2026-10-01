@@ -15,11 +15,15 @@ default = []
 flutter = ["dep:mopro-ffi", "mopro-ffi/flutter"]
 
 [dependencies]
-getrandom = "0.3"
 mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 rust-gnark = { path = "../rust-gnark" }
 serde = { version = "1.0", features = ["derive"] }
+solana-commitment-config = "3.1"
+solana-instruction = "3.4"
+solana-message = "4.2"
+solana-rpc-client = "4.2"
+solana-transaction = "4.1"
 serde_json = "1.0"
 sha2 = "0.10"
 zeroize = "1.9"
@@ -27,15 +31,19 @@ solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5", features = ["std"] }
-zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
-zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5", features = ["client"] }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573", features = ["std"] }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573", features = ["borsh"] }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573" }
+zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573" }
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573", features = ["client"] }
 # Off-chain, this crate links OpenSSL; mobile targets have no system copy.
 solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
-zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573" }
 
 [dev-dependencies]
-zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "a7846c611d4effa41f1256dd5f1367c076117be5" }
+solana-account = "4.3"
+solana-keypair = "3"
+solana-signer = "3.0"
 
 [[bin]]
 name = "flutter"

@@ -9,7 +9,6 @@ class ControlledBackend implements ProverBackend {
   int releases = 0;
   bool failRelease = false;
   bool failLoad = false;
-  bool? structured;
 
   @override
   Future<PreparedProverInfo> load({
@@ -24,11 +23,9 @@ class ControlledBackend implements ProverBackend {
   @override
   Future<LocalProofResult> prove({
     required BigInt id,
-    required String inputJson,
-    required bool structuredRequest,
+    required String requestJson,
   }) {
     proofs++;
-    structured = structuredRequest;
     return pending.future;
   }
 
@@ -71,7 +68,7 @@ void main() {
   test('concurrent close calls share one drain and one release', () async {
     final backend = ControlledBackend();
     final prover = await open(backend);
-    final job = prover.proveWitness('{}');
+    final job = prover.proveRequest('{}');
     final firstClose = prover.close();
     final secondClose = prover.close();
     expect(identical(firstClose, secondClose), isTrue);
@@ -82,9 +79,9 @@ void main() {
   test('rejects overlapping jobs and reuses the loaded prover', () async {
     final backend = ControlledBackend();
     final prover = await open(backend);
-    final first = prover.proveWitness('{}');
+    final first = prover.proveRequest('{}');
     expect(
-      () => prover.proveWitness('{}'),
+      () => prover.proveRequest('{}'),
       throwsA(proverError(ProverErrorCode.busy)),
     );
     expect(backend.proofs, 1);
@@ -93,7 +90,6 @@ void main() {
     await first.done;
     backend.pending = Completer();
     final second = prover.proveRequest('{}');
-    expect(backend.structured, isTrue);
     expect(second.id, greaterThan(first.id));
     backend.pending.complete(proofResult());
     await second.result;
@@ -106,7 +102,7 @@ void main() {
     () async {
       final backend = ControlledBackend();
       final prover = await open(backend);
-      final job = prover.proveWitness('{}');
+      final job = prover.proveRequest('{}');
       final rejected = expectLater(
         job.result,
         throwsA(proverError(ProverErrorCode.discarded)),
@@ -116,7 +112,7 @@ void main() {
       expect(job.isDiscarded, isTrue);
       expect(backend.releases, 0);
       expect(
-        () => prover.proveWitness('{}'),
+        () => prover.proveRequest('{}'),
         throwsA(proverError(ProverErrorCode.closed)),
       );
       backend.pending.complete(proofResult());
@@ -130,14 +126,14 @@ void main() {
   test('discard does not pretend the native job has stopped', () async {
     final backend = ControlledBackend();
     final prover = await open(backend);
-    final job = prover.proveWitness('{}');
+    final job = prover.proveRequest('{}');
     job.discard();
     var finished = false;
     unawaited(job.done.then((_) => finished = true));
     await Future<void>.delayed(Duration.zero);
     expect(finished, isFalse);
     expect(
-      () => prover.proveWitness('{}'),
+      () => prover.proveRequest('{}'),
       throwsA(proverError(ProverErrorCode.busy)),
     );
     backend.pending.completeError(StateError('private-sentinel'));
@@ -153,7 +149,7 @@ void main() {
   test('native errors are sanitized and completion always settles', () async {
     final backend = ControlledBackend();
     final prover = await open(backend);
-    final job = prover.proveWitness('{}');
+    final job = prover.proveRequest('{}');
     backend.pending.completeError(StateError('private-sentinel'));
     await expectLater(
       job.result,

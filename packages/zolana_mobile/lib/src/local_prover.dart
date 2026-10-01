@@ -28,8 +28,7 @@ abstract interface class ProverBackend {
   });
   Future<LocalProofResult> prove({
     required BigInt id,
-    required String inputJson,
-    required bool structuredRequest,
+    required String requestJson,
   });
   Future<void> release(BigInt id);
 }
@@ -51,13 +50,8 @@ class NativeProverBackend implements ProverBackend {
   @override
   Future<LocalProofResult> prove({
     required BigInt id,
-    required String inputJson,
-    required bool structuredRequest,
-  }) => provePrepared(
-    id: id,
-    inputJson: inputJson,
-    structuredRequest: structuredRequest,
-  );
+    required String requestJson,
+  }) => provePrepared(id: id, inputJson: requestJson);
 
   @override
   Future<void> release(BigInt id) => releaseProver(id: id);
@@ -136,22 +130,14 @@ class LocalProver {
     }
   }
 
-  ProofJob proveRequest(String requestJson) => _start(requestJson, true);
-
-  ProofJob proveWitness(String witnessJson) => _start(witnessJson, false);
-
-  ProofJob _start(String inputJson, bool structuredRequest) {
+  ProofJob proveRequest(String requestJson) {
     if (_closed) throw const ProverException(ProverErrorCode.closed);
     if (_active != null) throw const ProverException(ProverErrorCode.busy);
     final job = ProofJob._(_nextJobId++);
     _active = job;
     unawaited(
       job._run(
-        () => _backend.prove(
-          id: _info.id,
-          inputJson: inputJson,
-          structuredRequest: structuredRequest,
-        ),
+        () => _backend.prove(id: _info.id, requestJson: requestJson),
         () => _active = null,
       ),
     );

@@ -1,0 +1,365 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'rust/third_party/zolana_mobile.dart' as native;
+
+/// Signs as one Solana account: a platform keystore, a wallet adapter or a
+/// remote custodian. The Solana secret key never enters this package.
+///
+/// [signMessage] is asked for two things: once, the Zolana derivation message
+/// that opens the wallet, and then each transaction message. [purpose] is a
+/// description to show the user before signing.
+abstract interface class SolanaSigner {
+  /// Base58 public key.
+  String get publicKey;
+
+  /// Ed25519 signature over [message].
+  Future<Uint8List> signMessage(Uint8List message, {required String purpose});
+}
+
+/// A failure reported by the native wallet, such as
+/// `recipient_not_registered` or `signature_invalid`, or a client error
+/// describing what failed. It never contains key material.
+class ZolanaWalletException implements Exception {
+  const ZolanaWalletException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'Zolana wallet: $message';
+}
+
+/// The native calls [ZolanaWallet.open] makes; replaced in tests.
+abstract interface class WalletBackend {
+  Future<Uint8List> derivationMessage(String solanaPubkey);
+  Future<native.MobileWallet> open(
+    native.WalletConfig config,
+    String solanaPubkey,
+    Uint8List derivationSignature,
+  );
+}
+
+/// A transaction the wallet built and, where needed, proved, awaiting
+/// signatures. Each of [signers] signs [message] with Ed25519, in order.
+class PreparedTransaction {
+  PreparedTransaction._(
+    this._pending,
+    this.kind,
+    this.summary,
+    this.message,
+    this.signers,
+  );
+
+  static Future<PreparedTransaction> _read(
+    Future<native.PendingTransaction> prepared,
+  ) async {
+    final pending = await prepared;
+    return PreparedTransaction._(
+      pending,
+      await pending.kind(),
+      await pending.summary(),
+      await pending.messageBytes(),
+      await pending.signers(),
+    );
+  }
+
+  static Future<PreparedTransaction?> _readOptional(
+    Future<native.PendingTransaction?> prepared,
+  ) async {
+    final pending = await prepared;
+    return pending == null ? null : _read(Future.value(pending));
+  }
+
+  final native.PendingTransaction _pending;
+  final native.PendingTransactionKind kind;
+
+  /// Description to show the user before signing.
+  final String summary;
+
+  /// The serialized Solana message every signer signs.
+  final Uint8List message;
+
+  /// Base58 public keys that must sign, in signature order. The first is the
+  /// fee payer, whose signature is the transaction signature.
+  final List<String> signers;
+}
+
+/// A private wallet for SOL and SPL tokens that proves on the device.
+///
+/// Amounts are in base units: lamports for SOL, the mint's smallest unit for
+/// a token. `mint` is the base58 mint address, or `null` for SOL. A token
+/// works once the shielded pool has registered its mint; otherwise calls fail
+/// with `asset_not_supported`.
+///
+/// The wallet keeps no chain state: [balances], [privateBalance], [activity]
+/// and every spend read the wallet's notes from the indexer when they run.
+///
+/// Every operation runs after the previous one finishes: the native wallet
+/// holds one proving key at a time, and two spends in flight would select the
+/// same notes. [close] it when the application locks or switches accounts.
+///
+/// [register], [deposit], [transfer] and [withdraw] prepare, sign with the
+/// wallet's [SolanaSigner] and submit. An application that signs and sends
+/// transactions itself uses the `prepare` methods, then [submit] or, after
+/// sending, [confirm].
+class ZolanaWallet {
+  ZolanaWallet._(this._signer, this._wallet, this.shieldedAddress);
+
+  final SolanaSigner _signer;
+  final native.MobileWallet _wallet;
+  Future<void> _last = Future.value();
+  Future<void>? _closing;
+
+  /// The address other Zolana wallets pay, once [register] has published it.
+  final String shieldedAddress;
+
+  String get solanaPublicKey => _signer.publicKey;
+
+  bool get isClosed => _closing != null;
+
+  /// Open the wallet [signer] controls. Asks the signer to sign the Zolana
+  /// derivation message; the resulting keys stay in memory for this session.
+  static Future<ZolanaWallet> open({
+    required native.WalletConfig config,
+    required SolanaSigner signer,
+    WalletBackend backend = const _NativeBackend(),
+  }) => _native(() async {
+    final message = await backend.derivationMessage(signer.publicKey);
+    final signature = await signer.signMessage(
+      message,
+      purpose: 'Open your private Zolana wallet',
+    );
+    final wallet = await backend.open(config, signer.publicKey, signature);
+    return ZolanaWallet._(signer, wallet, await wallet.shieldedAddress());
+  });
+
+  /// Whether the user registry publishes [shieldedAddress]. A `conflict`
+  /// means it holds other keys: payments to this account go to them, not to
+  /// this wallet.
+  Future<native.RegistrationStatus> registrationStatus() =>
+      _serial(_wallet.registrationStatus);
+
+  /// Spendable private balances, read from the indexer now: one per asset
+  /// held in SOL, the configured `WalletConfig.mints` and the mints named so
+  /// far.
+  Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
+
+  /// Spendable private balance of [mint], read from the indexer now.
+  Future<BigInt> privateBalance({String? mint}) =>
+      _serial(() => _wallet.privateBalance(mint: mint));
+
+  /// Public balance of [solanaPublicKey], read from the RPC now: lamports, or
+  /// the amount in its associated token account for [mint] (0 without one).
+  Future<BigInt> publicBalance({String? mint}) =>
+      _serial(() => _wallet.publicBalance(mint: mint));
+
+  /// Transaction history, read from the indexer now, newest first: one entry
+  /// per asset each transaction moved. A spend whose outputs are all this
+  /// wallet's own is listed as unshielded, one with another wallet's output
+  /// as sent; the indexer does not say which spends were withdrawals.
+  Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
+
+  /// Publish [shieldedAddress] so others can send to this wallet. `null` when
+  /// it is already registered. Fails with `registration_conflict` when the
+  /// registry holds other keys; the wallet never replaces them.
+  Future<PreparedTransaction?> prepareRegistration() => _serial(
+    () => PreparedTransaction._readOptional(_wallet.prepareRegistration()),
+  );
+
+  /// Move public funds from this account into the private balance. The
+  /// deposit, its asset, its amount and this account are public.
+  Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
+      _serial(
+        () => PreparedTransaction._read(
+          _wallet.prepareDeposit(mint: mint, amount: amount),
+        ),
+      );
+
+  /// Send private funds to the registered wallet of [recipient] (a Solana
+  /// public key). Reads the spendable notes, takes the largest on one tree,
+  /// builds and proves on the device. Fails with `merge_required` when the
+  /// amount needs more notes than one transaction spends, or the balance is
+  /// spread over trees.
+  ///
+  /// [feePayer] (a Solana public key, such as the application's backend)
+  /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
+  /// so it cannot change afterwards. [PreparedTransaction.signers] is then
+  /// `[feePayer, solanaPublicKey]`.
+  Future<PreparedTransaction> prepareTransfer({
+    required String recipient,
+    required BigInt amount,
+    String? mint,
+    String? feePayer,
+  }) => _serial(
+    () => PreparedTransaction._read(
+      _wallet.prepareTransfer(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+        feePayer: feePayer,
+      ),
+    ),
+  );
+
+  /// Move private funds to the public account [recipient]. The recipient,
+  /// asset and amount are public. Tokens go to the recipient's associated
+  /// token account; without one this fails with
+  /// `recipient_token_account_missing` (see [prepareTokenAccount]).
+  /// [feePayer] works as in [prepareTransfer].
+  Future<PreparedTransaction> prepareWithdrawal({
+    required String recipient,
+    required BigInt amount,
+    String? mint,
+    String? feePayer,
+  }) => _serial(
+    () => PreparedTransaction._read(
+      _wallet.prepareWithdrawal(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+        feePayer: feePayer,
+      ),
+    ),
+  );
+
+  /// Create [owner]'s associated token account for [mint], paid by this
+  /// account, so a withdrawal can reach it. `null` when it already exists.
+  Future<PreparedTransaction?> prepareTokenAccount({
+    required String owner,
+    required String mint,
+  }) => _serial(
+    () => PreparedTransaction._readOptional(
+      _wallet.prepareTokenAccount(owner: owner, mint: mint),
+    ),
+  );
+
+  /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
+  /// wait as [confirm] does. Returns the transaction signature.
+  Future<String> submit(
+    PreparedTransaction transaction,
+    List<Uint8List> signatures,
+  ) => _serial(
+    () => _wallet.submit(pending: transaction._pending, signatures: signatures),
+  );
+
+  /// Wait for a transaction the application sent itself, by its base58
+  /// [signature]: until Solana confirms it and, for shielded-pool
+  /// transactions, the indexer has it, so the next balance or spend reads the
+  /// notes it created and not the ones it spent. Fails with
+  /// `signature_invalid` unless [signature] is the fee payer's signature over
+  /// [PreparedTransaction.message].
+  Future<void> confirm(PreparedTransaction transaction, String signature) =>
+      _serial(
+        () => _wallet.confirm(
+          pending: transaction._pending,
+          signature: signature,
+        ),
+      );
+
+  /// [prepareRegistration], signed and submitted. `null` when already
+  /// registered.
+  Future<String?> register() => _serial(() async {
+    final transaction = await PreparedTransaction._readOptional(
+      _wallet.prepareRegistration(),
+    );
+    return transaction == null ? null : _signAndSubmit(transaction);
+  });
+
+  /// [prepareDeposit], signed and submitted.
+  Future<String> deposit(BigInt amount, {String? mint}) =>
+      _serial(() => _send(_wallet.prepareDeposit(mint: mint, amount: amount)));
+
+  /// [prepareTransfer], signed and submitted.
+  Future<String> transfer({
+    required String recipient,
+    required BigInt amount,
+    String? mint,
+  }) => _serial(
+    () => _send(
+      _wallet.prepareTransfer(recipient: recipient, mint: mint, amount: amount),
+    ),
+  );
+
+  /// [prepareWithdrawal], signed and submitted.
+  Future<String> withdraw({
+    required String recipient,
+    required BigInt amount,
+    String? mint,
+  }) => _serial(
+    () => _send(
+      _wallet.prepareWithdrawal(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+      ),
+    ),
+  );
+
+  /// Stop this wallet. Operations not yet started fail with `wallet_closed`,
+  /// and nothing is signed or submitted after this call. Waits for the
+  /// running native step (a proof cannot be interrupted), then releases the
+  /// native wallet: its keys and proving key.
+  ///
+  /// It does not recall a transaction already submitted.
+  Future<void> close() => _closing ??= _last.then((_) => _wallet.dispose());
+
+  Future<String> _send(Future<native.PendingTransaction> prepared) async =>
+      _signAndSubmit(await PreparedTransaction._read(prepared));
+
+  Future<String> _signAndSubmit(PreparedTransaction transaction) async {
+    final signers = transaction.signers;
+    if (signers.length != 1 || signers.single != _signer.publicKey) {
+      throw const ZolanaWalletException('unexpected_signers');
+    }
+    _ensureOpen();
+    final signature = await _signer.signMessage(
+      transaction.message,
+      purpose: transaction.summary,
+    );
+    _ensureOpen();
+    return _wallet.submit(
+      pending: transaction._pending,
+      signatures: [signature],
+    );
+  }
+
+  void _ensureOpen() {
+    if (isClosed) throw const ZolanaWalletException('wallet_closed');
+  }
+
+  Future<T> _serial<T>(Future<T> Function() operation) {
+    final result = _last.then((_) {
+      _ensureOpen();
+      return _native(operation);
+    });
+    _last = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+}
+
+Future<T> _native<T>(Future<T> Function() operation) async {
+  try {
+    return await operation();
+  } on String catch (message) {
+    throw ZolanaWalletException(message);
+  }
+}
+
+class _NativeBackend implements WalletBackend {
+  const _NativeBackend();
+
+  @override
+  Future<Uint8List> derivationMessage(String solanaPubkey) =>
+      native.derivationMessage(solanaPubkey: solanaPubkey);
+
+  @override
+  Future<native.MobileWallet> open(
+    native.WalletConfig config,
+    String solanaPubkey,
+    Uint8List derivationSignature,
+  ) => native.MobileWallet.open(
+    config: config,
+    solanaPubkey: solanaPubkey,
+    derivationSignature: derivationSignature,
+  );
+}

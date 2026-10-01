@@ -58,7 +58,7 @@ jobs:
         working-directory: packages/zolana_mobile/native/rust-gnark/go
         env:
           ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
-      - run: cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignored
+      - run: cargo test -p zolana-mobile proves_the_staged_request -- --ignored
       - run: cargo test -p zolana-mobile proves_a_client_request_with_the_pinned_key -- --ignored
         env:
           ZOLANA_TEST_KEY_DIR: ${{ github.workspace }}/.cache/proving
