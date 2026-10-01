@@ -19,9 +19,8 @@ final _feeReserve = BigInt.from(10000000);
 /// Enough public SOL to pay for registering and a first shield.
 final _setupMinimum = BigInt.from(5000000);
 
-/// Zolana devnet (the devnet-c stack, which runs the zolana revision this SDK
-/// pins). `--dart-define=ZOLANA_API_KEY=...` uses Helius for Solana RPC
-/// instead of the rate-limited public endpoint.
+/// Zolana devnet through Helius: Solana RPC and the Zolana indexer, both
+/// keyed by the Helius key from `--dart-define=ZOLANA_API_KEY=...`.
 class Network {
   const Network(this.rpcUrl, this.indexerUrl);
 
@@ -29,10 +28,8 @@ class Network {
   final String indexerUrl;
 
   static const devnet = Network(
-    _apiKey == ''
-        ? 'https://api.devnet.solana.com'
-        : 'https://devnet.helius-rpc.com/?api-key=$_apiKey',
-    'https://d2xah7tnhdhcom.cloudfront.net',
+    'https://beta-devnet.helius-rpc.com/?api-key=$_apiKey',
+    'https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$_apiKey',
   );
 }
 
@@ -84,6 +81,15 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       // Release the previous account before this one proves.
       await previous?.close();
+    if (identical(_network, Network.devnet) && _apiKey.isEmpty) {
+      await previous?.close();
+      _fail(
+        generation,
+        'Build with --dart-define=ZOLANA_API_KEY=... '
+        '(a Helius key) to use devnet.',
+      );
+      return;
+    }
       final signer = await DemoSigner.fromSeedHex(_account.seedHex);
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';

@@ -267,9 +267,9 @@ flutter pub get
 flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
 
-`ZOLANA_API_KEY` is optional: with a Helius key the Solana RPC is Helius devnet,
-without one it is the public devnet endpoint. It is compiled into that build
-only; never commit it.
+`ZOLANA_API_KEY` is a Helius key: the example reaches Solana RPC and the Zolana
+indexer on Helius devnet with it. It is compiled into that build only; never
+commit it.
 
 ### From Xcode
 
@@ -280,7 +280,7 @@ the workspace closed:
 ```sh
 cd packages/zolana_mobile/example
 flutter pub get
-flutter build ios --config-only --simulator [--dart-define=ZOLANA_API_KEY=...]
+flutter build ios --config-only --simulator --dart-define=ZOLANA_API_KEY=...
 open ios/Runner.xcworkspace
 ```
 

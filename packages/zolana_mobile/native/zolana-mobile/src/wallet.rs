@@ -728,10 +728,40 @@ fn parse_pubkey(value: &str) -> Result<Pubkey, String> {
     Pubkey::from_str(value).map_err(|_| "pubkey_invalid".to_string())
 }
 
-/// Errors reach Dart as text. Client and transaction errors describe what
-/// failed without key material; keep it that way when adding variants.
+/// Errors reach Dart as text: the error and its causes, so a failed request
+/// says why it failed (DNS, connection, TLS). Client and transaction errors
+/// describe what failed without key material; keep it that way when adding
+/// variants. Request errors name their URL, so `api-key` values are masked.
 pub(crate) fn error(error: impl Into<ClientError>) -> String {
-    error.into().to_string()
+    let error = error.into();
+    let mut message = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        let cause_message = cause.to_string();
+        if !message.contains(&cause_message) {
+            message.push_str(": ");
+            message.push_str(&cause_message);
+        }
+        source = cause.source();
+    }
+    redact_api_keys(&message)
+}
+
+fn redact_api_keys(message: &str) -> String {
+    const PARAMETER: &str = "api-key=";
+    let mut redacted = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(start) = rest.find(PARAMETER) {
+        let (head, tail) = rest.split_at(start + PARAMETER.len());
+        redacted.push_str(head);
+        redacted.push_str("redacted");
+        let end = tail
+            .find(|c: char| c == '&' || c == ')' || c == '"' || c.is_whitespace())
+            .unwrap_or(tail.len());
+        rest = &tail[end..];
+    }
+    redacted.push_str(rest);
+    redacted
 }
 
 #[cfg(test)]
@@ -896,6 +926,30 @@ mod tests {
         let mut wallet = open(&Keypair::new()).unwrap();
         let recipient = Keypair::new().pubkey().to_string();
         let bad = "not-a-pubkey".to_string();
+    #[test]
+    fn errors_mask_api_keys_in_urls() {
+        let signer = Keypair::new();
+        let pubkey = signer.pubkey().to_string();
+        let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
+        let config = WalletConfig {
+            rpc_url: "http://127.0.0.1:1/?api-key=secret".to_string(),
+            indexer_url: "http://127.0.0.1:1/v1/zolana?api-key=secret".to_string(),
+            ..config()
+        };
+        let mut wallet = MobileWallet::open(config, pubkey, signature.as_ref().to_vec()).unwrap();
+        for error in [
+            wallet.public_balance(None).unwrap_err(),
+            wallet.private_balance(None).unwrap_err(),
+        ] {
+            assert!(error.contains("api-key=redacted"), "{error}");
+            assert!(!error.contains("secret"), "{error}");
+        }
+        assert_eq!(
+            redact_api_keys("url (https://h/?a=1&api-key=k&b=2) and api-key=k"),
+            "url (https://h/?a=1&api-key=redacted&b=2) and api-key=redacted"
+        );
+    }
+
         let error = |result: Result<PendingTransaction, String>| result.err();
         assert_eq!(
             error(wallet.prepare_transfer(bad.clone(), None, 1, None)).as_deref(),

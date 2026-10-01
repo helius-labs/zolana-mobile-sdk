@@ -31,6 +31,7 @@
 * Add `ZolanaWallet`: registration, deposit, private transfer and
   withdrawal, proving on the device with the Solana key held by a
   `SolanaSigner`.
+* Mask `api-key` values in error messages; request errors include the URL.
 * The wallet keeps no chain state: balances and spends read the spendable
   notes from the indexer when they run, and `WalletConfig.mints` lists the
   SPL mints `balances()` reports. A spend takes at most 5 notes on one tree and

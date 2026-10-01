@@ -42,12 +42,12 @@ To send privately from A to B on a device or simulator, proving there:
 
 ```sh
 flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
-  --dart-define=ZOLANA_E2E=true
+  --dart-define=ZOLANA_E2E=true --dart-define=ZOLANA_API_KEY=...
 ```
 
-`ZOLANA_API_KEY` is optional: a Helius key selects Helius devnet for Solana RPC,
-without one the public devnet endpoint is used. It is compiled into that build
-only; do not commit it.
+`ZOLANA_API_KEY` is a Helius key: the example reaches Solana RPC and the Zolana
+indexer on Helius devnet with it. It is compiled into that build only; do not
+commit it.
 
 The build uses the precompiled native libraries (see below). When no release
 matches the sources, it builds them from source with Rust and Go 1.27.1 or
@@ -135,8 +135,8 @@ stale session of the sender. Zolana devnet runs the pinned revision; the demo
 accounts avoid devnet airdrop limits once funded:
 
 ```sh
-ZOLANA_E2E_RPC_URL=https://api.devnet.solana.com \
-ZOLANA_E2E_INDEXER_URL=https://d2xah7tnhdhcom.cloudfront.net \
+ZOLANA_E2E_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
+ZOLANA_E2E_INDEXER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
 ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
 ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
 cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture
