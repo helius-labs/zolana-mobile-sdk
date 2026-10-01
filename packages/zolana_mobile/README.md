@@ -60,6 +60,7 @@ signs two things:
 
 1. once, the Zolana derivation message. The signature is the seed of the
    wallet's nullifier and viewing keys, which stay in memory for this session.
+   A wallet opened from saved keys (see below) skips this.
 2. each transaction message, shown to the user with its `purpose` first.
 
 ```dart
@@ -139,6 +140,43 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   Then it releases the native wallet: its keys and the proving key it loaded.
   Open the next account after `close()` completes. A transaction already
   submitted is not recalled.
+
+### Opening from saved keys
+
+`exportKeys()` returns the wallet's four derived keys. Save them in the
+device's secure storage, and later open the wallet without a derivation
+signature:
+
+```dart
+final keys = await wallet.exportKeys();
+// later
+final wallet = await ZolanaWallet.openWithKeys(
+  config: config,
+  solanaPublicKey: account,
+  keys: keys,
+  signer: KeystoreSigner(),            // optional
+);
+```
+
+| Field | Bytes | Encoding |
+|---|---|---|
+| `viewingPrivateKey` | 32 | P-256 scalar, big-endian |
+| `viewingPublicKey` | 33 | compressed SEC1 point |
+| `nullifierPrivateKey` | 31 | nullifier secret |
+| `nullifierPublicKey` | 32 | Poseidon hash of the nullifier secret |
+
+`openWithKeys` checks each private key against its public key and fails with
+`wallet_keys_invalid` otherwise; the error never contains key bytes. Keys of
+another account open under another shielded address, and
+`registrationStatus()` reports `conflict` for them. Without a `signer`,
+`register`, `deposit`, `transfer` and `withdraw` fail with `signer_missing`;
+the `prepare` methods, `submit` and `confirm` work.
+
+The keys cannot move funds: spending needs the Solana account's signature.
+They show the wallet's private balances and history and link its spends.
+Keep them in device-only secure storage, without cloud sync or backups, per
+account and network, and never send them to a backend. Store either the keys
+or the 64-byte derivation signature, which derives the same keys, not both.
 
 ### Signing and sending in the application
 

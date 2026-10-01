@@ -70,6 +70,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
     required String signature,
   });
 
+  /// The keys [`Self::open_with_keys`] opens this wallet from.
+  Future<WalletKeys> exportKeys();
+
   /// Open the wallet of `solana_pubkey` from its signature over
   /// [`derivation_message`].
   static Future<MobileWallet> open({
@@ -80,6 +83,19 @@ abstract class MobileWallet implements RustOpaqueInterface {
     config: config,
     solanaPubkey: solanaPubkey,
     derivationSignature: derivationSignature,
+  );
+
+  /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
+  /// returned. Fails with `wallet_keys_invalid` unless each private key
+  /// yields its public key.
+  static Future<MobileWallet> openWithKeys({
+    required WalletConfig config,
+    required String solanaPubkey,
+    required WalletKeys keys,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletOpenWithKeys(
+    config: config,
+    solanaPubkey: solanaPubkey,
+    keys: keys,
   );
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -396,4 +412,44 @@ class WalletConfig {
           provingKeyUrl == other.provingKeyUrl &&
           allowInsecureHttp == other.allowInsecureHttp &&
           mints == other.mints;
+}
+
+/// The wallet's derived keys, for the application's secure storage. They open
+/// the wallet with [`MobileWallet::open_with_keys`] without a derivation
+/// signature. They cannot move funds, but they show the wallet's balances and
+/// history and link its spends.
+///
+/// - `viewing_private_key`: 32 bytes, the P-256 scalar, big-endian.
+/// - `viewing_public_key`: 33 bytes, its compressed SEC1 point.
+/// - `nullifier_private_key`: 31 bytes.
+/// - `nullifier_public_key`: 32 bytes, the Poseidon hash of the private key.
+class WalletKeys {
+  final Uint8List viewingPrivateKey;
+  final Uint8List viewingPublicKey;
+  final Uint8List nullifierPrivateKey;
+  final Uint8List nullifierPublicKey;
+
+  const WalletKeys({
+    required this.viewingPrivateKey,
+    required this.viewingPublicKey,
+    required this.nullifierPrivateKey,
+    required this.nullifierPublicKey,
+  });
+
+  @override
+  int get hashCode =>
+      viewingPrivateKey.hashCode ^
+      viewingPublicKey.hashCode ^
+      nullifierPrivateKey.hashCode ^
+      nullifierPublicKey.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WalletKeys &&
+          runtimeType == other.runtimeType &&
+          viewingPrivateKey == other.viewingPrivateKey &&
+          viewingPublicKey == other.viewingPublicKey &&
+          nullifierPrivateKey == other.nullifierPrivateKey &&
+          nullifierPublicKey == other.nullifierPublicKey;
 }

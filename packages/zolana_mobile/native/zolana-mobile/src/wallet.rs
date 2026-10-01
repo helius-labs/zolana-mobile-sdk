@@ -6,7 +6,9 @@
 //!
 //! 1. once, the Zolana derivation message from [`derivation_message`]. The
 //!    signature is the seed of the wallet's nullifier and viewing keys, which
-//!    stay in this process for reading notes and proving.
+//!    stay in this process for reading notes and proving. An application that
+//!    saved them with [`MobileWallet::export_keys`] opens the wallet from them
+//!    instead, without a signature.
 //! 2. each [`PendingTransaction::message_bytes`], the v1 Solana message this
 //!    library built, proved and returned unsigned.
 //!
@@ -31,6 +33,7 @@ use solana_rpc_client::{
 };
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
+use zeroize::Zeroizing;
 use zolana_client::{
     compile_message,
     user_registry::{
@@ -41,7 +44,7 @@ use zolana_client::{
     SpendableUtxos, ZolanaClient,
 };
 use zolana_interface::pda;
-use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress};
+use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
 use zolana_program::instruction::{
     AssetDeposit, CreateAssociatedTokenAccount, Deposit, DepositAsset, DepositSplAccounts,
     TransactInterfaceTransferAccounts, TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
@@ -153,6 +156,22 @@ impl PendingTransaction {
     }
 }
 
+/// The wallet's derived keys, for the application's secure storage. They open
+/// the wallet with [`MobileWallet::open_with_keys`] without a derivation
+/// signature. They cannot move funds, but they show the wallet's balances and
+/// history and link its spends.
+///
+/// - `viewing_private_key`: 32 bytes, the P-256 scalar, big-endian.
+/// - `viewing_public_key`: 33 bytes, its compressed SEC1 point.
+/// - `nullifier_private_key`: 31 bytes.
+/// - `nullifier_public_key`: 32 bytes, the Poseidon hash of the private key.
+pub struct WalletKeys {
+    pub viewing_private_key: Vec<u8>,
+    pub viewing_public_key: Vec<u8>,
+    pub nullifier_private_key: Vec<u8>,
+    pub nullifier_public_key: Vec<u8>,
+}
+
 /// A spendable private balance. `mint` is `None` for SOL.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenBalance {
@@ -168,6 +187,7 @@ pub struct MobileWallet {
     keys: LocalShieldedKeys,
     /// Completes the spent inputs' nullifiers when proving.
     nullifier_key: NullifierKey,
+    viewing_key: ViewingKey,
     /// SOL and the mints resolved so far.
     assets: AssetRegistry,
     /// Configured mints not resolved into `assets` yet.
@@ -195,13 +215,51 @@ impl MobileWallet {
         }
         let (nullifier_key, viewing_key) =
             derivation::expand_roles(&seed, Curve::Ed25519).map_err(derivation_invalid)?;
+        Self::from_keys(config, owner, nullifier_key, viewing_key)
+    }
+
+    /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
+    /// returned. Fails with `wallet_keys_invalid` unless each private key
+    /// yields its public key.
+    pub fn open_with_keys(
+        config: WalletConfig,
+        solana_pubkey: String,
+        keys: WalletKeys,
+    ) -> Result<MobileWallet, String> {
+        let owner = parse_pubkey(&solana_pubkey)?;
+        let viewing_secret = Zeroizing::new(keys.viewing_private_key);
+        let nullifier_secret = Zeroizing::new(keys.nullifier_private_key);
+        let viewing_key =
+            ViewingKey::from_bytes(viewing_secret.as_slice().try_into().map_err(keys_invalid)?)
+                .map_err(keys_invalid)?;
+        let nullifier_key = NullifierKey::from_secret(
+            nullifier_secret
+                .as_slice()
+                .try_into()
+                .map_err(keys_invalid)?,
+        );
+        if viewing_key.pubkey().as_bytes().as_slice() != keys.viewing_public_key
+            || nullifier_key.pubkey().map_err(keys_invalid)?.as_slice() != keys.nullifier_public_key
+        {
+            return Err(keys_invalid(()));
+        }
+        Self::from_keys(config, owner, nullifier_key, viewing_key)
+    }
+
+    fn from_keys(
+        config: WalletConfig,
+        owner: Pubkey,
+        nullifier_key: NullifierKey,
+        viewing_key: ViewingKey,
+    ) -> Result<MobileWallet, String> {
         let address = ShieldedAddress {
-            signing_pubkey,
-            nullifier_pubkey: nullifier_key.pubkey().map_err(derivation_invalid)?,
+            signing_pubkey: PublicKey::from_ed25519(&owner.to_bytes()),
+            nullifier_pubkey: nullifier_key.pubkey().map_err(keys_invalid)?,
             viewing_pubkey: viewing_key.pubkey(),
         };
-        let keys = LocalShieldedKeys::new(address, vec![viewing_key], nullifier_key.clone())
-            .map_err(error)?;
+        let keys =
+            LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())
+                .map_err(error)?;
         let proving_keys = KeyStore::new(config.proving_key_dir, config.proving_key_url)?;
         let rpc = solana_rpc(config.rpc_url, config.rpc_headers.unwrap_or_default())?;
         let client = if config.allow_insecure_http {
@@ -219,6 +277,7 @@ impl MobileWallet {
             address,
             keys,
             nullifier_key,
+            viewing_key,
             assets: AssetRegistry::default(),
             mints: config.mints,
             client,
@@ -227,6 +286,16 @@ impl MobileWallet {
 
     pub fn shielded_address(&self) -> String {
         self.address.to_string()
+    }
+
+    /// The keys [`Self::open_with_keys`] opens this wallet from.
+    pub fn export_keys(&self) -> WalletKeys {
+        WalletKeys {
+            viewing_private_key: self.viewing_key.secret_bytes().to_vec(),
+            viewing_public_key: self.address.viewing_pubkey.as_bytes().to_vec(),
+            nullifier_private_key: self.nullifier_key.secret().to_vec(),
+            nullifier_public_key: self.address.nullifier_pubkey.to_vec(),
+        }
     }
 
     /// Whether the user registry publishes this wallet's shielded address.
@@ -722,6 +791,11 @@ fn signed_by(signer: &Pubkey, message: &[u8], signature: &[u8; 64]) -> bool {
     PublicKey::from_ed25519(&signer.to_bytes()).verify_message(message, signature)
 }
 
+/// Saved keys that are malformed or do not match their public keys.
+fn keys_invalid<E>(_: E) -> String {
+    "wallet_keys_invalid".to_string()
+}
+
 /// A derivation signature that does not yield the wallet's keys.
 fn derivation_invalid<E>(_: E) -> String {
     "derivation_signature_invalid".to_string()
@@ -928,6 +1002,62 @@ mod tests {
             redact_api_keys("url (https://h/?a=1&api-key=k&b=2) and api-key=k"),
             "url (https://h/?a=1&api-key=redacted&b=2) and api-key=redacted"
         );
+    }
+
+    #[test]
+    fn reopens_from_exported_keys_and_refuses_others() {
+        let signer = Keypair::new();
+        let wallet = open(&signer).unwrap();
+        let reopen = |solana_pubkey: String, keys| {
+            MobileWallet::open_with_keys(config(), solana_pubkey, keys)
+        };
+        let keys = wallet.export_keys();
+        let lengths = [
+            keys.viewing_private_key.len(),
+            keys.viewing_public_key.len(),
+            keys.nullifier_private_key.len(),
+            keys.nullifier_public_key.len(),
+        ];
+        assert_eq!(lengths, [32, 33, 31, 32]);
+        let reopened = reopen(signer.pubkey().to_string(), keys).unwrap();
+        assert_eq!(reopened.shielded_address(), wallet.shielded_address());
+        assert_eq!(
+            reopened.export_keys().viewing_private_key,
+            wallet.export_keys().viewing_private_key
+        );
+
+        // Another account's keys open, under another address: the registry
+        // check reports them as a conflict.
+        let other = Keypair::new();
+        let foreign = reopen(other.pubkey().to_string(), wallet.export_keys()).unwrap();
+        assert_ne!(foreign.address, open(&other).unwrap().address);
+
+        fn field(keys: &mut WalletKeys, index: usize) -> &mut Vec<u8> {
+            match index {
+                0 => &mut keys.viewing_private_key,
+                1 => &mut keys.viewing_public_key,
+                2 => &mut keys.nullifier_private_key,
+                _ => &mut keys.nullifier_public_key,
+            }
+        }
+        let mut broken = Vec::new();
+        for index in 0..4 {
+            let mut flipped = wallet.export_keys();
+            field(&mut flipped, index)[0] ^= 1;
+            broken.push(flipped);
+            let mut short = wallet.export_keys();
+            field(&mut short, index).pop();
+            broken.push(short);
+        }
+        let mut zero = wallet.export_keys();
+        zero.viewing_private_key = vec![0; 32];
+        broken.push(zero);
+        for keys in broken {
+            assert_eq!(
+                reopen(signer.pubkey().to_string(), keys).err().as_deref(),
+                Some("wallet_keys_invalid")
+            );
+        }
     }
 
     #[test]

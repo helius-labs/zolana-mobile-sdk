@@ -7,8 +7,9 @@ import 'package:zolana_mobile_demo/demo_signer.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// A private send from demo account A to B on Zolana devnet, proved on the
-/// device or simulator running the test. Opt in, since it spends devnet SOL
-/// and needs A funded and a Helius key for devnet:
+/// device or simulator running the test, with A reopened from its exported
+/// keys. Opt in, since it spends devnet SOL and needs A funded and a Helius
+/// key for devnet:
 ///
 /// ```sh
 /// flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
@@ -22,16 +23,18 @@ void main() {
 
   setUpAll(initZolanaMobile);
 
+  Future<WalletConfig> config() async => WalletConfig(
+    rpcUrl: Network.devnet.rpcUrl,
+    indexerUrl: Network.devnet.indexerUrl,
+    provingKeyDir:
+        '${(await getApplicationSupportDirectory()).path}/proving-keys',
+    allowInsecureHttp: false,
+    mints: const [],
+  );
+
   Future<ZolanaWallet> open(DemoAccount account) async => ZolanaWallet.open(
     signer: await DemoSigner.fromSeedHex(account.seedHex),
-    config: WalletConfig(
-      rpcUrl: Network.devnet.rpcUrl,
-      indexerUrl: Network.devnet.indexerUrl,
-      provingKeyDir:
-          '${(await getApplicationSupportDirectory()).path}/proving-keys',
-      allowInsecureHttp: false,
-      mints: const [],
-    ),
+    config: await config(),
   );
 
   testWidgets('sends privately from A to B, proving on this device', (
@@ -43,8 +46,17 @@ void main() {
       reason: 'pass --dart-define=ZOLANA_API_KEY=...',
     );
     final lamports = BigInt.from(1000000);
-    final sender = await open(demoAccounts[0]);
+    final signed = await open(demoAccounts[0]);
+    final keys = await signed.exportKeys();
+    await signed.close();
+    final sender = await ZolanaWallet.openWithKeys(
+      config: await config(),
+      solanaPublicKey: demoAccounts[0].publicKey,
+      keys: keys,
+      signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),
+    );
     addTearDown(sender.close);
+    expect(sender.shieldedAddress, signed.shieldedAddress);
     final recipient = await open(demoAccounts[1]);
     addTearDown(recipient.close);
     expect(await sender.registrationStatus(), RegistrationStatus.registered);
