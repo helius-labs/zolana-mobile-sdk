@@ -5266,6 +5266,7 @@ dependencies = [
  "sha2",
  "solana-address 2.6.1",
  "solana-commitment-config",
+ "solana-instruction",
  "solana-message",
  "solana-pubkey 4.2.0",
  "solana-rpc-client",

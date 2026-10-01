@@ -1,18 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
-/// The two public Solana RPC calls the example needs on a test cluster:
-/// funding the demo key and showing its public balance. Everything private
-/// goes through the Zolana wallet.
+/// The devnet airdrop that funds a demo account; everything else goes through
+/// the Zolana wallet.
 class TestClusterRpc {
   TestClusterRpc(this.url);
 
   final String url;
-
-  Future<BigInt> balance(String publicKey) async {
-    final result = await _call('getBalance', [publicKey]);
-    return BigInt.from((result as Map)['value'] as int);
-  }
 
   /// Request [lamports] and wait until the airdrop is confirmed.
   Future<void> airdrop(String publicKey, BigInt lamports) async {

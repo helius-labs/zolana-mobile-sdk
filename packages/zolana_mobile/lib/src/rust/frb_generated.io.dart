@@ -93,13 +93,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw);
-
-  @protected
   WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw);
-
-  @protected
-  GnarkProofResult dco_decode_gnark_proof_result(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -239,17 +233,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
-    SseDeserializer deserializer,
-  );
-
-  @protected
   WalletConfig sse_decode_box_autoadd_wallet_config(
     SseDeserializer deserializer,
   );
-
-  @protected
-  GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -416,20 +402,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_box_autoadd_wallet_config(
     WalletConfig self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_gnark_proof_result(
-    GnarkProofResult self,
     SseSerializer serializer,
   );
 

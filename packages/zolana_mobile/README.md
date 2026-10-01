@@ -206,11 +206,6 @@ The structured adapter supports `transfer-confidential`, `transfer-ring`,
 key shape. Other circuit types fail closed. The bundled demo stages only 2→3;
 provide the matching trusted keys for other shapes.
 
-`proveWitness` is the lower-level API for an already-flattened witness: an exact
-map of circuit variable names to canonical, non-negative decimal **strings**
-below the BN254 scalar modulus. Numbers, duplicates, unknown/missing fields, and
-non-canonical encodings are rejected rather than rounded or reduced.
-
 Only one prepared native prover is loaded at a time per process, and each
 `LocalProver` accepts one active job. Release it before loading another circuit.
 The key/circuit files are deserialized once by `load`, not on every warm proof.
@@ -249,12 +244,7 @@ writes only public circuit/key files to a unique temporary directory, and drains
 the prover before deleting those files. Error codes contain no witness values;
 do not add raw native errors or witness JSON to application logs.
 
-## Low-level and demo APIs
-
-`generateGnarkProof`, `verifyGnarkProof`, and `proveAssignment` remain available
-for compatibility. They are one-shot operations without the Dart job/session
-contract. `proveAssignment` reads a caller-owned witness file and does not delete
-it. Prefer `LocalProver` for wallet integration.
+## Poseidon
 
 `poseidonHash` exposes the Rust Poseidon primitive.
 

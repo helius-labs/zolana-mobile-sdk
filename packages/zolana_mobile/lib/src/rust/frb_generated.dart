@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 2032442626;
+  int get rustContentHash => -1308480113;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -150,10 +150,6 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
   });
 
-  Future<String> zolanaMobileMobileWalletSolanaPubkey({
-    required MobileWallet that,
-  });
-
   Future<String> zolanaMobileMobileWalletSubmit({
     required MobileWallet that,
     required PendingTransaction pending,
@@ -180,12 +176,6 @@ abstract class RustLibApi extends BaseApi {
     required String solanaPubkey,
   });
 
-  Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({
-    required String r1CsPath,
-    required String provingKeyPath,
-    required String witnessJson,
-  });
-
   Future<void> crateApiSimpleInitApp();
 
   Future<PreparedProverInfo> zolanaMobileLoadProver({
@@ -196,26 +186,14 @@ abstract class RustLibApi extends BaseApi {
 
   Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs});
 
-  Future<LocalProofResult> zolanaMobileProveAssignment({
-    required String provingKeyPath,
-    required String assignmentPath,
-  });
-
   Future<LocalProofResult> zolanaMobileProvePrepared({
     required BigInt id,
     required String inputJson,
-    required bool structuredRequest,
   });
 
   Future<void> zolanaMobileReleaseProver({required BigInt id});
 
   Future<String> zolanaMobileSdkVersion();
-
-  Future<bool> zolanaMobileVerifyGnarkProof({
-    required String r1CsPath,
-    required String verifyingKeyPath,
-    required GnarkProofResult proofResult,
-  });
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_MobileWallet;
@@ -754,42 +732,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> zolanaMobileMobileWalletSolanaPubkey({
-    required MobileWallet that,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 14,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
-          decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobileMobileWalletSolanaPubkeyConstMeta,
-        argValues: [that],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kZolanaMobileMobileWalletSolanaPubkeyConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_solana_pubkey",
-        argNames: ["that"],
-      );
-
-  @override
   Future<String> zolanaMobileMobileWalletSubmit({
     required MobileWallet that,
     required PendingTransaction pending,
@@ -811,7 +753,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 14,
             port: port_,
           );
         },
@@ -847,7 +789,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 15,
             port: port_,
           );
         },
@@ -883,7 +825,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 16,
             port: port_,
           );
         },
@@ -919,7 +861,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 17,
             port: port_,
           );
         },
@@ -955,7 +897,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 18,
             port: port_,
           );
         },
@@ -988,7 +930,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1010,43 +952,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<GnarkProofResult> zolanaMobileGenerateGnarkProof({
-    required String r1CsPath,
-    required String provingKeyPath,
-    required String witnessJson,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(r1CsPath, serializer);
-          sse_encode_String(provingKeyPath, serializer);
-          sse_encode_String(witnessJson, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 21,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_gnark_proof_result,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileGenerateGnarkProofConstMeta,
-        argValues: [r1CsPath, provingKeyPath, witnessJson],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kZolanaMobileGenerateGnarkProofConstMeta =>
-      const TaskConstMeta(
-        debugName: "generate_gnark_proof",
-        argNames: ["r1CsPath", "provingKeyPath", "witnessJson"],
-      );
-
-  @override
   Future<void> crateApiSimpleInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -1055,7 +960,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1089,7 +994,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1121,7 +1026,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1140,45 +1045,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "poseidon_hash", argNames: ["inputs"]);
 
   @override
-  Future<LocalProofResult> zolanaMobileProveAssignment({
-    required String provingKeyPath,
-    required String assignmentPath,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(provingKeyPath, serializer);
-          sse_encode_String(assignmentPath, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 25,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_local_proof_result,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileProveAssignmentConstMeta,
-        argValues: [provingKeyPath, assignmentPath],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kZolanaMobileProveAssignmentConstMeta =>
-      const TaskConstMeta(
-        debugName: "prove_assignment",
-        argNames: ["provingKeyPath", "assignmentPath"],
-      );
-
-  @override
   Future<LocalProofResult> zolanaMobileProvePrepared({
     required BigInt id,
     required String inputJson,
-    required bool structuredRequest,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1186,11 +1055,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_u_64(id, serializer);
           sse_encode_String(inputJson, serializer);
-          sse_encode_bool(structuredRequest, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1199,7 +1067,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kZolanaMobileProvePreparedConstMeta,
-        argValues: [id, inputJson, structuredRequest],
+        argValues: [id, inputJson],
         apiImpl: this,
       ),
     );
@@ -1207,7 +1075,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kZolanaMobileProvePreparedConstMeta => const TaskConstMeta(
     debugName: "prove_prepared",
-    argNames: ["id", "inputJson", "structuredRequest"],
+    argNames: ["id", "inputJson"],
   );
 
   @override
@@ -1220,7 +1088,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1247,7 +1115,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1264,43 +1132,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kZolanaMobileSdkVersionConstMeta =>
       const TaskConstMeta(debugName: "sdk_version", argNames: []);
-
-  @override
-  Future<bool> zolanaMobileVerifyGnarkProof({
-    required String r1CsPath,
-    required String verifyingKeyPath,
-    required GnarkProofResult proofResult,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(r1CsPath, serializer);
-          sse_encode_String(verifyingKeyPath, serializer);
-          sse_encode_box_autoadd_gnark_proof_result(proofResult, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 29,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_bool,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kZolanaMobileVerifyGnarkProofConstMeta,
-        argValues: [r1CsPath, verifyingKeyPath, proofResult],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kZolanaMobileVerifyGnarkProofConstMeta =>
-      const TaskConstMeta(
-        debugName: "verify_gnark_proof",
-        argNames: ["r1CsPath", "verifyingKeyPath", "proofResult"],
-      );
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_MobileWallet => wire
@@ -1435,27 +1266,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  GnarkProofResult dco_decode_box_autoadd_gnark_proof_result(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dco_decode_gnark_proof_result(raw);
-  }
-
-  @protected
   WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_wallet_config(raw);
-  }
-
-  @protected
-  GnarkProofResult dco_decode_gnark_proof_result(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-    return GnarkProofResult(
-      proof: dco_decode_String(arr[0]),
-      publicInputs: dco_decode_String(arr[1]),
-    );
   }
 
   @protected
@@ -1784,27 +1597,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  GnarkProofResult sse_decode_box_autoadd_gnark_proof_result(
-    SseDeserializer deserializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_gnark_proof_result(deserializer));
-  }
-
-  @protected
   WalletConfig sse_decode_box_autoadd_wallet_config(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_wallet_config(deserializer));
-  }
-
-  @protected
-  GnarkProofResult sse_decode_gnark_proof_result(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_proof = sse_decode_String(deserializer);
-    var var_publicInputs = sse_decode_String(deserializer);
-    return GnarkProofResult(proof: var_proof, publicInputs: var_publicInputs);
   }
 
   @protected
@@ -2199,31 +1996,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_box_autoadd_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_gnark_proof_result(self, serializer);
-  }
-
-  @protected
   void sse_encode_box_autoadd_wallet_config(
     WalletConfig self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_wallet_config(self, serializer);
-  }
-
-  @protected
-  void sse_encode_gnark_proof_result(
-    GnarkProofResult self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_String(self.proof, serializer);
-    sse_encode_String(self.publicInputs, serializer);
   }
 
   @protected
@@ -2588,9 +2366,6 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
 
   Future<String> shieldedAddress() =>
       RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this);
-
-  Future<String> solanaPubkey() =>
-      RustLib.instance.api.zolanaMobileMobileWalletSolanaPubkey(that: this);
 
   /// Attach the signatures, send, and wait as [`Self::confirm`] does.
   /// Returns the signature.

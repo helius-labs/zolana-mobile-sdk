@@ -187,7 +187,7 @@ class _ActionSheetState extends State<ActionSheet> {
               ),
               const SizedBox(height: 8),
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Done'),
               ),
             ],

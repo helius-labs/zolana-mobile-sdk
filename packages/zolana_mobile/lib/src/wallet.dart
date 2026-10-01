@@ -29,52 +29,14 @@ class ZolanaWalletException implements Exception {
   String toString() => 'Zolana wallet: $message';
 }
 
-/// The native operations [ZolanaWallet] drives; replaced in tests.
+/// The native calls [ZolanaWallet.open] makes; replaced in tests.
 abstract interface class WalletBackend {
   Future<Uint8List> derivationMessage(String solanaPubkey);
-  Future<NativeWallet> open(
+  Future<native.MobileWallet> open(
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
   );
-}
-
-/// One opened native wallet.
-abstract interface class NativeWallet {
-  Future<String> shieldedAddress();
-  Future<native.RegistrationStatus> registrationStatus();
-  Future<List<native.TokenBalance>> balances();
-  Future<BigInt> privateBalance(String? mint);
-  Future<BigInt> publicBalance(String? mint);
-  Future<List<native.ActivityEntry>> activity();
-  Future<NativePending?> prepareRegistration();
-  Future<NativePending> prepareDeposit(String? mint, BigInt amount);
-  Future<NativePending> prepareTransfer(
-    String recipient,
-    String? mint,
-    BigInt amount,
-    String? feePayer,
-  );
-  Future<NativePending> prepareWithdrawal(
-    String recipient,
-    String? mint,
-    BigInt amount,
-    String? feePayer,
-  );
-  Future<NativePending?> prepareTokenAccount(String owner, String mint);
-  Future<String> submit(NativePending pending, List<Uint8List> signatures);
-  Future<void> confirm(NativePending pending, String signature);
-
-  /// Release the native wallet. Called once, after its last operation.
-  void dispose();
-}
-
-/// A native transaction awaiting signatures.
-abstract interface class NativePending {
-  Future<native.PendingTransactionKind> kind();
-  Future<String> summary();
-  Future<Uint8List> messageBytes();
-  Future<List<String>> signers();
 }
 
 /// A transaction the wallet built and, where needed, proved, awaiting
@@ -88,16 +50,27 @@ class PreparedTransaction {
     this.signers,
   );
 
-  static Future<PreparedTransaction> _read(NativePending pending) async =>
-      PreparedTransaction._(
-        pending,
-        await pending.kind(),
-        await pending.summary(),
-        await pending.messageBytes(),
-        await pending.signers(),
-      );
+  static Future<PreparedTransaction> _read(
+    Future<native.PendingTransaction> prepared,
+  ) async {
+    final pending = await prepared;
+    return PreparedTransaction._(
+      pending,
+      await pending.kind(),
+      await pending.summary(),
+      await pending.messageBytes(),
+      await pending.signers(),
+    );
+  }
 
-  final NativePending _pending;
+  static Future<PreparedTransaction?> _readOptional(
+    Future<native.PendingTransaction?> prepared,
+  ) async {
+    final pending = await prepared;
+    return pending == null ? null : _read(Future.value(pending));
+  }
+
+  final native.PendingTransaction _pending;
   final native.PendingTransactionKind kind;
 
   /// Description to show the user before signing.
@@ -133,7 +106,7 @@ class ZolanaWallet {
   ZolanaWallet._(this._signer, this._wallet, this.shieldedAddress);
 
   final SolanaSigner _signer;
-  final NativeWallet _wallet;
+  final native.MobileWallet _wallet;
   Future<void> _last = Future.value();
   Future<void>? _closing;
 
@@ -173,12 +146,12 @@ class ZolanaWallet {
 
   /// Spendable private balance of [mint], read from the indexer now.
   Future<BigInt> privateBalance({String? mint}) =>
-      _serial(() => _wallet.privateBalance(mint));
+      _serial(() => _wallet.privateBalance(mint: mint));
 
   /// Public balance of [solanaPublicKey], read from the RPC now: lamports, or
   /// the amount in its associated token account for [mint] (0 without one).
   Future<BigInt> publicBalance({String? mint}) =>
-      _serial(() => _wallet.publicBalance(mint));
+      _serial(() => _wallet.publicBalance(mint: mint));
 
   /// Transaction history, read from the indexer now, newest first: one entry
   /// per asset each transaction moved. A spend whose outputs are all this
@@ -189,15 +162,18 @@ class ZolanaWallet {
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with `registration_conflict` when the
   /// registry holds other keys; the wallet never replaces them.
-  Future<PreparedTransaction?> prepareRegistration() => _serial(() async {
-    final pending = await _wallet.prepareRegistration();
-    return pending == null ? null : PreparedTransaction._read(pending);
-  });
+  Future<PreparedTransaction?> prepareRegistration() => _serial(
+    () => PreparedTransaction._readOptional(_wallet.prepareRegistration()),
+  );
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
   Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
-      _serial(() => _prepareDeposit(mint, amount));
+      _serial(
+        () => PreparedTransaction._read(
+          _wallet.prepareDeposit(mint: mint, amount: amount),
+        ),
+      );
 
   /// Send private funds to the registered wallet of [recipient] (a Solana
   /// public key). Reads the spendable notes, takes the largest on one tree,
@@ -214,7 +190,16 @@ class ZolanaWallet {
     required BigInt amount,
     String? mint,
     String? feePayer,
-  }) => _serial(() => _prepareTransfer(recipient, mint, amount, feePayer));
+  }) => _serial(
+    () => PreparedTransaction._read(
+      _wallet.prepareTransfer(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+        feePayer: feePayer,
+      ),
+    ),
+  );
 
   /// Move private funds to the public account [recipient]. The recipient,
   /// asset and amount are public. Tokens go to the recipient's associated
@@ -226,46 +211,63 @@ class ZolanaWallet {
     required BigInt amount,
     String? mint,
     String? feePayer,
-  }) => _serial(() => _prepareWithdrawal(recipient, mint, amount, feePayer));
+  }) => _serial(
+    () => PreparedTransaction._read(
+      _wallet.prepareWithdrawal(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+        feePayer: feePayer,
+      ),
+    ),
+  );
 
   /// Create [owner]'s associated token account for [mint], paid by this
   /// account, so a withdrawal can reach it. `null` when it already exists.
   Future<PreparedTransaction?> prepareTokenAccount({
     required String owner,
     required String mint,
-  }) => _serial(() async {
-    final pending = await _wallet.prepareTokenAccount(owner, mint);
-    return pending == null ? null : PreparedTransaction._read(pending);
-  });
+  }) => _serial(
+    () => PreparedTransaction._readOptional(
+      _wallet.prepareTokenAccount(owner: owner, mint: mint),
+    ),
+  );
 
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
   /// wait as [confirm] does. Returns the transaction signature.
   Future<String> submit(
     PreparedTransaction transaction,
     List<Uint8List> signatures,
-  ) => _serial(() => _wallet.submit(transaction._pending, signatures));
+  ) => _serial(
+    () => _wallet.submit(pending: transaction._pending, signatures: signatures),
+  );
 
   /// Wait for a transaction the application sent itself, by its base58
   /// [signature]: until Solana confirms it and, for shielded-pool
   /// transactions, the indexer has it, so the next balance or spend reads the
   /// notes it created and not the ones it spent. Fails with
-  /// `signature_invalid` unless [signature] is
-  /// the fee payer's signature over [PreparedTransaction.message].
+  /// `signature_invalid` unless [signature] is the fee payer's signature over
+  /// [PreparedTransaction.message].
   Future<void> confirm(PreparedTransaction transaction, String signature) =>
-      _serial(() => _wallet.confirm(transaction._pending, signature));
+      _serial(
+        () => _wallet.confirm(
+          pending: transaction._pending,
+          signature: signature,
+        ),
+      );
 
   /// [prepareRegistration], signed and submitted. `null` when already
   /// registered.
   Future<String?> register() => _serial(() async {
-    final pending = await _wallet.prepareRegistration();
-    return pending == null
-        ? null
-        : _signAndSubmit(await PreparedTransaction._read(pending));
+    final transaction = await PreparedTransaction._readOptional(
+      _wallet.prepareRegistration(),
+    );
+    return transaction == null ? null : _signAndSubmit(transaction);
   });
 
   /// [prepareDeposit], signed and submitted.
   Future<String> deposit(BigInt amount, {String? mint}) =>
-      _serial(() async => _signAndSubmit(await _prepareDeposit(mint, amount)));
+      _serial(() => _send(_wallet.prepareDeposit(mint: mint, amount: amount)));
 
   /// [prepareTransfer], signed and submitted.
   Future<String> transfer({
@@ -273,8 +275,9 @@ class ZolanaWallet {
     required BigInt amount,
     String? mint,
   }) => _serial(
-    () async =>
-        _signAndSubmit(await _prepareTransfer(recipient, mint, amount, null)),
+    () => _send(
+      _wallet.prepareTransfer(recipient: recipient, mint: mint, amount: amount),
+    ),
   );
 
   /// [prepareWithdrawal], signed and submitted.
@@ -283,8 +286,13 @@ class ZolanaWallet {
     required BigInt amount,
     String? mint,
   }) => _serial(
-    () async =>
-        _signAndSubmit(await _prepareWithdrawal(recipient, mint, amount, null)),
+    () => _send(
+      _wallet.prepareWithdrawal(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+      ),
+    ),
   );
 
   /// Stop this wallet. Operations not yet started fail with `wallet_closed`,
@@ -295,29 +303,8 @@ class ZolanaWallet {
   /// It does not recall a transaction already submitted.
   Future<void> close() => _closing ??= _last.then((_) => _wallet.dispose());
 
-  Future<PreparedTransaction> _prepareDeposit(
-    String? mint,
-    BigInt amount,
-  ) async =>
-      PreparedTransaction._read(await _wallet.prepareDeposit(mint, amount));
-
-  Future<PreparedTransaction> _prepareTransfer(
-    String recipient,
-    String? mint,
-    BigInt amount,
-    String? feePayer,
-  ) async => PreparedTransaction._read(
-    await _wallet.prepareTransfer(recipient, mint, amount, feePayer),
-  );
-
-  Future<PreparedTransaction> _prepareWithdrawal(
-    String recipient,
-    String? mint,
-    BigInt amount,
-    String? feePayer,
-  ) async => PreparedTransaction._read(
-    await _wallet.prepareWithdrawal(recipient, mint, amount, feePayer),
-  );
+  Future<String> _send(Future<native.PendingTransaction> prepared) async =>
+      _signAndSubmit(await PreparedTransaction._read(prepared));
 
   Future<String> _signAndSubmit(PreparedTransaction transaction) async {
     final signers = transaction.signers;
@@ -330,7 +317,10 @@ class ZolanaWallet {
       purpose: transaction.summary,
     );
     _ensureOpen();
-    return _wallet.submit(transaction._pending, [signature]);
+    return _wallet.submit(
+      pending: transaction._pending,
+      signatures: [signature],
+    );
   }
 
   void _ensureOpen() {
@@ -363,123 +353,13 @@ class _NativeBackend implements WalletBackend {
       native.derivationMessage(solanaPubkey: solanaPubkey);
 
   @override
-  Future<NativeWallet> open(
+  Future<native.MobileWallet> open(
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
-  ) async => _NativeWallet(
-    await native.MobileWallet.open(
-      config: config,
-      solanaPubkey: solanaPubkey,
-      derivationSignature: derivationSignature,
-    ),
+  ) => native.MobileWallet.open(
+    config: config,
+    solanaPubkey: solanaPubkey,
+    derivationSignature: derivationSignature,
   );
-}
-
-class _NativeWallet implements NativeWallet {
-  _NativeWallet(this._wallet);
-
-  final native.MobileWallet _wallet;
-
-  @override
-  Future<String> shieldedAddress() => _wallet.shieldedAddress();
-
-  @override
-  Future<native.RegistrationStatus> registrationStatus() =>
-      _wallet.registrationStatus();
-
-  @override
-  Future<List<native.TokenBalance>> balances() => _wallet.balances();
-
-  @override
-  Future<BigInt> privateBalance(String? mint) =>
-      _wallet.privateBalance(mint: mint);
-
-  @override
-  Future<BigInt> publicBalance(String? mint) =>
-      _wallet.publicBalance(mint: mint);
-
-  @override
-  Future<List<native.ActivityEntry>> activity() => _wallet.activity();
-
-  @override
-  Future<NativePending?> prepareRegistration() async {
-    final pending = await _wallet.prepareRegistration();
-    return pending == null ? null : _NativePending(pending);
-  }
-
-  @override
-  Future<NativePending> prepareDeposit(String? mint, BigInt amount) async =>
-      _NativePending(await _wallet.prepareDeposit(mint: mint, amount: amount));
-
-  @override
-  Future<NativePending> prepareTransfer(
-    String recipient,
-    String? mint,
-    BigInt amount,
-    String? feePayer,
-  ) async => _NativePending(
-    await _wallet.prepareTransfer(
-      recipient: recipient,
-      mint: mint,
-      amount: amount,
-      feePayer: feePayer,
-    ),
-  );
-
-  @override
-  Future<NativePending> prepareWithdrawal(
-    String recipient,
-    String? mint,
-    BigInt amount,
-    String? feePayer,
-  ) async => _NativePending(
-    await _wallet.prepareWithdrawal(
-      recipient: recipient,
-      mint: mint,
-      amount: amount,
-      feePayer: feePayer,
-    ),
-  );
-
-  @override
-  Future<NativePending?> prepareTokenAccount(String owner, String mint) async {
-    final pending = await _wallet.prepareTokenAccount(owner: owner, mint: mint);
-    return pending == null ? null : _NativePending(pending);
-  }
-
-  @override
-  Future<String> submit(NativePending pending, List<Uint8List> signatures) =>
-      _wallet.submit(
-        pending: (pending as _NativePending)._pending,
-        signatures: signatures,
-      );
-
-  @override
-  Future<void> confirm(NativePending pending, String signature) =>
-      _wallet.confirm(
-        pending: (pending as _NativePending)._pending,
-        signature: signature,
-      );
-
-  @override
-  void dispose() => _wallet.dispose();
-}
-
-class _NativePending implements NativePending {
-  _NativePending(this._pending);
-
-  final native.PendingTransaction _pending;
-
-  @override
-  Future<native.PendingTransactionKind> kind() => _pending.kind();
-
-  @override
-  Future<String> summary() => _pending.summary();
-
-  @override
-  Future<Uint8List> messageBytes() => _pending.messageBytes();
-
-  @override
-  Future<List<String>> signers() => _pending.signers();
 }

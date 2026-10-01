@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zolana_mobile/src/rust/third_party/zolana_mobile.dart'
+    show MobileWallet, PendingTransaction;
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 const owner = 'Owner1111111111111111111111111111111111111';
@@ -29,11 +31,17 @@ class RecordingSigner implements SolanaSigner {
   }
 }
 
-class FakePending implements NativePending {
+class FakePending implements PendingTransaction {
   FakePending(this.bytes, {this.signerKeys = const [owner]});
 
   final Uint8List bytes;
   final List<String> signerKeys;
+
+  @override
+  void dispose() {}
+
+  @override
+  bool get isDisposed => false;
 
   @override
   Future<PendingTransactionKind> kind() async =>
@@ -49,9 +57,9 @@ class FakePending implements NativePending {
   Future<String> summary() async => 'summary of ${bytes.first}';
 }
 
-class FakeWallet implements NativeWallet {
-  final submitted = <(NativePending, List<Uint8List>)>[];
-  final confirmed = <(NativePending, String)>[];
+class FakeWallet implements MobileWallet {
+  final submitted = <(PendingTransaction, List<Uint8List>)>[];
+  final confirmed = <(PendingTransaction, String)>[];
   final events = <String>[];
   Completer<void>? holdBalances;
   Completer<void>? holdTransfer;
@@ -77,32 +85,34 @@ class FakeWallet implements NativeWallet {
   }
 
   @override
-  Future<BigInt> privateBalance(String? mint) async => BigInt.two;
+  Future<BigInt> privateBalance({String? mint}) async => BigInt.two;
 
   @override
-  Future<BigInt> publicBalance(String? mint) async => BigInt.one;
+  Future<BigInt> publicBalance({String? mint}) async => BigInt.one;
 
   @override
   Future<List<ActivityEntry>> activity() async => const [];
 
   @override
-  Future<NativePending?> prepareRegistration() async => switch (status) {
+  Future<PendingTransaction?> prepareRegistration() async => switch (status) {
     RegistrationStatus.registered => null,
     RegistrationStatus.conflict => throw 'registration_conflict',
     RegistrationStatus.notRegistered => FakePending(Uint8List.fromList([3])),
   };
 
   @override
-  Future<NativePending> prepareDeposit(String? mint, BigInt amount) async =>
-      FakePending(Uint8List.fromList([1, 2]));
+  Future<PendingTransaction> prepareDeposit({
+    String? mint,
+    required BigInt amount,
+  }) async => FakePending(Uint8List.fromList([1, 2]));
 
   @override
-  Future<NativePending> prepareTransfer(
-    String recipient,
+  Future<PendingTransaction> prepareTransfer({
+    required String recipient,
     String? mint,
-    BigInt amount,
+    required BigInt amount,
     String? feePayer,
-  ) async {
+  }) async {
     events.add('transfer ${mint ?? 'SOL'}');
     transferFeePayer = feePayer;
     await holdTransfer?.future;
@@ -112,28 +122,33 @@ class FakeWallet implements NativeWallet {
   }
 
   @override
-  Future<NativePending> prepareWithdrawal(
-    String recipient,
+  Future<PendingTransaction> prepareWithdrawal({
+    required String recipient,
     String? mint,
-    BigInt amount,
+    required BigInt amount,
     String? feePayer,
-  ) async => FakePending(Uint8List.fromList([9]));
+  }) async => FakePending(Uint8List.fromList([9]));
 
   @override
-  Future<NativePending?> prepareTokenAccount(String owner, String mint) async =>
-      null;
+  Future<PendingTransaction?> prepareTokenAccount({
+    required String owner,
+    required String mint,
+  }) async => null;
 
   @override
-  Future<String> submit(
-    NativePending pending,
-    List<Uint8List> signatures,
-  ) async {
+  Future<String> submit({
+    required PendingTransaction pending,
+    required List<Uint8List> signatures,
+  }) async {
     submitted.add((pending, signatures));
     return 'signature';
   }
 
   @override
-  Future<void> confirm(NativePending pending, String signature) async {
+  Future<void> confirm({
+    required PendingTransaction pending,
+    required String signature,
+  }) async {
     confirmed.add((pending, signature));
   }
 
@@ -142,6 +157,9 @@ class FakeWallet implements NativeWallet {
     events.add('dispose');
     disposed = true;
   }
+
+  @override
+  bool get isDisposed => disposed;
 }
 
 class FakeBackend implements WalletBackend {
@@ -155,7 +173,7 @@ class FakeBackend implements WalletBackend {
       Uint8List.fromList(solanaPubkey.codeUnits);
 
   @override
-  Future<NativeWallet> open(
+  Future<MobileWallet> open(
     WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
@@ -177,6 +195,10 @@ openWallet() async {
   );
   return (wallet, native, signer, backend);
 }
+
+Matcher throwsWalletError(String code) => throwsA(
+  isA<ZolanaWalletException>().having((e) => e.message, 'message', code),
+);
 
 void main() {
   test('opens from a signature over the derivation message', () async {
@@ -256,13 +278,7 @@ void main() {
 
     await expectLater(
       wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
-      throwsA(
-        isA<ZolanaWalletException>().having(
-          (e) => e.message,
-          'message',
-          'unexpected_signers',
-        ),
-      ),
+      throwsWalletError('unexpected_signers'),
     );
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
     expect(native.submitted, isEmpty);
@@ -274,13 +290,7 @@ void main() {
 
     await expectLater(
       wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
-      throwsA(
-        isA<ZolanaWalletException>().having(
-          (e) => e.message,
-          'message',
-          'recipient_not_registered',
-        ),
-      ),
+      throwsWalletError('recipient_not_registered'),
     );
   });
 
@@ -298,13 +308,7 @@ void main() {
     expect(await wallet.registrationStatus(), RegistrationStatus.conflict);
     await expectLater(
       wallet.register(),
-      throwsA(
-        isA<ZolanaWalletException>().having(
-          (e) => e.message,
-          'message',
-          'registration_conflict',
-        ),
-      ),
+      throwsWalletError('registration_conflict'),
     );
     expect(native.submitted, hasLength(1));
   });
@@ -322,19 +326,17 @@ void main() {
     expect(native.disposed, isFalse, reason: 'the proof is still running');
 
     native.holdTransfer!.complete();
-    final closedError = isA<ZolanaWalletException>().having(
-      (e) => e.message,
-      'message',
-      'wallet_closed',
-    );
-    await expectLater(transfer, throwsA(closedError));
-    await expectLater(queued, throwsA(closedError));
+    await expectLater(transfer, throwsWalletError('wallet_closed'));
+    await expectLater(queued, throwsWalletError('wallet_closed'));
     await closed;
     expect(native.events, ['transfer SOL', 'dispose']);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
     expect(native.submitted, isEmpty);
 
-    await expectLater(wallet.deposit(BigInt.one), throwsA(closedError));
+    await expectLater(
+      wallet.deposit(BigInt.one),
+      throwsWalletError('wallet_closed'),
+    );
     expect(identical(wallet.close(), closed), isTrue);
   });
 

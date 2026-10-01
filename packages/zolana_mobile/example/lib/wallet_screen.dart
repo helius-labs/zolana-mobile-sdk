@@ -20,14 +20,14 @@ final _feeReserve = BigInt.from(10000000);
 /// Enough public SOL to pay for registering and a first shield.
 final _setupMinimum = BigInt.from(5000000);
 
-/// Zolana devnet through Helius: Solana RPC and the Zolana indexer, both
-/// keyed by the Helius key from `--dart-define=ZOLANA_API_KEY=...`.
 class Network {
   const Network(this.rpcUrl, this.indexerUrl);
 
   final String rpcUrl;
   final String indexerUrl;
 
+  /// Zolana devnet through Helius: Solana RPC and the Zolana indexer, both
+  /// keyed by the Helius key from `--dart-define=ZOLANA_API_KEY=...`.
   static const devnet = Network(
     'https://beta-devnet.helius-rpc.com/?api-key=$_apiKey',
     'https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$_apiKey',
@@ -47,7 +47,6 @@ class _WalletScreenState extends State<WalletScreen> {
   Network _network = Network.devnet;
   DemoAccount _account = demoAccounts.first;
   _Phase _phase = _Phase.opening;
-  String _status = 'Opening wallet…';
   String? _error;
   ZolanaWallet? _wallet;
   BigInt? _public;
@@ -75,24 +74,19 @@ class _WalletScreenState extends State<WalletScreen> {
     final previous = _wallet;
     setState(() {
       _phase = _Phase.opening;
-      _status = 'Opening wallet…';
       _wallet = null;
       _public = null;
       _private = null;
       _activity = const [];
+      _refreshing = false;
     });
-    if (identical(_network, Network.devnet) && _apiKey.isEmpty) {
-      await previous?.close();
-      _fail(
-        generation,
-        'Build with --dart-define=ZOLANA_API_KEY=... '
-        '(a Helius key) to use devnet.',
-      );
-      return;
-    }
     try {
       // Release the previous account before this one proves.
       await previous?.close();
+      if (identical(_network, Network.devnet) && _apiKey.isEmpty) {
+        throw 'Build with --dart-define=ZOLANA_API_KEY=... '
+            '(a Helius key) to use devnet.';
+      }
       final signer = await DemoSigner.fromSeedHex(_account.seedHex);
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';
@@ -121,12 +115,13 @@ class _WalletScreenState extends State<WalletScreen> {
   /// Registration is the one step a new wallet needs before others can pay
   /// it. Do it without asking, once the account can pay for it.
   Future<void> _finishSetup(int generation) async {
-    final wallet = _wallet!;
     try {
+      final wallet = _wallet!;
       final public = await wallet.publicBalance();
       if (!_current(generation)) return;
       setState(() => _public = public);
       final registration = await wallet.registrationStatus();
+      if (!_current(generation)) return;
       if (registration == RegistrationStatus.conflict) {
         throw const ZolanaWalletException('registration_conflict');
       }
@@ -135,10 +130,7 @@ class _WalletScreenState extends State<WalletScreen> {
           setState(() => _phase = _Phase.needsFunds);
           return;
         }
-        setState(() {
-          _phase = _Phase.settingUp;
-          _status = 'Setting up your private balance…';
-        });
+        setState(() => _phase = _Phase.settingUp);
         await wallet.register();
       }
       if (!_current(generation)) return;
@@ -163,7 +155,6 @@ class _WalletScreenState extends State<WalletScreen> {
     final generation = _generation;
     setState(() => _refreshing = true);
     try {
-      // Both are read from the chain and the indexer now.
       final private = await wallet.privateBalance();
       final public = await wallet.publicBalance();
       final activity = await wallet.activity();
@@ -201,8 +192,12 @@ class _WalletScreenState extends State<WalletScreen> {
         await _refresh();
       }
     } catch (_) {
+      // The error can name the RPC URL, and with it the API key.
       if (_current(generation)) {
-        _snack('Devnet airdrop is rate limited. Use faucet.solana.com.');
+        _snack(
+          'Airdrop failed. Devnet airdrops are rate limited: '
+          'use faucet.solana.com.',
+        );
       }
     }
   }
@@ -214,7 +209,7 @@ class _WalletScreenState extends State<WalletScreen> {
       _ => _private ?? BigInt.zero,
     };
     final other = demoAccounts.firstWhere((account) => account != _account);
-    await showModalBottomSheet<bool>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -351,7 +346,11 @@ class _WalletScreenState extends State<WalletScreen> {
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 24),
-            Text(_status),
+            Text(
+              _phase == _Phase.settingUp
+                  ? 'Setting up your private balance…'
+                  : 'Opening wallet…',
+            ),
           ],
         ),
         _Phase.needsFunds => _Centered(
@@ -483,7 +482,7 @@ class _Balances extends StatelessWidget {
       children: [
         Text('Private balance', style: muted),
         const SizedBox(height: 8),
-        // An unknown balance is not zero: show a dash until the sync ends.
+        // An unknown balance is not zero: show a dash until it is read.
         Text(
           private == null ? '—' : formatSol(private!),
           style: theme.textTheme.displaySmall,
@@ -491,7 +490,7 @@ class _Balances extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           refreshing
-              ? 'Syncing…'
+              ? 'Refreshing…'
               : 'Public ${public == null ? '—' : formatSol(public!)}',
           style: muted,
         ),

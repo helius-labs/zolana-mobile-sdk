@@ -74,7 +74,7 @@ pub(crate) fn mint_name(mint: &Pubkey) -> Option<String> {
     (*mint != SOL_MINT).then(|| mint.to_string())
 }
 
-pub(crate) fn parse_mint(mint: &str) -> Result<Pubkey, String> {
+fn parse_mint(mint: &str) -> Result<Pubkey, String> {
     Pubkey::from_str(mint).map_err(|_| "mint_invalid".to_string())
 }
 

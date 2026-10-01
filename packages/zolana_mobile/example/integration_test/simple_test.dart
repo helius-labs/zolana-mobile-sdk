@@ -23,8 +23,11 @@ void main() {
     );
 
     final wallet = await open();
+    addTearDown(wallet.close);
     expect(wallet.solanaPublicKey, signer.publicKey);
     expect(wallet.shieldedAddress, isNotEmpty);
-    expect((await open()).shieldedAddress, wallet.shieldedAddress);
+    final again = await open();
+    addTearDown(again.close);
+    expect(again.shieldedAddress, wallet.shieldedAddress);
   });
 }

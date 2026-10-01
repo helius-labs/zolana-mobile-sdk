@@ -81,7 +81,7 @@ flutter analyze
 After staging assets, run the real proof test with:
 
 ```sh
-cargo test -p zolana-mobile proves_and_verifies_staged_mopro_witness -- --ignored
+cargo test -p zolana-mobile proves_the_staged_request -- --ignored
 ```
 
 ## Rust dependencies

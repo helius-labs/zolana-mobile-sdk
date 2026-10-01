@@ -22,7 +22,7 @@ use std::{cmp::Reverse, collections::HashMap, str::FromStr, thread::sleep, time:
 
 use reqwest::header::{HeaderName, HeaderValue};
 use solana_commitment_config::CommitmentConfig;
-
+use solana_instruction::Instruction;
 use solana_message::VersionedMessage;
 use solana_pubkey::Pubkey;
 use solana_rpc_client::{
@@ -225,10 +225,6 @@ impl MobileWallet {
         })
     }
 
-    pub fn solana_pubkey(&self) -> String {
-        self.owner.to_string()
-    }
-
     pub fn shielded_address(&self) -> String {
         self.address.to_string()
     }
@@ -298,17 +294,9 @@ impl MobileWallet {
         }
         .instruction()
         .map_err(error)?;
-        let (blockhash, _) = self.client.get_latest_blockhash().map_err(error)?;
-        let message = compile_message(
-            &self.owner,
-            &[deposit],
-            blockhash,
-            ComputeBudgetConfig::for_instruction_count(1),
-        )
-        .map_err(error)?;
         Ok(PendingTransaction {
             kind: PendingTransactionKind::Deposit,
-            message,
+            message: self.message(deposit)?,
             summary: format!("Deposit {} (public)", asset.describe(amount)),
         })
     }
@@ -465,23 +453,27 @@ impl MobileWallet {
         {
             return Ok(None);
         }
-        let (blockhash, _) = self.client.get_latest_blockhash().map_err(error)?;
-        let message = compile_message(
-            &self.owner,
-            &[create.instruction()],
-            blockhash,
-            ComputeBudgetConfig::for_instruction_count(1),
-        )
-        .map_err(error)?;
         Ok(Some(PendingTransaction {
             kind: PendingTransactionKind::TokenAccount,
-            message,
+            message: self.message(create.instruction())?,
             summary: format!("Create a {} token account for {owner}", asset.mint),
         }))
     }
 
     fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, String> {
         fee_payer.as_deref().map_or(Ok(self.owner), parse_pubkey)
+    }
+
+    /// A message with `instruction` alone, paid by this account.
+    fn message(&self, instruction: Instruction) -> Result<VersionedMessage, String> {
+        let (blockhash, _) = self.client.get_latest_blockhash().map_err(error)?;
+        compile_message(
+            &self.owner,
+            &[instruction],
+            blockhash,
+            ComputeBudgetConfig::for_instruction_count(1),
+        )
+        .map_err(error)
     }
 
     /// SOL for `None`; a mint is added to the wallet's registry the first
@@ -550,9 +542,7 @@ impl MobileWallet {
                 .as_slice()
                 .try_into()
                 .map_err(|_| "signature_invalid".to_string())?;
-            if !PublicKey::from_ed25519(&signer.to_bytes())
-                .verify_message(&message_bytes, &signature)
-            {
+            if !signed_by(signer, &message_bytes, &signature) {
                 return Err("signature_invalid".to_string());
             }
             transaction_signatures.push(Signature::from(signature));
@@ -579,10 +569,8 @@ impl MobileWallet {
     pub fn confirm(&self, pending: &PendingTransaction, signature: String) -> Result<(), String> {
         let signature =
             Signature::from_str(&signature).map_err(|_| "signature_invalid".to_string())?;
-        let fee_payer = pending.message.static_account_keys()[0];
-        if !PublicKey::from_ed25519(&fee_payer.to_bytes())
-            .verify_message(&pending.message_bytes(), signature.as_array())
-        {
+        let fee_payer = &pending.message.static_account_keys()[0];
+        if !signed_by(fee_payer, &pending.message_bytes(), signature.as_array()) {
             return Err("signature_invalid".to_string());
         }
         self.settle(pending.kind, signature)
@@ -616,30 +604,22 @@ fn select_notes(
     asset: Asset,
     amount: u64,
 ) -> Result<Vec<WalletUtxo>, String> {
-    let eligible = |entry: &&WalletUtxo| {
-        entry.utxo.asset.asset == asset.mint && is_default_ring_spendable(entry)
-    };
-    let mut trees: Vec<_> = spendable
+    let mut candidates: Vec<&WalletUtxo> = spendable
         .utxos()
-        .filter(eligible)
-        .map(WalletUtxo::tree_id)
+        .filter(|entry| entry.utxo.asset.asset == asset.mint && is_default_ring_spendable(entry))
         .collect();
+    let mut trees: Vec<_> = candidates.iter().map(|entry| entry.tree_id()).collect();
     trees.sort();
     trees.dedup();
-    let tree = match trees.as_slice() {
-        [tree] => *tree,
-        [] => return Err("insufficient_private_balance".to_string()),
+    match trees.len() {
+        0 => return Err("insufficient_private_balance".to_string()),
+        1 => {}
         _ => return Err("merge_required".to_string()),
-    };
+    }
     let max_inputs = auto_shapes()
         .map(|shape| shape.n_inputs())
         .max()
         .unwrap_or(0);
-    let mut candidates: Vec<&WalletUtxo> = spendable
-        .utxos()
-        .filter(eligible)
-        .filter(|entry| entry.tree_id() == tree)
-        .collect();
     candidates.sort_by_key(|entry| Reverse(entry.utxo.amount));
     let total: u64 = candidates.iter().map(|entry| entry.utxo.amount).sum();
     let mut selected = Vec::new();
@@ -737,6 +717,11 @@ fn registration_status_of<E>(
     }
 }
 
+/// Whether `signature` is `signer`'s Ed25519 signature over `message`.
+fn signed_by(signer: &Pubkey, message: &[u8], signature: &[u8; 64]) -> bool {
+    PublicKey::from_ed25519(&signer.to_bytes()).verify_message(message, signature)
+}
+
 /// A derivation signature that does not yield the wallet's keys.
 fn derivation_invalid<E>(_: E) -> String {
     "derivation_signature_invalid".to_string()
@@ -804,17 +789,21 @@ mod tests {
     }
 
     fn open(signer: &Keypair) -> Result<MobileWallet, String> {
+        open_with(signer, config())
+    }
+
+    fn open_with(signer: &Keypair, config: WalletConfig) -> Result<MobileWallet, String> {
         let pubkey = signer.pubkey().to_string();
         let message = derivation_message(pubkey.clone())?;
         let signature = signer.sign_message(&message);
-        MobileWallet::open(config(), pubkey, signature.as_ref().to_vec())
+        MobileWallet::open(config, pubkey, signature.as_ref().to_vec())
     }
 
     #[test]
     fn opens_only_from_a_signature_over_the_derivation_message() {
         let signer = Keypair::new();
         let wallet = open(&signer).expect("derivation signature opens the wallet");
-        assert_eq!(wallet.solana_pubkey(), signer.pubkey().to_string());
+        assert_eq!(wallet.owner, signer.pubkey());
         assert_eq!(
             wallet.shielded_address(),
             open(&signer).unwrap().shielded_address(),
@@ -905,38 +894,29 @@ mod tests {
     #[test]
     fn rejects_rpc_headers_that_are_not_http() {
         let signer = Keypair::new();
-        let pubkey = signer.pubkey().to_string();
-        let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
-        for header in [("bad name", "value"), ("x-token", "line\nbreak")] {
-            let config = WalletConfig {
-                rpc_headers: Some(HashMap::from([(header.0.into(), header.1.into())])),
-                ..config()
-            };
+        let with_header = |name: &str, value: &str| WalletConfig {
+            rpc_headers: Some(HashMap::from([(name.into(), value.into())])),
+            ..config()
+        };
+        for (name, value) in [("bad name", "value"), ("x-token", "line\nbreak")] {
             assert_eq!(
-                MobileWallet::open(config, pubkey.clone(), signature.as_ref().to_vec())
+                open_with(&signer, with_header(name, value))
                     .err()
                     .as_deref(),
                 Some("rpc_header_invalid")
             );
         }
-        let config = WalletConfig {
-            rpc_headers: Some(HashMap::from([("x-token".into(), "secret".into())])),
-            ..config()
-        };
-        assert!(MobileWallet::open(config, pubkey, signature.as_ref().to_vec()).is_ok());
+        assert!(open_with(&signer, with_header("x-token", "secret")).is_ok());
     }
 
     #[test]
     fn errors_mask_api_keys_in_urls() {
-        let signer = Keypair::new();
-        let pubkey = signer.pubkey().to_string();
-        let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
         let config = WalletConfig {
             rpc_url: "http://127.0.0.1:1/?api-key=secret".to_string(),
             indexer_url: "http://127.0.0.1:1/v1/zolana?api-key=secret".to_string(),
             ..config()
         };
-        let mut wallet = MobileWallet::open(config, pubkey, signature.as_ref().to_vec()).unwrap();
+        let mut wallet = open_with(&Keypair::new(), config).unwrap();
         for error in [
             wallet.public_balance(None).unwrap_err(),
             wallet.private_balance(None).unwrap_err(),

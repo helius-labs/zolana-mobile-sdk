@@ -8,7 +8,7 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Loaded`, `ProverState`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
 Future<Uint8List> derivationMessage({required String solanaPubkey}) => RustLib
@@ -20,26 +20,6 @@ Future<String> sdkVersion() => RustLib.instance.api.zolanaMobileSdkVersion();
 
 Future<Uint8List> poseidonHash({required List<Uint8List> inputs}) =>
     RustLib.instance.api.zolanaMobilePoseidonHash(inputs: inputs);
-
-Future<GnarkProofResult> generateGnarkProof({
-  required String r1CsPath,
-  required String provingKeyPath,
-  required String witnessJson,
-}) => RustLib.instance.api.zolanaMobileGenerateGnarkProof(
-  r1CsPath: r1CsPath,
-  provingKeyPath: provingKeyPath,
-  witnessJson: witnessJson,
-);
-
-Future<bool> verifyGnarkProof({
-  required String r1CsPath,
-  required String verifyingKeyPath,
-  required GnarkProofResult proofResult,
-}) => RustLib.instance.api.zolanaMobileVerifyGnarkProof(
-  r1CsPath: r1CsPath,
-  verifyingKeyPath: verifyingKeyPath,
-  proofResult: proofResult,
-);
 
 Future<PreparedProverInfo> loadProver({
   required String r1CsPath,
@@ -54,22 +34,13 @@ Future<PreparedProverInfo> loadProver({
 Future<void> releaseProver({required BigInt id}) =>
     RustLib.instance.api.zolanaMobileReleaseProver(id: id);
 
+/// Prove a structured Zolana `/prove` request with the prepared prover `id`.
 Future<LocalProofResult> provePrepared({
   required BigInt id,
   required String inputJson,
-  required bool structuredRequest,
 }) => RustLib.instance.api.zolanaMobileProvePrepared(
   id: id,
   inputJson: inputJson,
-  structuredRequest: structuredRequest,
-);
-
-Future<LocalProofResult> proveAssignment({
-  required String provingKeyPath,
-  required String assignmentPath,
-}) => RustLib.instance.api.zolanaMobileProveAssignment(
-  provingKeyPath: provingKeyPath,
-  assignmentPath: assignmentPath,
 );
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>>
@@ -171,8 +142,6 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   Future<String> shieldedAddress();
 
-  Future<String> solanaPubkey();
-
   /// Attach the signatures, send, and wait as [`Self::confirm`] does.
   /// Returns the signature.
   ///
@@ -248,24 +217,6 @@ enum ActivityKind {
 
   /// Notes rearranged within this wallet: a merge, or a transfer to itself.
   internal,
-}
-
-class GnarkProofResult {
-  final String proof;
-  final String publicInputs;
-
-  const GnarkProofResult({required this.proof, required this.publicInputs});
-
-  @override
-  int get hashCode => proof.hashCode ^ publicInputs.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is GnarkProofResult &&
-          runtimeType == other.runtimeType &&
-          proof == other.proof &&
-          publicInputs == other.publicInputs;
 }
 
 class LocalProofResult {

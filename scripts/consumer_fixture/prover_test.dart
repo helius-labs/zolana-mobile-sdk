@@ -40,7 +40,7 @@ void main() {
           jsonDecode(result.proofJson),
           containsPair('ar', isA<List<dynamic>>()),
         );
-        final malformed = prover.proveWitness('{"Secret": "private-sentinel"}');
+        final malformed = prover.proveRequest('{"Secret": "private-sentinel"}');
         await expectLater(
           malformed.result,
           throwsA(
