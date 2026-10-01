@@ -19,7 +19,9 @@ jobs:
           cache: true
       # The pinned package:test runner needs frontend_server.dart.snapshot,
       # which current Dart SDKs no longer ship, so run the test file directly.
-      - run: dart pub get && dart analyze --no-fatal-warnings && dart run test/crate_hash_test.dart
+      - run: >
+          dart pub get && dart analyze --no-fatal-warnings
+          && dart run test/crate_hash_test.dart && dart run test/download_test.dart
         working-directory: packages/zolana_mobile/cargokit/build_tool
 
   min-flutter:

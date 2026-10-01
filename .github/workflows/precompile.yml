@@ -129,7 +129,9 @@ jobs:
           cache: true
       - name: Remove Rust
         run: rm -rf ~/.cargo ~/.rustup
-      - run: flutter pub get && flutter build ios --simulator && flutter build ios --release --no-codesign
+      # Verbose: Flutter hides the Xcode build output otherwise, and with it
+      # cargokit's reason for not using a released library.
+      - run: flutter pub get && flutter build ios --simulator -v && flutter build ios --release --no-codesign -v
         working-directory: packages/zolana_mobile/example
         env:
           CARGOKIT_VERBOSE: 1
