@@ -11,9 +11,9 @@ Unreleased.
   at most 5 notes on one tree and fails with `merge_required` beyond that.
 * `activity()`: the wallet's history, newest first.
 * `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
-  `prepareWithdrawal`, `prepareTokenAccount`, `submit` and `confirm` for
-  applications that sign and send transactions themselves. `feePayer` lets
-  another account pay the network fee of a transfer or withdrawal.
+  `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
+  send transactions themselves. `feePayer` lets another account pay the
+  network fee of a transfer or withdrawal.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
 * Prepared spends reserve their notes, so the next spend selects others;

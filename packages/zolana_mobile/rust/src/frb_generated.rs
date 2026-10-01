@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -784671820;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2122048780;
 
 // Section: executor
 
@@ -443,61 +443,6 @@ fn wire__zolana_mobile__MobileWallet_prepare_registration_impl(
         },
     )
 }
-fn wire__zolana_mobile__MobileWallet_prepare_token_account_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "MobileWallet_prepare_token_account",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <RustOpaqueMoi<
-                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
-            >>::sse_decode(&mut deserializer);
-            let api_owner = <String>::sse_decode(&mut deserializer);
-            let api_mint = <String>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, String>((move || {
-                    let mut api_that_guard = None;
-                    let decode_indices_ =
-                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
-                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, true,
-                            ),
-                        ]);
-                    for i in decode_indices_ {
-                        match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
-                            _ => unreachable!(),
-                        }
-                    }
-                    let mut api_that_guard = api_that_guard.unwrap();
-                    let output_ok = zolana_mobile::MobileWallet::prepare_token_account(
-                        &mut *api_that_guard,
-                        api_owner,
-                        api_mint,
-                    )?;
-                    Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
 fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -664,59 +609,6 @@ fn wire__zolana_mobile__MobileWallet_private_balance_impl(
                     }
                     let mut api_that_guard = api_that_guard.unwrap();
                     let output_ok = zolana_mobile::MobileWallet::private_balance(
-                        &mut *api_that_guard,
-                        api_mint,
-                    )?;
-                    Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
-fn wire__zolana_mobile__MobileWallet_public_balance_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "MobileWallet_public_balance",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <RustOpaqueMoi<
-                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
-            >>::sse_decode(&mut deserializer);
-            let api_mint = <Option<String>>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, String>((move || {
-                    let mut api_that_guard = None;
-                    let decode_indices_ =
-                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
-                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, true,
-                            ),
-                        ]);
-                    for i in decode_indices_ {
-                        match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
-                            _ => unreachable!(),
-                        }
-                    }
-                    let mut api_that_guard = api_that_guard.unwrap();
-                    let output_ok = zolana_mobile::MobileWallet::public_balance(
                         &mut *api_that_guard,
                         api_mint,
                     )?;
@@ -1976,7 +1868,6 @@ impl SseDecode for zolana_mobile::PendingTransactionKind {
             1 => zolana_mobile::PendingTransactionKind::Deposit,
             2 => zolana_mobile::PendingTransactionKind::Transfer,
             3 => zolana_mobile::PendingTransactionKind::Withdrawal,
-            4 => zolana_mobile::PendingTransactionKind::TokenAccount,
             _ => unreachable!("Invalid variant for PendingTransactionKind: {}", inner),
         };
     }
@@ -2146,86 +2037,77 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        9 => wire__zolana_mobile__MobileWallet_prepare_token_account_impl(
+        9 => wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        10 => wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
+        10 => wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        11 => wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
+        11 => wire__zolana_mobile__MobileWallet_private_balance_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        12 => wire__zolana_mobile__MobileWallet_private_balance_impl(
+        12 => wire__zolana_mobile__MobileWallet_refresh_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__zolana_mobile__MobileWallet_registration_status_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        13 => {
-            wire__zolana_mobile__MobileWallet_public_balance_impl(port, ptr, rust_vec_len, data_len)
-        }
-        14 => wire__zolana_mobile__MobileWallet_refresh_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__zolana_mobile__MobileWallet_registration_status_impl(
+        14 => wire__zolana_mobile__MobileWallet_release_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__zolana_mobile__MobileWallet_set_remote_prover_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        16 => wire__zolana_mobile__MobileWallet_release_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__zolana_mobile__MobileWallet_set_remote_prover_impl(
+        16 => wire__zolana_mobile__MobileWallet_shielded_address_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__zolana_mobile__MobileWallet_shielded_address_impl(
+        17 => wire__zolana_mobile__MobileWallet_submit_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        19 => wire__zolana_mobile__MobileWallet_submit_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
+        19 => wire__zolana_mobile__PendingTransaction_kind_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__zolana_mobile__PendingTransaction_last_valid_block_height_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        21 => wire__zolana_mobile__PendingTransaction_kind_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__zolana_mobile__PendingTransaction_last_valid_block_height_impl(
+        21 => wire__zolana_mobile__PendingTransaction_message_bytes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        23 => wire__zolana_mobile__PendingTransaction_message_bytes_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        24 => {
+        22 => {
             wire__zolana_mobile__PendingTransaction_signers_impl(port, ptr, rust_vec_len, data_len)
         }
-        25 => {
+        23 => {
             wire__zolana_mobile__PendingTransaction_summary_impl(port, ptr, rust_vec_len, data_len)
         }
-        26 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__zolana_mobile__load_prover_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__zolana_mobile__prove_prepared_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__zolana_mobile__release_prover_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__zolana_mobile__load_prover_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__zolana_mobile__prove_prepared_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__zolana_mobile__release_prover_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2360,7 +2242,6 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::PendingTransact
             zolana_mobile::PendingTransactionKind::Deposit => 1.into_dart(),
             zolana_mobile::PendingTransactionKind::Transfer => 2.into_dart(),
             zolana_mobile::PendingTransactionKind::Withdrawal => 3.into_dart(),
-            zolana_mobile::PendingTransactionKind::TokenAccount => 4.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -2764,7 +2645,6 @@ impl SseEncode for zolana_mobile::PendingTransactionKind {
                 zolana_mobile::PendingTransactionKind::Deposit => 1,
                 zolana_mobile::PendingTransactionKind::Transfer => 2,
                 zolana_mobile::PendingTransactionKind::Withdrawal => 3,
-                zolana_mobile::PendingTransactionKind::TokenAccount => 4,
                 _ => {
                     unimplemented!("");
                 }

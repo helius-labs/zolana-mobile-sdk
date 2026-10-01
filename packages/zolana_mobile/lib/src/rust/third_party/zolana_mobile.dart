@@ -110,13 +110,6 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// never replaces them.
   Future<PendingTransaction?> prepareRegistration();
 
-  /// Create `owner`'s associated token account for `mint`, paid by this
-  /// account, so a withdrawal can reach it. `None` when it already exists.
-  Future<PendingTransaction?> prepareTokenAccount({
-    required String owner,
-    required String mint,
-  });
-
   /// Build and prove a private transfer to a registered wallet.
   ///
   /// Refuses an unregistered recipient instead of paying it publicly:
@@ -138,8 +131,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   });
 
   /// Build and prove a withdrawal of private funds to the public account
-  /// `recipient`. Tokens go to its associated token account, which must
-  /// exist: [`Self::prepare_token_account`] creates it.
+  /// `recipient`. Tokens go to its associated token account. Without one
+  /// the withdrawal could not settle, so it fails with
+  /// `recipient_token_account_missing` before proving; the application
+  /// creates the account with its own Solana client.
   ///
   /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
   Future<PendingTransaction> prepareWithdrawal({
@@ -153,10 +148,6 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
   /// the indexer now.
   Future<BigInt> privateBalance({String? mint});
-
-  /// Public balance of this account, read from the RPC now: lamports, or
-  /// the amount in its associated token account for `mint` (0 without one).
-  Future<BigInt> publicBalance({String? mint});
 
   /// `pending` with a new blockhash and the same proof, for an approval that
   /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
@@ -346,9 +337,6 @@ enum PendingTransactionKind {
   /// Moves private funds to a public account. Public: recipient, asset,
   /// amount.
   withdrawal,
-
-  /// Creates an associated token account so it can receive a withdrawal.
-  tokenAccount,
 }
 
 class PreparedProverInfo {

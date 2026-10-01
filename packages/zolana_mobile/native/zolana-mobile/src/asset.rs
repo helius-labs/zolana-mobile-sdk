@@ -78,15 +78,6 @@ fn parse_mint(mint: &str) -> Result<Pubkey, String> {
     Pubkey::from_str(mint).map_err(|_| "mint_invalid".to_string())
 }
 
-/// The token amount of an SPL Token or Token-2022 account; both put it at
-/// bytes 64..72.
-pub(crate) fn token_account_amount(data: &[u8]) -> Result<u64, String> {
-    data.get(64..72)
-        .and_then(|bytes| bytes.try_into().ok())
-        .map(u64::from_le_bytes)
-        .ok_or_else(|| "token_account_invalid".to_string())
-}
-
 /// The asset id the shielded pool assigned to `mint`, read from its registry
 /// account. A mint without one cannot enter the pool.
 fn registered_asset_id(rpc: &impl Rpc, mint: Pubkey) -> Result<u64, String> {
@@ -182,16 +173,5 @@ mod tests {
             SplAssetRegistry::account_bytes(MINT, 2).to_vec(),
         );
         assert_eq!(resolve(&forged), "asset_not_supported");
-    }
-
-    #[test]
-    fn reads_token_account_amounts() {
-        let mut data = vec![0; 165];
-        data[64..72].copy_from_slice(&42u64.to_le_bytes());
-        assert_eq!(token_account_amount(&data).unwrap(), 42);
-        assert_eq!(
-            token_account_amount(&data[..70]).unwrap_err(),
-            "token_account_invalid"
-        );
     }
 }
