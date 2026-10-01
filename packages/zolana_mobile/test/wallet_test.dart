@@ -93,6 +93,13 @@ class FakeWallet implements MobileWallet {
   bool disposed = false;
   List<String> transferSigners = const [owner];
   String? transferFeePayer;
+  final proved = <Proving?>[];
+  FutureOr<Uint8List?> Function(Uint8List)? remoteProver;
+
+  @override
+  Future<void> setRemoteProver({
+    required FutureOr<Uint8List?> Function(Uint8List) prove,
+  }) async => remoteProver = prove;
 
   @override
   Future<String> shieldedAddress() async => 'shielded';
@@ -165,9 +172,11 @@ class FakeWallet implements MobileWallet {
     String? mint,
     required BigInt amount,
     String? feePayer,
+    Proving? proving,
   }) async {
     events.add('transfer ${mint ?? 'SOL'}');
     transferFeePayer = feePayer;
+    proved.add(proving);
     await holdTransfer?.future;
     final error = transferError;
     if (error != null) throw error;
@@ -180,7 +189,11 @@ class FakeWallet implements MobileWallet {
     String? mint,
     required BigInt amount,
     String? feePayer,
-  }) async => FakePending(Uint8List.fromList([9]));
+    Proving? proving,
+  }) async {
+    proved.add(proving);
+    return FakePending(Uint8List.fromList([9]));
+  }
 
   @override
   Future<PendingTransaction?> prepareTokenAccount({
@@ -437,6 +450,73 @@ void main() {
     expect(await wallet.submit(transaction, signatures), 'signature');
     expect(native.submitted.single.$2, signatures);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
+  });
+
+  test(
+    'passes the proving choice of each spend, null for the config',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+
+      await wallet.prepareTransfer(recipient: 'R', amount: BigInt.one);
+      await wallet.prepareTransfer(
+        recipient: 'R',
+        amount: BigInt.one,
+        proving: Proving.remote,
+      );
+      await wallet.prepareWithdrawal(
+        recipient: 'R',
+        amount: BigInt.one,
+        proving: Proving.local,
+      );
+      await wallet.transfer(
+        recipient: 'R',
+        amount: BigInt.one,
+        proving: Proving.remote,
+      );
+      await wallet.withdraw(recipient: 'R', amount: BigInt.one);
+      expect(native.proved, [
+        null,
+        Proving.remote,
+        Proving.local,
+        Proving.remote,
+        null,
+      ]);
+    },
+  );
+
+  test('hands the remote prover to the native wallet', () async {
+    final requests = <Uint8List>[];
+    Future<Uint8List> backend(Uint8List request) async {
+      requests.add(request);
+      if (request.isEmpty) throw StateError('backend unreachable');
+      return Uint8List.fromList([...request.reversed]);
+    }
+
+    final opened = FakeWallet();
+    await ZolanaWallet.open(
+      config: config,
+      signer: RecordingSigner(),
+      remoteProver: backend,
+      backend: FakeBackend(opened),
+    );
+    final restored = FakeWallet();
+    await ZolanaWallet.openWithKeys(
+      config: config,
+      solanaPublicKey: owner,
+      keys: savedKeys,
+      remoteProver: backend,
+      backend: FakeBackend(restored),
+    );
+    for (final native in [opened, restored]) {
+      final prove = native.remoteProver!;
+      expect(await prove(Uint8List.fromList([1, 2])), [2, 1]);
+      // A failed backend is a missing proof: the native wallet names it.
+      expect(await prove(Uint8List(0)), isNull);
+    }
+    expect(requests, hasLength(4));
+
+    final (_, local, _, _) = await openWallet();
+    expect(local.remoteProver, isNull);
   });
 
   test('refuses a transaction another key must sign', () async {

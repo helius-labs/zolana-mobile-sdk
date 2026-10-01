@@ -5253,6 +5253,7 @@ dependencies = [
 name = "zolana-mobile"
 version = "0.1.0"
 dependencies = [
+ "futures-executor",
  "mopro-ffi",
  "reqwest",
  "rust-gnark",

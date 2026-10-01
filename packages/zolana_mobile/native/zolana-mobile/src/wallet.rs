@@ -17,14 +17,17 @@
 //! spend by another client, or by the last transaction, as soon as the
 //! indexer has it.
 //!
-//! Proofs are generated on the device with the pinned key for their shape; no
-//! witness is sent to a prover server.
+//! Proofs are generated on the device with the pinned key for their shape, or,
+//! for a spend that asks for [`Proving::Remote`], by the application's backend
+//! through [`MobileWallet::set_remote_prover`]. The client verifies a
+//! backend's proof against the pinned verifying key before the wallet builds
+//! the message.
 
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
     str::FromStr,
-    sync::Mutex,
+    sync::{Arc, Mutex, PoisonError},
     thread::sleep,
     time::Duration,
 };
@@ -67,7 +70,9 @@ use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, token_account_amount, Asset},
     keys::KeyStore,
-    prover::NativeProver,
+    prover::{
+        proving_error, DartFnFuture, NativeProver, Proving, RemoteProver, SpendProver, WalletProver,
+    },
 };
 
 /// The prover URL `ZolanaClient` requires at construction. `with_prover`
@@ -90,6 +95,10 @@ pub struct WalletConfig {
     pub proving_key_dir: String,
     /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
     pub proving_key_url: Option<String>,
+    /// Where spends are proved unless a call says otherwise: on the device
+    /// when `None`. [`Proving::Remote`] needs
+    /// [`MobileWallet::set_remote_prover`].
+    pub proving: Option<Proving>,
     /// Allow a plaintext indexer off loopback (an emulator reaching its host).
     /// The indexer sees the wallet's view tags, so never set this for funds
     /// that matter.
@@ -229,6 +238,11 @@ pub struct MobileWallet {
     /// Configured mints not resolved into `assets` yet.
     mints: Vec<String>,
     reservations: Mutex<Reservations>,
+    /// Where spends are proved unless a call says otherwise.
+    proving: Proving,
+    remote_prover: Option<Arc<RemoteProver>>,
+    /// Shared with the client's prover.
+    spend_prover: SpendProver,
     client: ZolanaClient<SolanaRpc>,
 }
 
@@ -307,6 +321,7 @@ impl MobileWallet {
             &config.indexer_url,
             config.indexer_headers.unwrap_or_default(),
         )?;
+        let spend_prover = SpendProver::default();
         // Only the blocking indexer is used; the async clients are required.
         let client = ZolanaClient::new(
             rpc,
@@ -315,7 +330,10 @@ impl MobileWallet {
             AsyncZolanaIndexer::new(&config.indexer_url),
             AsyncProverClient::new(UNUSED_PROVER_URL.to_string()),
         )
-        .with_prover(NativeProver::new(proving_keys));
+        .with_prover(WalletProver {
+            native: NativeProver::new(proving_keys),
+            remote: Arc::clone(&spend_prover),
+        });
         Ok(MobileWallet {
             owner,
             address,
@@ -325,8 +343,28 @@ impl MobileWallet {
             assets: AssetRegistry::default(),
             mints: config.mints,
             reservations: Mutex::default(),
+            proving: config.proving.unwrap_or(Proving::Local),
+            remote_prover: None,
+            spend_prover,
             client,
         })
+    }
+
+    /// Prove the spends that ask for [`Proving::Remote`] with `prove`, the
+    /// application's backend. It receives the `/prove` request body the Zolana
+    /// SDK's prover client sends and returns its prover's proof: the gnark
+    /// proof JSON, alone or as the `proof` of the prover's response. `None`
+    /// fails the spend with `remote_prover_failed`.
+    ///
+    /// The client verifies the proof against the pinned verifying key and the
+    /// public input it computed itself, before the message is built. A proof
+    /// that does not parse fails with `proof_malformed`, one that does not
+    /// verify with `proof_invalid`.
+    pub fn set_remote_prover(
+        &mut self,
+        prove: impl Fn(Vec<u8>) -> DartFnFuture<Option<Vec<u8>>> + Send + Sync + 'static,
+    ) {
+        self.remote_prover = Some(Arc::new(RemoteProver::new(prove)));
     }
 
     pub fn shielded_address(&self) -> String {
@@ -478,15 +516,21 @@ impl MobileWallet {
     /// `fee_payer` pays the network fee, this account when `None`. The proof
     /// binds it, so it cannot change after this call. Another fee payer signs
     /// first, before this account.
+    ///
+    /// `proving` says where it is proved, [`WalletConfig::proving`] when
+    /// `None`. Remote proving without [`Self::set_remote_prover`] fails with
+    /// `remote_prover_missing`.
     pub fn prepare_transfer(
         &mut self,
         recipient: String,
         mint: Option<String>,
         amount: u64,
         fee_payer: Option<String>,
+        proving: Option<Proving>,
     ) -> Result<PendingTransaction, String> {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
+        let remote = self.remote(proving)?;
         let asset = self.asset(mint)?;
         let Some(registered) =
             try_resolve_registered_address(&self.client, recipient).map_err(error)?
@@ -503,7 +547,7 @@ impl MobileWallet {
         .map_err(error)?;
         let pending = self.pending(
             PendingTransactionKind::Transfer,
-            self.prove(transaction, Vec::new(), payer)?,
+            self.prove(transaction, Vec::new(), payer, remote)?,
             format!("Send {} privately to {recipient}", asset.describe(amount)),
         )?;
         Ok(self.reserve(pending, spends))
@@ -513,16 +557,18 @@ impl MobileWallet {
     /// `recipient`. Tokens go to its associated token account, which must
     /// exist: [`Self::prepare_token_account`] creates it.
     ///
-    /// `fee_payer` works as in [`Self::prepare_transfer`].
+    /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
     pub fn prepare_withdrawal(
         &mut self,
         recipient: String,
         mint: Option<String>,
         amount: u64,
         fee_payer: Option<String>,
+        proving: Option<Proving>,
     ) -> Result<PendingTransaction, String> {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
+        let remote = self.remote(proving)?;
         let asset = self.asset(mint)?;
         if let Some(token_account) = asset.token_account(&recipient) {
             if self
@@ -540,7 +586,7 @@ impl MobileWallet {
         let settlement = withdraw_to(&mut transaction, recipient, asset, amount)?;
         let pending = self.pending(
             PendingTransactionKind::Withdrawal,
-            self.prove(transaction, vec![settlement], payer)?,
+            self.prove(transaction, vec![settlement], payer, remote)?,
             format!(
                 "Withdraw {} to {recipient} (public)",
                 asset.describe(amount)
@@ -583,6 +629,18 @@ impl MobileWallet {
 
     fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, String> {
         fee_payer.as_deref().map_or(Ok(self.owner), parse_pubkey)
+    }
+
+    /// The backend that proves a spend, or `None` to prove it on the device.
+    fn remote(&self, proving: Option<Proving>) -> Result<Option<Arc<RemoteProver>>, String> {
+        match proving.unwrap_or(self.proving) {
+            Proving::Local => Ok(None),
+            Proving::Remote => self
+                .remote_prover
+                .clone()
+                .map(Some)
+                .ok_or_else(|| "remote_prover_missing".to_string()),
+        }
     }
 
     /// A message with `instruction` alone, paid by this account. Its blockhash
@@ -721,21 +779,26 @@ impl MobileWallet {
         Ok(())
     }
 
-    /// Encrypt and prove `transaction` on the device, and build the Solana
-    /// message `payer` pays for.
+    /// Encrypt and prove `transaction`, on the device or by `remote`, and build
+    /// the Solana message `payer` pays for.
     fn prove(
         &self,
         transaction: ConfidentialTransaction,
         settlement_transfers: Vec<TransactInterfaceTransferAccounts>,
         payer: Pubkey,
+        remote: Option<Arc<RemoteProver>>,
     ) -> Result<VersionedMessage, String> {
         let signed = SignedPrivateTransaction {
             transaction: transaction.encrypt(&self.keys).map_err(error)?,
             settlement_transfers,
         };
+        *self
+            .spend_prover
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = remote;
         self.client
             .finish_submission_unsigned_sync(&signed, payer, &self.nullifier_key)
-            .map_err(error)
+            .map_err(proving_error)
     }
 
     /// Attach the signatures, send, and wait as [`Self::confirm`] does.
@@ -1063,6 +1126,7 @@ mod tests {
             indexer_headers: None,
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
+            proving: None,
             allow_insecure_http: false,
             mints: Vec::new(),
         }
@@ -1404,22 +1468,49 @@ mod tests {
     }
 
     #[test]
+    fn each_spend_is_proved_where_it_asks_or_the_config_says() {
+        let signer = Keypair::new();
+        let recipient = Keypair::new().pubkey().to_string();
+        let missing = |wallet: &mut MobileWallet, proving| {
+            [
+                wallet.prepare_transfer(recipient.clone(), None, 1, None, proving),
+                wallet.prepare_withdrawal(recipient.clone(), None, 1, None, proving),
+            ]
+            .map(|result| result.err().as_deref() == Some("remote_prover_missing"))
+        };
+
+        let mut local = open(&signer).unwrap();
+        assert_eq!(missing(&mut local, Some(Proving::Remote)), [true; 2]);
+        // The others get as far as the unroutable RPC.
+        assert_eq!(missing(&mut local, None), [false; 2]);
+        let config = WalletConfig {
+            proving: Some(Proving::Remote),
+            ..config()
+        };
+        let mut remote = open_with(&signer, config).unwrap();
+        assert_eq!(missing(&mut remote, None), [true; 2]);
+        assert_eq!(missing(&mut remote, Some(Proving::Local)), [false; 2]);
+        remote.set_remote_prover(|_| Box::pin(async { None }));
+        assert_eq!(missing(&mut remote, None), [false; 2]);
+    }
+
+    #[test]
     fn rejects_malformed_keys_before_the_network() {
         let mut wallet = open(&Keypair::new()).unwrap();
         let recipient = Keypair::new().pubkey().to_string();
         let bad = "not-a-pubkey".to_string();
         let error = |result: Result<PendingTransaction, String>| result.err();
         assert_eq!(
-            error(wallet.prepare_transfer(bad.clone(), None, 1, None)).as_deref(),
+            error(wallet.prepare_transfer(bad.clone(), None, 1, None, None)).as_deref(),
             Some("pubkey_invalid")
         );
         assert_eq!(
-            error(wallet.prepare_transfer(recipient.clone(), None, 1, Some(bad.clone())))
+            error(wallet.prepare_transfer(recipient.clone(), None, 1, Some(bad.clone()), None))
                 .as_deref(),
             Some("pubkey_invalid")
         );
         assert_eq!(
-            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad))).as_deref(),
+            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad), None)).as_deref(),
             Some("pubkey_invalid")
         );
     }

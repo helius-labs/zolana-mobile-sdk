@@ -1,0 +1,24 @@
+{
+  "proof": {
+    "ar": [
+      "0x0a63906799829859b5cdce97ae40920436b1d193f6943bca5aeef1628d1667c5",
+      "0x2bab5c190c0573ad225762833909cf0bc4dfc4f2252a6201254c32769b44cd1c"
+    ],
+    "bs": [
+      [
+        "0x258347015ee4dd49fc6e8d86b7fcdb359ac02b97771effc4e627ab421ccf6405",
+        "0x2fe3e734c8954b1cde9b1c41657712a8846b5f75378892439e1a50801aaea374"
+      ],
+      [
+        "0x13c2bf7e509fa85300c761e68afbe049a53464469608998fb384eef3dff440f7",
+        "0x2d1915db2a6c806671e09b336253ee02aa7a8653d024a81330f635fe10c95386"
+      ]
+    ],
+    "krs": [
+      "0x14f72db3648a9b8f7feaf83263906a02967bdfd1d21289a3f3e33116d7232b4f",
+      "0x21fbacb44d69d7cdc057059aeb79fac47c7ce73c92b61506a1be7e600ffec9e5"
+    ],
+    "provingKeySha256": "dc40be6315c921ff9c69651e51d891ca3cef936630d98873bb0a767c039ab0dd"
+  },
+  "proofDurationMs": 156
+}

@@ -57,7 +57,8 @@ use_precompiled_binaries: false
 
 `ZolanaWallet` runs the whole flow: registration, deposit, private transfer and
 withdrawal. It builds every transaction with the Zolana Rust client and proves
-it on the device. The Solana secret key never enters the
+it on the device, or through the application's backend (see
+[Backend proving](#backend-proving)). The Solana secret key never enters the
 package; your `SolanaSigner` (a platform keystore, a wallet adapter, a custodian)
 signs two things:
 
@@ -221,6 +222,55 @@ sends through the wallet's RPC instead.
 - After a restart the prepared transaction is gone, but its signature is
   enough: `wallet.waitForTransaction(signature)` waits until Solana confirms
   it and the indexer has it, and fails with the chain's error if it failed.
+
+### Backend proving
+
+A transfer or withdrawal can be proved by the application's backend instead
+of the device. Pass a `remoteProver` to `ZolanaWallet.open` or
+`openWithKeys`, and ask for remote proving per call or in the config:
+
+```dart
+final wallet = await ZolanaWallet.open(
+  signer: KeystoreSigner(),
+  config: config,          // config.proving is the default
+  remoteProver: api.prove, // sends the request to your backend
+);
+await wallet.transfer(
+  recipient: account,
+  amount: amount,
+  proving: Proving.remote,
+);
+```
+
+- **The request**: `request` is the `/prove` request body (JSON) that the
+  Zolana SDK's own prover client sends, unchanged. The backend can send it to
+  a Zolana prover as that client does: `POST <prover>/prove` with
+  `Content-Type: application/json` and `X-Sync: true`, for example the Helius
+  prover at `https://beta-devnet.helius-rpc.com/v1/zolana/prove?api-key=...`
+  on devnet. When the prover queues the proof (a `jobId` in the response),
+  poll `<prover>/prove/status?jobId=...` until `status` is `completed`. Or
+  the backend runs its own prover.
+- **The response**: `remoteProver` returns the proof as the prover returns
+  it: the gnark proof JSON (`{ar, bs, krs}`), alone or as the `proof` of the
+  response (the `result` of a completed job). When it throws, the spend fails
+  with `remote_prover_failed`.
+- **Verification on the device**: the wallet verifies the proof against the
+  pinned verifying key and the public input it computed itself, before it
+  builds the message. A response that is not a proof fails with
+  `proof_malformed`, a proof that does not verify with `proof_invalid`. A bad
+  proof never reaches the user's approval.
+- **Choice per call**: `WalletConfig.proving` is the default, `Proving.local`
+  when it is null. `prepareTransfer`, `prepareWithdrawal`, `transfer` and
+  `withdraw` take `proving` to override it. `Proving.remote` without a
+  `remoteProver` fails with `remote_prover_missing`.
+- **Privacy**: the request carries the transaction's full witness: the notes
+  it spends and creates, their amounts and owners, and the wallet's nullifier
+  secret (the `nullifierPrivateKey` of `exportKeys()`). The backend and its
+  prover learn the transaction and can recognize later spends of these notes.
+  They cannot move funds: every spend needs the account's signature. Prove on
+  the device when this is not acceptable.
+- The wallet, and `close()`, wait for `remoteProver`: give your backend call
+  a timeout, and do not call the wallet from it.
 
 Current limits: notes are not merged, so a spend takes at most 5 notes on one
 tree and fails with `merge_required` beyond that; one prepared prover is

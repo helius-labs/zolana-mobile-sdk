@@ -3,7 +3,8 @@
 A Flutter SDK for private Zolana payments on Android and iOS. `ZolanaWallet`
 registers, shields, sends privately and unshields, building every
 transaction with the Zolana Rust client and proving it on the device with
-Mopro/gnark Groth16. The Solana key stays with the application's signer.
+Mopro/gnark Groth16, or through the application's backend with the proof
+verified on the device. The Solana key stays with the application's signer.
 
 ## Layout
 
@@ -12,7 +13,8 @@ Mopro/gnark Groth16. The Solana key stays with the application's signer.
 - `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
   prepared keys, `.key` loading, and the structured request adapter.
 - `packages/zolana_mobile`: the Flutter plugin, and an example devnet wallet.
-- `fixtures`: a 2→3 `/prove` request captured from the Zolana client.
+- `fixtures`: a 2→3 `/prove` request captured from the Zolana client, and the
+  Helius prover's response to it.
 - `scripts`: asset staging and the upstream drift check.
 
 The generated native library keeps Mopro's internal
