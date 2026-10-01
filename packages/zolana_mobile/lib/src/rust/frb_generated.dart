@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -55797379;
+  int get rustContentHash => -684848264;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -161,6 +161,11 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
   });
 
+  Future<void> zolanaMobileMobileWalletRelease({
+    required MobileWallet that,
+    required PendingTransaction pending,
+  });
+
   Future<String> zolanaMobileMobileWalletShieldedAddress({
     required MobileWallet that,
   });
@@ -169,6 +174,11 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
     required PendingTransaction pending,
     required List<Uint8List> signatures,
+  });
+
+  Future<void> zolanaMobileMobileWalletWaitForTransaction({
+    required MobileWallet that,
+    required String signature,
   });
 
   Future<PendingTransactionKind> zolanaMobilePendingTransactionKind({
@@ -831,6 +841,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> zolanaMobileMobileWalletRelease({
+    required MobileWallet that,
+    required PendingTransaction pending,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+            pending,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileMobileWalletReleaseConstMeta,
+        argValues: [that, pending],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletReleaseConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_release",
+        argNames: ["that", "pending"],
+      );
+
+  @override
   Future<String> zolanaMobileMobileWalletShieldedAddress({
     required MobileWallet that,
   }) {
@@ -845,7 +896,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 17,
             port: port_,
           );
         },
@@ -888,7 +939,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -910,6 +961,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> zolanaMobileMobileWalletWaitForTransaction({
+    required MobileWallet that,
+    required String signature,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_String(signature, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kZolanaMobileMobileWalletWaitForTransactionConstMeta,
+        argValues: [that, signature],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletWaitForTransactionConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_wait_for_transaction",
+        argNames: ["that", "signature"],
+      );
+
+  @override
   Future<PendingTransactionKind> zolanaMobilePendingTransactionKind({
     required PendingTransaction that,
   }) {
@@ -924,7 +1013,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 20,
             port: port_,
           );
         },
@@ -960,7 +1049,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 21,
             port: port_,
           );
         },
@@ -997,7 +1086,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1033,7 +1122,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1069,7 +1158,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1102,7 +1191,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1132,7 +1221,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1166,7 +1255,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1198,7 +1287,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1230,7 +1319,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1260,7 +1349,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1287,7 +1376,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 31,
             port: port_,
           );
         },
@@ -2608,6 +2697,9 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// on: a state tree keeps its last 500 roots, about its last 500
   /// transactions, and a nullifier tree its last 100 batch roots. After that
   /// the program rejects the proof as stale, and the spend is prepared again.
+  ///
+  /// A refreshed spend reserves its notes again until its new last valid
+  /// block height.
   Future<PendingTransaction> refresh({required PendingTransaction pending}) =>
       RustLib.instance.api.zolanaMobileMobileWalletRefresh(
         that: this,
@@ -2618,6 +2710,14 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// Others can only send to a registered wallet.
   Future<RegistrationStatus> registrationStatus() => RustLib.instance.api
       .zolanaMobileMobileWalletRegistrationStatus(that: this);
+
+  /// Release the notes `pending` reserves, so the next spend can select
+  /// them: for a prepared spend that will not be sent, such as one the user
+  /// declined. Submitting or confirming it does this too.
+  Future<void> release({required PendingTransaction pending}) => RustLib
+      .instance
+      .api
+      .zolanaMobileMobileWalletRelease(that: this, pending: pending);
 
   Future<String> shieldedAddress() =>
       RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this);
@@ -2635,6 +2735,16 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
     pending: pending,
     signatures: signatures,
   );
+
+  /// Wait for a shielded-pool transaction by its signature alone, such as one
+  /// sent before the application restarted: until Solana confirms it and the
+  /// indexer has it, so the next balance reads its notes. A transaction that
+  /// failed on chain fails here with the chain's error.
+  Future<void> waitForTransaction({required String signature}) =>
+      RustLib.instance.api.zolanaMobileMobileWalletWaitForTransaction(
+        that: this,
+        signature: signature,
+      );
 }
 
 @sealed

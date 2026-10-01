@@ -1,8 +1,9 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
 //! machine with the pinned keys: register, deposit, private transfer sent with
-//! a refreshed blockhash, the recipient's balance, and a withdrawal from a session opened before the
-//! transfer from the sender's saved keys, with its fee paid by another
-//! account. Each step is the newest entry of its wallets' history.
+//! a refreshed blockhash, the recipient's balance, a withdrawal from a session
+//! opened before the transfer from the sender's saved keys, with its fee paid
+//! by another account, and two transfers prepared before either is sent. Each
+//! step is the newest entry of its wallets' history.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon and the programs), or any cluster that runs the pinned
@@ -33,6 +34,9 @@ const FUNDING: u64 = 1_000_000_000;
 const DEPOSIT: u64 = 50_000_000;
 const TRANSFER: u64 = 20_000_000;
 const WITHDRAWAL: u64 = 10_000_000;
+/// Each of two transfers prepared together, and the deposit that makes sure
+/// the sender has a second note for them.
+const SPLIT: u64 = 1_000_000;
 const FEES: u64 = 20_000_000;
 
 fn required(name: &str) -> String {
@@ -124,9 +128,9 @@ fn register_deposit_transfer_and_receive() {
     let sender = account("ZOLANA_E2E_SENDER_SEED");
     let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
     let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
-    // The sender pays the deposit and fees, the recipient registration and
+    // The sender pays the deposits and fees, the recipient registration and
     // the withdrawal fee.
-    for (signer, needed) in [(&sender, DEPOSIT + FEES), (&recipient, FEES)] {
+    for (signer, needed) in [(&sender, DEPOSIT + SPLIT + FEES), (&recipient, FEES)] {
         if rpc.get_balance(signer.pubkey()).expect("balance") < needed {
             rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
         }
@@ -188,6 +192,10 @@ fn register_deposit_transfer_and_receive() {
         recipient_before + TRANSFER
     );
     newest(&mut sender_wallet, &transfer, ActivityKind::Sent, TRANSFER);
+    // After a restart the signature alone is enough to wait for it.
+    recipient_wallet
+        .wait_for_transaction(transfer.clone())
+        .expect("wait for a landed transaction");
     newest(
         &mut recipient_wallet,
         &transfer,
@@ -220,5 +228,28 @@ fn register_deposit_transfer_and_receive() {
     assert_eq!(
         stale.private_balance(None).unwrap(),
         sender_before + DEPOSIT - TRANSFER - WITHDRAWAL
+    );
+
+    // Two transfers prepared before either is sent take different notes, so
+    // both land: the first reserves the notes it spends.
+    let pending = sender_wallet.prepare_deposit(None, SPLIT).unwrap();
+    submit(&sender_wallet, &[&sender], pending);
+    let recipient_before = private_sol(&mut recipient_wallet);
+    let prepare = |wallet: &mut MobileWallet| {
+        wallet
+            .prepare_transfer(recipient.pubkey().to_string(), None, SPLIT, None)
+            .expect("prove transfer")
+    };
+    let first = prepare(&mut sender_wallet);
+    let second = prepare(&mut sender_wallet);
+    submit(&sender_wallet, &[&sender], first);
+    submit(&sender_wallet, &[&sender], second);
+    assert_eq!(
+        private_sol(&mut recipient_wallet),
+        recipient_before + 2 * SPLIT
+    );
+    assert_eq!(
+        private_sol(&mut sender_wallet),
+        sender_before + DEPOSIT - TRANSFER - WITHDRAWAL - SPLIT
     );
 }

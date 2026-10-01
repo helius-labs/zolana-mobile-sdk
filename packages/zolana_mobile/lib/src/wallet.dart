@@ -94,10 +94,15 @@ class PreparedTransaction {
 ///
 /// The wallet keeps no chain state: [balances], [privateBalance], [activity]
 /// and every spend read the wallet's notes from the indexer when they run.
+/// Only the notes its prepared spends reserve are kept, in memory: the next
+/// spend selects other notes until a prepared spend is submitted or
+/// confirmed, [release]d, or past its
+/// [PreparedTransaction.lastValidBlockHeight]. A spend that would need a
+/// reserved note fails with `notes_reserved`.
 ///
 /// Every operation runs after the previous one finishes: the native wallet
-/// holds one proving key at a time, and two spends in flight would select the
-/// same notes. [close] it when the application locks or switches accounts.
+/// holds one proving key at a time. [close] it when the application locks or
+/// switches accounts.
 ///
 /// [register], [deposit], [transfer] and [withdraw] prepare, sign with the
 /// wallet's [SolanaSigner] and submit. An application that signs and sends
@@ -306,6 +311,20 @@ class ZolanaWallet {
         ),
       );
 
+  /// Release the notes [transaction] reserves, for a prepared spend that will
+  /// not be sent, such as one the user declined, so the next spend can select
+  /// them. [submit] and [confirm] release them, and [register], [deposit],
+  /// [transfer] and [withdraw] release them when the signer fails.
+  Future<void> release(PreparedTransaction transaction) =>
+      _serial(() => _wallet.release(pending: transaction._pending));
+
+  /// Wait for a shielded-pool transaction by its [signature] alone, such as
+  /// one sent before the application restarted: until Solana confirms it and
+  /// the indexer has it, so the next balance reads its notes. A transaction
+  /// that failed on chain fails here with the chain's error.
+  Future<void> waitForTransaction(String signature) =>
+      _serial(() => _wallet.waitForTransaction(signature: signature));
+
   /// [prepareRegistration], signed and submitted. `null` when already
   /// registered.
   Future<String?> register() => _serial(() async {
@@ -378,6 +397,22 @@ class ZolanaWallet {
       _signAndSubmit(await _prepare(prepared));
 
   Future<String> _signAndSubmit(PreparedTransaction transaction) async {
+    final Uint8List signature;
+    try {
+      signature = await _sign(transaction);
+    } catch (_) {
+      // Never sent: its notes are free for the next spend.
+      if (!isClosed) await _wallet.release(pending: transaction._pending);
+      rethrow;
+    }
+    _ensureOpen();
+    return _wallet.submit(
+      pending: transaction._pending,
+      signatures: [signature],
+    );
+  }
+
+  Future<Uint8List> _sign(PreparedTransaction transaction) async {
     final signer = _signer;
     if (signer == null) {
       throw const ZolanaWalletException('signer_missing');
@@ -386,14 +421,9 @@ class ZolanaWallet {
     if (signers.length != 1 || signers.single != solanaPublicKey) {
       throw const ZolanaWalletException('unexpected_signers');
     }
-    final signature = await signer.signMessage(
+    return signer.signMessage(
       transaction.message,
       purpose: transaction.summary,
-    );
-    _ensureOpen();
-    return _wallet.submit(
-      pending: transaction._pending,
-      signatures: [signature],
     );
   }
 

@@ -20,7 +20,14 @@
 //! Proofs are generated on the device with the pinned key for their shape; no
 //! witness is sent to a prover server.
 
-use std::{cmp::Reverse, collections::HashMap, str::FromStr, thread::sleep, time::Duration};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Mutex,
+    thread::sleep,
+    time::Duration,
+};
 
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use solana_commitment_config::CommitmentConfig;
@@ -133,10 +140,14 @@ pub enum PendingTransactionKind {
 
 /// A built, and where needed proved, v1 transaction awaiting signatures.
 pub struct PendingTransaction {
+    /// Unique per wallet: the key of the notes a spend reserves.
+    id: u64,
     kind: PendingTransactionKind,
     message: VersionedMessage,
     summary: String,
     last_valid_block_height: u64,
+    /// Nullifiers of the notes it spends; empty unless it is a spend.
+    spends: Vec<[u8; 32]>,
 }
 
 impl PendingTransaction {
@@ -193,8 +204,19 @@ pub struct TokenBalance {
     pub amount: u64,
 }
 
-/// A private wallet. It holds its keys and the asset ids of the mints it has
-/// named, and reads everything else from the chain and the indexer when asked.
+/// Notes reserved by prepared spends. The next spend selects other notes
+/// until a spend is submitted or confirmed, released, or past its
+/// `last_valid_block_height`, when it can no longer land.
+#[derive(Default)]
+struct Reservations {
+    next_id: u64,
+    /// Nullifiers and last valid block height, by transaction id.
+    reserved: HashMap<u64, (Vec<[u8; 32]>, u64)>,
+}
+
+/// A private wallet. It holds its keys, the asset ids of the mints it has
+/// named and the notes its prepared spends reserve, and reads everything else
+/// from the chain and the indexer when asked.
 pub struct MobileWallet {
     owner: Pubkey,
     address: ShieldedAddress,
@@ -206,6 +228,7 @@ pub struct MobileWallet {
     assets: AssetRegistry,
     /// Configured mints not resolved into `assets` yet.
     mints: Vec<String>,
+    reservations: Mutex<Reservations>,
     client: ZolanaClient<SolanaRpc>,
 }
 
@@ -301,6 +324,7 @@ impl MobileWallet {
             viewing_key,
             assets: AssetRegistry::default(),
             mints: config.mints,
+            reservations: Mutex::default(),
             client,
         })
     }
@@ -469,18 +493,20 @@ impl MobileWallet {
         else {
             return Err("recipient_not_registered".to_string());
         };
-        let inputs = select_notes(&self.spendable()?, asset, amount)?;
+        let inputs = self.select_notes(asset, amount)?;
+        let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
         match asset.token_program {
             None => transaction.transfer_sol(&registered.address, amount),
             Some(_) => transaction.transfer(&registered.address, asset.mint, amount),
         }
         .map_err(error)?;
-        self.pending(
+        let pending = self.pending(
             PendingTransactionKind::Transfer,
             self.prove(transaction, Vec::new(), payer)?,
             format!("Send {} privately to {recipient}", asset.describe(amount)),
-        )
+        )?;
+        Ok(self.reserve(pending, spends))
     }
 
     /// Build and prove a withdrawal of private funds to the public account
@@ -508,17 +534,19 @@ impl MobileWallet {
                 return Err("recipient_token_account_missing".to_string());
             }
         }
-        let inputs = select_notes(&self.spendable()?, asset, amount)?;
+        let inputs = self.select_notes(asset, amount)?;
+        let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
         let settlement = withdraw_to(&mut transaction, recipient, asset, amount)?;
-        self.pending(
+        let pending = self.pending(
             PendingTransactionKind::Withdrawal,
             self.prove(transaction, vec![settlement], payer)?,
             format!(
                 "Withdraw {} to {recipient} (public)",
                 asset.describe(amount)
             ),
-        )
+        )?;
+        Ok(self.reserve(pending, spends))
     }
 
     /// Create `owner`'s associated token account for `mint`, paid by this
@@ -580,12 +608,67 @@ impl MobileWallet {
         let (blockhash, last_valid_block_height) =
             self.client.get_latest_blockhash().map_err(error)?;
         message.set_recent_blockhash(blockhash);
+        let mut reservations = self.reservations();
+        let id = reservations.next_id;
+        reservations.next_id += 1;
         Ok(PendingTransaction {
+            id,
             kind,
             message,
             summary,
             last_valid_block_height,
+            spends: Vec::new(),
         })
+    }
+
+    /// `pending`, reserving the notes with `spends` as nullifiers until it
+    /// can no longer land.
+    fn reserve(
+        &self,
+        mut pending: PendingTransaction,
+        spends: Vec<[u8; 32]>,
+    ) -> PendingTransaction {
+        self.reservations().reserved.insert(
+            pending.id,
+            (spends.clone(), pending.last_valid_block_height),
+        );
+        pending.spends = spends;
+        pending
+    }
+
+    /// Release the notes `pending` reserves, so the next spend can select
+    /// them: for a prepared spend that will not be sent, such as one the user
+    /// declined. Submitting or confirming it does this too.
+    pub fn release(&self, pending: &PendingTransaction) {
+        self.reservations().reserved.remove(&pending.id);
+    }
+
+    fn reservations(&self) -> std::sync::MutexGuard<'_, Reservations> {
+        self.reservations
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The notes a spend of `amount` takes, other than those prepared spends
+    /// reserve. Reservations past their last valid block height are dropped:
+    /// those spends can no longer land.
+    fn select_notes(&mut self, asset: Asset, amount: u64) -> Result<Vec<WalletUtxo>, String> {
+        let spendable = self.spendable()?;
+        let reserved = if self.reservations().reserved.is_empty() {
+            HashSet::new()
+        } else {
+            let height = self.client.get_block_height().map_err(error)?;
+            let mut reservations = self.reservations();
+            reservations
+                .reserved
+                .retain(|_, (_, last_valid_block_height)| *last_valid_block_height >= height);
+            reservations
+                .reserved
+                .values()
+                .flat_map(|(spends, _)| spends.iter().copied())
+                .collect()
+        };
+        select_notes(&spendable, asset, amount, &reserved)
     }
 
     /// `pending` with a new blockhash and the same proof, for an approval that
@@ -596,12 +679,21 @@ impl MobileWallet {
     /// on: a state tree keeps its last 500 roots, about its last 500
     /// transactions, and a nullifier tree its last 100 batch roots. After that
     /// the program rejects the proof as stale, and the spend is prepared again.
+    ///
+    /// A refreshed spend reserves its notes again until its new last valid
+    /// block height.
     pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, String> {
-        self.pending(
+        let refreshed = self.pending(
             pending.kind,
             pending.message.clone(),
             pending.summary.clone(),
-        )
+        )?;
+        self.release(pending);
+        Ok(if pending.spends.is_empty() {
+            refreshed
+        } else {
+            self.reserve(refreshed, pending.spends.clone())
+        })
     }
 
     /// SOL for `None`; a mint is added to the wallet's registry the first
@@ -683,7 +775,7 @@ impl MobileWallet {
             .client
             .process_transaction(transaction)
             .map_err(error)?;
-        self.settle(pending.kind, signature)?;
+        self.settle(pending, signature)?;
         Ok(signature.to_string())
     }
 
@@ -701,19 +793,34 @@ impl MobileWallet {
         if !signed_by(fee_payer, &pending.message_bytes(), signature.as_array()) {
             return Err("signature_invalid".to_string());
         }
-        self.settle(pending.kind, signature)
+        self.settle(pending, signature)
     }
 
-    fn settle(&self, kind: PendingTransactionKind, signature: Signature) -> Result<(), String> {
+    /// Wait for a shielded-pool transaction by its signature alone, such as one
+    /// sent before the application restarted: until Solana confirms it and the
+    /// indexer has it, so the next balance reads its notes. A transaction that
+    /// failed on chain fails here with the chain's error.
+    pub fn wait_for_transaction(&self, signature: String) -> Result<(), String> {
+        let signature =
+            Signature::from_str(&signature).map_err(|_| "signature_invalid".to_string())?;
+        self.client
+            .confirm_private_transaction_sync(signature)
+            .map_err(error)
+    }
+
+    /// Once it settles, a spend's notes are spent and no longer reserved.
+    fn settle(&self, pending: &PendingTransaction, signature: Signature) -> Result<(), String> {
         if matches!(
-            kind,
+            pending.kind,
             PendingTransactionKind::Registration | PendingTransactionKind::TokenAccount
         ) {
             return wait_for_confirmation(&self.client, signature);
         }
         self.client
             .confirm_private_transaction_sync(signature)
-            .map_err(error)
+            .map_err(error)?;
+        self.release(pending);
+        Ok(())
     }
 }
 
@@ -731,18 +838,33 @@ fn select_notes(
     spendable: &SpendableDecryptionResult,
     asset: Asset,
     amount: u64,
+    reserved: &HashSet<[u8; 32]>,
 ) -> Result<Vec<WalletUtxo>, String> {
-    let mut candidates: Vec<&WalletUtxo> = spendable
+    let eligible: Vec<&WalletUtxo> = spendable
         .utxos()
         .filter(|entry| entry.utxo.asset.asset == asset.mint && is_default_ring_spendable(entry))
         .collect();
+    let free = eligible
+        .iter()
+        .copied()
+        .filter(|entry| !reserved.contains(&entry.nullifier))
+        .collect();
+    match pick(free, amount) {
+        Ok(selected) => Ok(selected),
+        // The notes it needs are reserved by a prepared spend.
+        Err(_) if pick(eligible, amount).is_ok() => Err("notes_reserved".to_string()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn pick(mut candidates: Vec<&WalletUtxo>, amount: u64) -> Result<Vec<WalletUtxo>, &'static str> {
     let mut trees: Vec<_> = candidates.iter().map(|entry| entry.tree_id()).collect();
     trees.sort();
     trees.dedup();
     match trees.len() {
-        0 => return Err("insufficient_private_balance".to_string()),
+        0 => return Err("insufficient_private_balance"),
         1 => {}
-        _ => return Err("merge_required".to_string()),
+        _ => return Err("merge_required"),
     }
     let max_inputs = auto_shapes()
         .map(|shape| shape.n_inputs())
@@ -763,8 +885,11 @@ fn select_notes(
         "merge_required"
     } else {
         "insufficient_private_balance"
-    }
-    .to_string())
+    })
+}
+
+fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
+    notes.iter().map(|note| note.nullifier).collect()
 }
 
 /// Where a withdrawal settles: the recipient itself for SOL, its associated
@@ -996,11 +1121,68 @@ mod tests {
         )
         .unwrap();
         PendingTransaction {
+            id: 0,
             kind: PendingTransactionKind::Deposit,
             message,
             summary: String::new(),
             last_valid_block_height: 0,
+            spends: Vec::new(),
         }
+    }
+
+    /// A SOL note of `amount` whose nullifier is `[nullifier; 32]`.
+    fn note(amount: u64, nullifier: u8) -> WalletUtxo {
+        WalletUtxo {
+            utxo: zolana_transaction::Utxo {
+                owner: PublicKey::from_ed25519(&[1; 32]),
+                asset: zolana_transaction::Mint {
+                    asset: zolana_transaction::SOL_MINT,
+                    asset_id: zolana_transaction::SOL_ASSET_ID,
+                },
+                amount,
+                blinding: [0; 32],
+                ring_program_id: None,
+                data: Default::default(),
+            },
+            nullifier_pubkey: [0; 32],
+            utxo_hash: [nullifier; 32],
+            nullifier: [nullifier; 32],
+            data_hash: None,
+            ring_data_hash: None,
+            tree_id: 0,
+            leaf_index: 0,
+            slot: 0,
+            tx_signature: Signature::default(),
+            slot_index: 0,
+        }
+    }
+
+    #[test]
+    fn spends_leave_out_the_notes_prepared_spends_reserve() {
+        let utxos = vec![note(50, 1), note(30, 2), note(20, 3)];
+        let notes = SpendableDecryptionResult {
+            balances: zolana_transaction::Balances {
+                assets: vec![zolana_transaction::AssetBalance {
+                    asset_id: zolana_transaction::SOL_ASSET_ID,
+                    mint: zolana_transaction::SOL_MINT,
+                    amount: 100,
+                    utxos,
+                }],
+            },
+            ..Default::default()
+        };
+        let select = |amount, reserved: &[u8]| {
+            let reserved = reserved.iter().map(|&n| [n; 32]).collect();
+            select_notes(&notes, Asset::SOL, amount, &reserved).map(|picked| nullifiers(&picked))
+        };
+        assert_eq!(select(40, &[]), Ok(vec![[1; 32]]));
+        // The largest note is reserved: the others cover it.
+        assert_eq!(select(40, &[1]), Ok(vec![[2; 32], [3; 32]]));
+        assert_eq!(select(60, &[1]).unwrap_err(), "notes_reserved");
+        assert_eq!(
+            select(200, &[1]).unwrap_err(),
+            "insufficient_private_balance"
+        );
     }
 
     #[test]
@@ -1044,6 +1226,22 @@ mod tests {
         // The fee payer's signature gets as far as the unroutable RPC.
         let signature = signer.sign_message(&pending.message_bytes()).to_string();
         let error = wallet.confirm(&pending, signature).unwrap_err();
+        assert_ne!(error, "signature_invalid");
+    }
+
+    #[test]
+    fn waits_for_a_transaction_by_its_signature() {
+        let wallet = open(&Keypair::new()).unwrap();
+        assert_eq!(
+            wallet
+                .wait_for_transaction("not-a-signature".to_string())
+                .unwrap_err(),
+            "signature_invalid"
+        );
+        // A real signature gets as far as the unroutable RPC.
+        let error = wallet
+            .wait_for_transaction(Signature::default().to_string())
+            .unwrap_err();
         assert_ne!(error, "signature_invalid");
     }
 

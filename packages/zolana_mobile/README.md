@@ -212,9 +212,15 @@ sends through the wallet's RPC instead.
   valid while the trees still hold the roots it was built on (a state tree
   keeps its last 500); after that the program rejects it as stale, and the
   spend is prepared again.
-- Prepare one spend at a time. Until a prepared spend is confirmed, the next
-  one can select the same notes; the program then rejects the second
-  transaction. No funds are lost.
+- A prepared spend reserves the notes it spends, in memory. The next spend
+  selects other notes until it is submitted or confirmed, released with
+  `wallet.release(tx)` (for example when the user declines it), or past its
+  `lastValidBlockHeight`. A spend that needs a reserved note fails with
+  `notes_reserved`. `register`, `deposit`, `transfer` and `withdraw` release
+  the notes themselves when signing fails.
+- After a restart the prepared transaction is gone, but its signature is
+  enough: `wallet.waitForTransaction(signature)` waits until Solana confirms
+  it and the indexer has it, and fails with the chain's error if it failed.
 
 Current limits: notes are not merged, so a spend takes at most 5 notes on one
 tree and fails with `merge_required` beyond that; one prepared prover is

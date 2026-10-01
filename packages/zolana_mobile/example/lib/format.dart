@@ -46,6 +46,8 @@ String friendlyError(Object error) {
     'registration_conflict' =>
       'This account is registered with keys from another app.',
     'prover_busy' => 'Another proof is running. Try again in a moment.',
+    'notes_reserved' =>
+      'Another payment is waiting to be sent. Finish or cancel it first.',
     'proving_key_download_failed' =>
       "Couldn't download the proving key. Check your connection.",
     'proof_failed' => "Couldn't prove this transaction.",

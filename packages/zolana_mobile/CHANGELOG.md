@@ -16,6 +16,9 @@ Unreleased.
   another account pay the network fee of a transfer or withdrawal.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
+* Prepared spends reserve their notes, so the next spend selects others;
+  `release(tx)` frees them. `waitForTransaction(signature)` waits for a
+  transaction sent before a restart.
 * `refresh(tx)`: a prepared transaction with a new blockhash and the same
   proof, for slow approvals. Every prepared transaction has
   `lastValidBlockHeight`.
