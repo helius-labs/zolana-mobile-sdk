@@ -24,7 +24,8 @@ Unreleased.
 * `close()` for lock and account switch: it rejects queued operations and a
   `prepare` call that is proving at the time, never signs or submits after the
   call, and releases the native wallet once the running step ends.
-* `WalletConfig.rpcHeaders`: extra HTTP headers on every Solana RPC request.
+* `WalletConfig.rpcHeaders` and `WalletConfig.indexerHeaders`: extra HTTP
+  headers on every Solana RPC and indexer request.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile.
 * Errors carry no key material, and `api-key` values in them are masked.

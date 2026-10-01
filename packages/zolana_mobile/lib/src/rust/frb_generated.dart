@@ -1620,16 +1620,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   WalletConfig dco_decode_wallet_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return WalletConfig(
       rpcUrl: dco_decode_String(arr[0]),
       rpcHeaders: dco_decode_opt_Map_String_String_None(arr[1]),
       indexerUrl: dco_decode_String(arr[2]),
-      provingKeyDir: dco_decode_String(arr[3]),
-      provingKeyUrl: dco_decode_opt_String(arr[4]),
-      allowInsecureHttp: dco_decode_bool(arr[5]),
-      mints: dco_decode_list_String(arr[6]),
+      indexerHeaders: dco_decode_opt_Map_String_String_None(arr[3]),
+      provingKeyDir: dco_decode_String(arr[4]),
+      provingKeyUrl: dco_decode_opt_String(arr[5]),
+      allowInsecureHttp: dco_decode_bool(arr[6]),
+      mints: dco_decode_list_String(arr[7]),
     );
   }
 
@@ -2034,6 +2035,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_rpcUrl = sse_decode_String(deserializer);
     var var_rpcHeaders = sse_decode_opt_Map_String_String_None(deserializer);
     var var_indexerUrl = sse_decode_String(deserializer);
+    var var_indexerHeaders = sse_decode_opt_Map_String_String_None(
+      deserializer,
+    );
     var var_provingKeyDir = sse_decode_String(deserializer);
     var var_provingKeyUrl = sse_decode_opt_String(deserializer);
     var var_allowInsecureHttp = sse_decode_bool(deserializer);
@@ -2042,6 +2046,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       rpcUrl: var_rpcUrl,
       rpcHeaders: var_rpcHeaders,
       indexerUrl: var_indexerUrl,
+      indexerHeaders: var_indexerHeaders,
       provingKeyDir: var_provingKeyDir,
       provingKeyUrl: var_provingKeyUrl,
       allowInsecureHttp: var_allowInsecureHttp,
@@ -2447,6 +2452,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.rpcUrl, serializer);
     sse_encode_opt_Map_String_String_None(self.rpcHeaders, serializer);
     sse_encode_String(self.indexerUrl, serializer);
+    sse_encode_opt_Map_String_String_None(self.indexerHeaders, serializer);
     sse_encode_String(self.provingKeyDir, serializer);
     sse_encode_opt_String(self.provingKeyUrl, serializer);
     sse_encode_bool(self.allowInsecureHttp, serializer);

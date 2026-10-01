@@ -1485,6 +1485,7 @@ const _: fn() = || {
         let _: String = WalletConfig.rpc_url;
         let _: Option<std::collections::HashMap<String, String>> = WalletConfig.rpc_headers;
         let _: String = WalletConfig.indexer_url;
+        let _: Option<std::collections::HashMap<String, String>> = WalletConfig.indexer_headers;
         let _: String = WalletConfig.proving_key_dir;
         let _: Option<String> = WalletConfig.proving_key_url;
         let _: bool = WalletConfig.allow_insecure_http;
@@ -1845,6 +1846,8 @@ impl SseDecode for zolana_mobile::WalletConfig {
         let mut var_rpcHeaders =
             <Option<std::collections::HashMap<String, String>>>::sse_decode(deserializer);
         let mut var_indexerUrl = <String>::sse_decode(deserializer);
+        let mut var_indexerHeaders =
+            <Option<std::collections::HashMap<String, String>>>::sse_decode(deserializer);
         let mut var_provingKeyDir = <String>::sse_decode(deserializer);
         let mut var_provingKeyUrl = <Option<String>>::sse_decode(deserializer);
         let mut var_allowInsecureHttp = <bool>::sse_decode(deserializer);
@@ -1853,6 +1856,7 @@ impl SseDecode for zolana_mobile::WalletConfig {
             rpc_url: var_rpcUrl,
             rpc_headers: var_rpcHeaders,
             indexer_url: var_indexerUrl,
+            indexer_headers: var_indexerHeaders,
             proving_key_dir: var_provingKeyDir,
             proving_key_url: var_provingKeyUrl,
             allow_insecure_http: var_allowInsecureHttp,
@@ -2194,6 +2198,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::WalletConfig> {
             self.0.rpc_url.into_into_dart().into_dart(),
             self.0.rpc_headers.into_into_dart().into_dart(),
             self.0.indexer_url.into_into_dart().into_dart(),
+            self.0.indexer_headers.into_into_dart().into_dart(),
             self.0.proving_key_dir.into_into_dart().into_dart(),
             self.0.proving_key_url.into_into_dart().into_dart(),
             self.0.allow_insecure_http.into_into_dart().into_dart(),
@@ -2540,6 +2545,10 @@ impl SseEncode for zolana_mobile::WalletConfig {
             serializer,
         );
         <String>::sse_encode(self.indexer_url, serializer);
+        <Option<std::collections::HashMap<String, String>>>::sse_encode(
+            self.indexer_headers,
+            serializer,
+        );
         <String>::sse_encode(self.proving_key_dir, serializer);
         <Option<String>>::sse_encode(self.proving_key_url, serializer);
         <bool>::sse_encode(self.allow_insecure_http, serializer);
