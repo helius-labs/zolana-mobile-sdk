@@ -1,6 +1,6 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
-//! machine with the pinned keys: register, deposit, private transfer, the
-//! recipient's balance, and a withdrawal from a session opened before the
+//! machine with the pinned keys: register, deposit, private transfer sent with
+//! a refreshed blockhash, the recipient's balance, and a withdrawal from a session opened before the
 //! transfer from the sender's saved keys, with its fee paid by another
 //! account. Each step is the newest entry of its wallets' history.
 //!
@@ -165,7 +165,18 @@ fn register_deposit_transfer_and_receive() {
         .prepare_transfer(recipient.pubkey().to_string(), None, TRANSFER, None)
         .expect("prove transfer");
     println!("built and proved on device in {:?}", started.elapsed());
-    let transfer = submit(&sender_wallet, &[&sender], pending);
+    // A slow approval: the same proof under a new blockhash.
+    let refreshed = (0..40)
+        .find_map(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let refreshed = sender_wallet.refresh(&pending).expect("refresh");
+            (refreshed.message_bytes() != pending.message_bytes()).then_some(refreshed)
+        })
+        .expect("a new blockhash");
+    assert!(refreshed.last_valid_block_height() >= pending.last_valid_block_height());
+    assert_eq!(refreshed.signers(), pending.signers());
+    assert_eq!(refreshed.summary(), pending.summary());
+    let transfer = submit(&sender_wallet, &[&sender], refreshed);
 
     assert_eq!(
         private_sol(&mut sender_wallet),

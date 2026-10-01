@@ -129,11 +129,18 @@ pub struct PendingTransaction {
     kind: PendingTransactionKind,
     message: VersionedMessage,
     summary: String,
+    last_valid_block_height: u64,
 }
 
 impl PendingTransaction {
     pub fn kind(&self) -> PendingTransactionKind {
         self.kind
+    }
+
+    /// The last block height at which the message can still land. Past it,
+    /// [`MobileWallet::refresh`] gives it a new blockhash.
+    pub fn last_valid_block_height(&self) -> u64 {
+        self.last_valid_block_height
     }
 
     /// Human-readable description to show before asking for a signature.
@@ -325,11 +332,15 @@ impl MobileWallet {
             None,
         )
         .map_err(error)?;
-        Ok(message.map(|message| PendingTransaction {
-            kind: PendingTransactionKind::Registration,
-            message,
-            summary: format!("Register {} for private payments", self.shielded_address()),
-        }))
+        message
+            .map(|message| {
+                self.pending(
+                    PendingTransactionKind::Registration,
+                    message,
+                    format!("Register {} for private payments", self.shielded_address()),
+                )
+            })
+            .transpose()
     }
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -363,11 +374,11 @@ impl MobileWallet {
         }
         .instruction()
         .map_err(error)?;
-        Ok(PendingTransaction {
-            kind: PendingTransactionKind::Deposit,
-            message: self.message(deposit)?,
-            summary: format!("Deposit {} (public)", asset.describe(amount)),
-        })
+        self.pending(
+            PendingTransactionKind::Deposit,
+            self.message(deposit)?,
+            format!("Deposit {} (public)", asset.describe(amount)),
+        )
     }
 
     /// Public balance of this account, read from the RPC now: lamports, or
@@ -451,12 +462,11 @@ impl MobileWallet {
             Some(_) => transaction.transfer(&registered.address, asset.mint, amount),
         }
         .map_err(error)?;
-        let message = self.prove(transaction, Vec::new(), payer)?;
-        Ok(PendingTransaction {
-            kind: PendingTransactionKind::Transfer,
-            message,
-            summary: format!("Send {} privately to {recipient}", asset.describe(amount)),
-        })
+        self.pending(
+            PendingTransactionKind::Transfer,
+            self.prove(transaction, Vec::new(), payer)?,
+            format!("Send {} privately to {recipient}", asset.describe(amount)),
+        )
     }
 
     /// Build and prove a withdrawal of private funds to the public account
@@ -487,15 +497,14 @@ impl MobileWallet {
         let inputs = select_notes(&self.spendable()?, asset, amount)?;
         let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
         let settlement = withdraw_to(&mut transaction, recipient, asset, amount)?;
-        let message = self.prove(transaction, vec![settlement], payer)?;
-        Ok(PendingTransaction {
-            kind: PendingTransactionKind::Withdrawal,
-            message,
-            summary: format!(
+        self.pending(
+            PendingTransactionKind::Withdrawal,
+            self.prove(transaction, vec![settlement], payer)?,
+            format!(
                 "Withdraw {} to {recipient} (public)",
                 asset.describe(amount)
             ),
-        })
+        )
     }
 
     /// Create `owner`'s associated token account for `mint`, paid by this
@@ -522,27 +531,63 @@ impl MobileWallet {
         {
             return Ok(None);
         }
-        Ok(Some(PendingTransaction {
-            kind: PendingTransactionKind::TokenAccount,
-            message: self.message(create.instruction())?,
-            summary: format!("Create a {} token account for {owner}", asset.mint),
-        }))
+        self.pending(
+            PendingTransactionKind::TokenAccount,
+            self.message(create.instruction())?,
+            format!("Create a {} token account for {owner}", asset.mint),
+        )
+        .map(Some)
     }
 
     fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, String> {
         fee_payer.as_deref().map_or(Ok(self.owner), parse_pubkey)
     }
 
-    /// A message with `instruction` alone, paid by this account.
+    /// A message with `instruction` alone, paid by this account. Its blockhash
+    /// is set by [`Self::pending`].
     fn message(&self, instruction: Instruction) -> Result<VersionedMessage, String> {
-        let (blockhash, _) = self.client.get_latest_blockhash().map_err(error)?;
         compile_message(
             &self.owner,
             &[instruction],
-            blockhash,
+            Default::default(),
             ComputeBudgetConfig::for_instruction_count(1),
         )
         .map_err(error)
+    }
+
+    /// `message` with the latest blockhash, set last so that it is as young
+    /// as it can be when the application gets it.
+    fn pending(
+        &self,
+        kind: PendingTransactionKind,
+        mut message: VersionedMessage,
+        summary: String,
+    ) -> Result<PendingTransaction, String> {
+        let (blockhash, last_valid_block_height) =
+            self.client.get_latest_blockhash().map_err(error)?;
+        message.set_recent_blockhash(blockhash);
+        Ok(PendingTransaction {
+            kind,
+            message,
+            summary,
+            last_valid_block_height,
+        })
+    }
+
+    /// `pending` with a new blockhash and the same proof, for an approval that
+    /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
+    /// over the old message do not apply to the new one.
+    ///
+    /// The proof stays valid while the trees still hold the roots it was built
+    /// on: a state tree keeps its last 500 roots, about its last 500
+    /// transactions, and a nullifier tree its last 100 batch roots. After that
+    /// the program rejects the proof as stale, and the spend is prepared again.
+    pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, String> {
+        self.pending(
+            pending.kind,
+            pending.message.clone(),
+            pending.summary.clone(),
+        )
     }
 
     /// SOL for `None`; a mint is added to the wallet's registry the first
@@ -918,6 +963,7 @@ mod tests {
             kind: PendingTransactionKind::Deposit,
             message,
             summary: String::new(),
+            last_valid_block_height: 0,
         }
     }
 

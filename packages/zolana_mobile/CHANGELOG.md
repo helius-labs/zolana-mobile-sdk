@@ -16,6 +16,9 @@ Unreleased.
   another account pay the network fee of a transfer or withdrawal.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
+* `refresh(tx)`: a prepared transaction with a new blockhash and the same
+  proof, for slow approvals. Every prepared transaction has
+  `lastValidBlockHeight`.
 * `exportKeys()` and `ZolanaWallet.openWithKeys()`: open the wallet from its
   saved derived keys, without a derivation signature; the signer is optional.
 * `close()` for lock and account switch: it rejects queued operations and a
