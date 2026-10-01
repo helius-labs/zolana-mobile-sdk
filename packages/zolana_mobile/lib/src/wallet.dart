@@ -51,24 +51,14 @@ class PreparedTransaction {
   );
 
   static Future<PreparedTransaction> _read(
-    Future<native.PendingTransaction> prepared,
-  ) async {
-    final pending = await prepared;
-    return PreparedTransaction._(
-      pending,
-      await pending.kind(),
-      await pending.summary(),
-      await pending.messageBytes(),
-      await pending.signers(),
-    );
-  }
-
-  static Future<PreparedTransaction?> _readOptional(
-    Future<native.PendingTransaction?> prepared,
-  ) async {
-    final pending = await prepared;
-    return pending == null ? null : _read(Future.value(pending));
-  }
+    native.PendingTransaction pending,
+  ) async => PreparedTransaction._(
+    pending,
+    await pending.kind(),
+    await pending.summary(),
+    await pending.messageBytes(),
+    await pending.signers(),
+  );
 
   final native.PendingTransaction _pending;
   final native.PendingTransactionKind kind;
@@ -162,17 +152,14 @@ class ZolanaWallet {
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with `registration_conflict` when the
   /// registry holds other keys; the wallet never replaces them.
-  Future<PreparedTransaction?> prepareRegistration() => _serial(
-    () => PreparedTransaction._readOptional(_wallet.prepareRegistration()),
-  );
+  Future<PreparedTransaction?> prepareRegistration() =>
+      _serial(() => _prepareOptional(_wallet.prepareRegistration()));
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
   Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
       _serial(
-        () => PreparedTransaction._read(
-          _wallet.prepareDeposit(mint: mint, amount: amount),
-        ),
+        () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),
       );
 
   /// Send private funds to the registered wallet of [recipient] (a Solana
@@ -191,7 +178,7 @@ class ZolanaWallet {
     String? mint,
     String? feePayer,
   }) => _serial(
-    () => PreparedTransaction._read(
+    () => _prepare(
       _wallet.prepareTransfer(
         recipient: recipient,
         mint: mint,
@@ -212,7 +199,7 @@ class ZolanaWallet {
     String? mint,
     String? feePayer,
   }) => _serial(
-    () => PreparedTransaction._read(
+    () => _prepare(
       _wallet.prepareWithdrawal(
         recipient: recipient,
         mint: mint,
@@ -228,9 +215,8 @@ class ZolanaWallet {
     required String owner,
     required String mint,
   }) => _serial(
-    () => PreparedTransaction._readOptional(
-      _wallet.prepareTokenAccount(owner: owner, mint: mint),
-    ),
+    () =>
+        _prepareOptional(_wallet.prepareTokenAccount(owner: owner, mint: mint)),
   );
 
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
@@ -259,9 +245,7 @@ class ZolanaWallet {
   /// [prepareRegistration], signed and submitted. `null` when already
   /// registered.
   Future<String?> register() => _serial(() async {
-    final transaction = await PreparedTransaction._readOptional(
-      _wallet.prepareRegistration(),
-    );
+    final transaction = await _prepareOptional(_wallet.prepareRegistration());
     return transaction == null ? null : _signAndSubmit(transaction);
   });
 
@@ -296,22 +280,44 @@ class ZolanaWallet {
   );
 
   /// Stop this wallet. Operations not yet started fail with `wallet_closed`,
-  /// and nothing is signed or submitted after this call. Waits for the
-  /// running native step (a proof cannot be interrupted), then releases the
-  /// native wallet: its keys and proving key.
+  /// and so does a `prepare` call that is proving when [close] is called: the
+  /// application never receives a transaction after it locks. Nothing is
+  /// signed or submitted after this call. Waits for the running native step
+  /// (a proof cannot be interrupted), then releases the native wallet: its
+  /// keys and proving key. Lock the UI without waiting for it; wait only
+  /// before opening the next account.
   ///
   /// It does not recall a transaction already submitted.
   Future<void> close() => _closing ??= _last.then((_) => _wallet.dispose());
 
+  /// The transaction [prepared] built, unless the wallet was closed while it
+  /// was being built.
+  Future<PreparedTransaction> _prepare(
+    Future<native.PendingTransaction> prepared,
+  ) async => _opened(await PreparedTransaction._read(await prepared));
+
+  Future<PreparedTransaction?> _prepareOptional(
+    Future<native.PendingTransaction?> prepared,
+  ) async {
+    final pending = await prepared;
+    return _opened(
+      pending == null ? null : await PreparedTransaction._read(pending),
+    );
+  }
+
+  T _opened<T>(T value) {
+    _ensureOpen();
+    return value;
+  }
+
   Future<String> _send(Future<native.PendingTransaction> prepared) async =>
-      _signAndSubmit(await PreparedTransaction._read(prepared));
+      _signAndSubmit(await _prepare(prepared));
 
   Future<String> _signAndSubmit(PreparedTransaction transaction) async {
     final signers = transaction.signers;
     if (signers.length != 1 || signers.single != _signer.publicKey) {
       throw const ZolanaWalletException('unexpected_signers');
     }
-    _ensureOpen();
     final signature = await _signer.signMessage(
       transaction.message,
       purpose: transaction.summary,

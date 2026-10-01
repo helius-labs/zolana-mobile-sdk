@@ -130,12 +130,15 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
 - **Errors** are `ZolanaWalletException`s with a code or a client error
   description, never key material.
 
-- **Lock and account switch**: call `await wallet.close()`. Operations not yet
-  started fail with `wallet_closed`, and nothing is signed or submitted after
-  the call. `close()` waits for the running native step (a proof cannot be
+- **Lock and account switch**: call `wallet.close()`. Operations not yet
+  started fail with `wallet_closed`, and so does a `prepare` call that is
+  proving at the time: the application never receives a transaction after the
+  lock. Nothing is signed or submitted after the call, so lock the UI without
+  awaiting `close()`. It waits for the running native step (a proof cannot be
   interrupted) and for an open signer prompt, so cancel your prompt on lock.
-  Then it releases the native wallet: its keys and the proving key it loaded. Open the next account after `close()` completes. A transaction
-  already submitted is not recalled.
+  Then it releases the native wallet: its keys and the proving key it loaded.
+  Open the next account after `close()` completes. A transaction already
+  submitted is not recalled.
 
 ### Signing and sending in the application
 

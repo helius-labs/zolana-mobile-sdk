@@ -63,6 +63,7 @@ class FakeWallet implements MobileWallet {
   final events = <String>[];
   Completer<void>? holdBalances;
   Completer<void>? holdTransfer;
+  Completer<void>? holdRegistration;
   Object? transferError;
   bool disposed = false;
   List<String> transferSigners = const [owner];
@@ -94,11 +95,14 @@ class FakeWallet implements MobileWallet {
   Future<List<ActivityEntry>> activity() async => const [];
 
   @override
-  Future<PendingTransaction?> prepareRegistration() async => switch (status) {
-    RegistrationStatus.registered => null,
-    RegistrationStatus.conflict => throw 'registration_conflict',
-    RegistrationStatus.notRegistered => FakePending(Uint8List.fromList([3])),
-  };
+  Future<PendingTransaction?> prepareRegistration() async {
+    await holdRegistration?.future;
+    return switch (status) {
+      RegistrationStatus.registered => null,
+      RegistrationStatus.conflict => throw 'registration_conflict',
+      RegistrationStatus.notRegistered => FakePending(Uint8List.fromList([3])),
+    };
+  }
 
   @override
   Future<PendingTransaction> prepareDeposit({
@@ -311,6 +315,34 @@ void main() {
       throwsWalletError('registration_conflict'),
     );
     expect(native.submitted, hasLength(1));
+  });
+
+  test('a prepare that is proving when close is called fails', () async {
+    final prepares = <Future<Object?> Function(ZolanaWallet, FakeWallet)>[
+      (wallet, native) =>
+          wallet.prepareTransfer(recipient: 'R', amount: BigInt.one),
+      (wallet, native) {
+        native.status = RegistrationStatus.notRegistered;
+        return wallet.prepareRegistration();
+      },
+      // Registered: the native call returns no transaction.
+      (wallet, native) => wallet.prepareRegistration(),
+    ];
+    for (final prepare in prepares) {
+      final (wallet, native, _, _) = await openWallet();
+      native
+        ..holdTransfer = Completer()
+        ..holdRegistration = Completer();
+      final prepared = prepare(wallet, native);
+      await Future<void>.delayed(Duration.zero);
+      final closed = wallet.close();
+      native.holdTransfer!.complete();
+      native.holdRegistration!.complete();
+
+      await expectLater(prepared, throwsWalletError('wallet_closed'));
+      await closed;
+      expect(native.disposed, isTrue);
+    }
   });
 
   test('close drains the running step and never signs after it', () async {
