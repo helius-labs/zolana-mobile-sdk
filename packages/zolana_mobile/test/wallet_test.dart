@@ -22,6 +22,18 @@ final savedKeys = WalletKeys(
   nullifierPublicKey: Uint8List.fromList([4]),
 );
 
+/// Declines every transaction; opening only needs the derivation message.
+class DecliningSigner extends RecordingSigner {
+  @override
+  Future<Uint8List> signMessage(
+    Uint8List message, {
+    required String purpose,
+  }) async {
+    if (requests.isNotEmpty) throw StateError('declined');
+    return super.signMessage(message, purpose: purpose);
+  }
+}
+
 class RecordingSigner implements SolanaSigner {
   final requests = <(Uint8List, String)>[];
 
@@ -70,6 +82,8 @@ class FakePending implements PendingTransaction {
 
 class FakeWallet implements MobileWallet {
   final submitted = <(PendingTransaction, List<Uint8List>)>[];
+  final released = <PendingTransaction>[];
+  final waited = <String>[];
   final confirmed = <(PendingTransaction, String)>[];
   final events = <String>[];
   Completer<void>? holdBalances;
@@ -85,6 +99,14 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<WalletKeys> exportKeys() async => savedKeys;
+
+  @override
+  Future<void> release({required PendingTransaction pending}) async =>
+      released.add(pending);
+
+  @override
+  Future<void> waitForTransaction({required String signature}) async =>
+      waited.add(signature);
 
   /// A new blockhash: new message bytes and a later height, same signers.
   @override
@@ -305,6 +327,31 @@ void main() {
       ),
       throwsWalletError('signer_mismatch'),
     );
+  });
+
+  test('releases the notes of a spend that is never sent', () async {
+    final native = FakeWallet();
+    final wallet = await ZolanaWallet.open(
+      config: config,
+      signer: DecliningSigner(),
+      backend: FakeBackend(native),
+    );
+
+    await expectLater(
+      wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
+      throwsA(isA<StateError>()),
+    );
+    expect((native.released.single as FakePending).bytes, [7, 8]);
+    expect(native.submitted, isEmpty);
+
+    final prepared = await wallet.prepareTransfer(
+      recipient: 'Recipient',
+      amount: BigInt.one,
+    );
+    await wallet.release(prepared);
+    expect(native.released, hasLength(2));
+    await wallet.waitForTransaction('signature');
+    expect(native.waited, ['signature']);
   });
 
   test('refreshes the blockhash of a prepared transaction', () async {

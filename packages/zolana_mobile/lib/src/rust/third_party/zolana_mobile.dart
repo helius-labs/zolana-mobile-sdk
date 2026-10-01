@@ -160,11 +160,19 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// on: a state tree keeps its last 500 roots, about its last 500
   /// transactions, and a nullifier tree its last 100 batch roots. After that
   /// the program rejects the proof as stale, and the spend is prepared again.
+  ///
+  /// A refreshed spend reserves its notes again until its new last valid
+  /// block height.
   Future<PendingTransaction> refresh({required PendingTransaction pending});
 
   /// Whether the user registry publishes this wallet's shielded address.
   /// Others can only send to a registered wallet.
   Future<RegistrationStatus> registrationStatus();
+
+  /// Release the notes `pending` reserves, so the next spend can select
+  /// them: for a prepared spend that will not be sent, such as one the user
+  /// declined. Submitting or confirming it does this too.
+  Future<void> release({required PendingTransaction pending});
 
   Future<String> shieldedAddress();
 
@@ -177,6 +185,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
     required PendingTransaction pending,
     required List<Uint8List> signatures,
   });
+
+  /// Wait for a shielded-pool transaction by its signature alone, such as one
+  /// sent before the application restarted: until Solana confirms it and the
+  /// indexer has it, so the next balance reads its notes. A transaction that
+  /// failed on chain fails here with the chain's error.
+  Future<void> waitForTransaction({required String signature});
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
