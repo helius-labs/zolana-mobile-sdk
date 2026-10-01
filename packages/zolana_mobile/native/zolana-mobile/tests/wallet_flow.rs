@@ -61,6 +61,7 @@ fn config() -> WalletConfig {
         rpc_url: required("ZOLANA_E2E_RPC_URL"),
         rpc_headers: None,
         indexer_url: required("ZOLANA_E2E_INDEXER_URL"),
+        indexer_headers: None,
         proving_key_dir: key_dir,
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         allow_insecure_http: true,

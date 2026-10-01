@@ -35,6 +35,7 @@ zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3
 zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573", features = ["borsh"] }
 zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573" }
 zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573" }
+zolana-api = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573" }
 zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "fa0eb2b3340a8c0d817438f503429b5b2ac5f573", features = ["client"] }
 # Off-chain, this crate links OpenSSL; mobile targets have no system copy.
 solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }

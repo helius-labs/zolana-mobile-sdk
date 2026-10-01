@@ -5273,6 +5273,7 @@ dependencies = [
  "solana-transaction",
  "wincode",
  "zeroize",
+ "zolana-api",
  "zolana-client",
  "zolana-hasher",
  "zolana-interface",

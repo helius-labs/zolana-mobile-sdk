@@ -377,6 +377,10 @@ class WalletConfig {
   final Map<String, String>? rpcHeaders;
   final String indexerUrl;
 
+  /// Extra HTTP headers on every indexer request, such as an auth token for
+  /// the application's indexer proxy. Their values are kept out of logs.
+  final Map<String, String>? indexerHeaders;
+
   /// Directory for downloaded proving keys; keep it across launches.
   final String provingKeyDir;
 
@@ -398,6 +402,7 @@ class WalletConfig {
     required this.rpcUrl,
     this.rpcHeaders,
     required this.indexerUrl,
+    this.indexerHeaders,
     required this.provingKeyDir,
     this.provingKeyUrl,
     required this.allowInsecureHttp,
@@ -409,6 +414,7 @@ class WalletConfig {
       rpcUrl.hashCode ^
       rpcHeaders.hashCode ^
       indexerUrl.hashCode ^
+      indexerHeaders.hashCode ^
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
       allowInsecureHttp.hashCode ^
@@ -422,6 +428,7 @@ class WalletConfig {
           rpcUrl == other.rpcUrl &&
           rpcHeaders == other.rpcHeaders &&
           indexerUrl == other.indexerUrl &&
+          indexerHeaders == other.indexerHeaders &&
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
           allowInsecureHttp == other.allowInsecureHttp &&

@@ -22,7 +22,7 @@
 
 use std::{cmp::Reverse, collections::HashMap, str::FromStr, thread::sleep, time::Duration};
 
-use reqwest::header::{HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use solana_commitment_config::CommitmentConfig;
 use solana_instruction::Instruction;
 use solana_message::VersionedMessage;
@@ -34,14 +34,16 @@ use solana_rpc_client::{
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 use zeroize::Zeroizing;
+use zolana_api::BlockingZolanaApi;
 use zolana_client::{
     compile_message,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, try_resolve_registered_address,
     },
-    ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SignedPrivateTransaction, SolanaRpc,
-    SpendableUtxos, ZolanaClient,
+    AsyncProverClient, AsyncZolanaIndexer, ClientError, ComputeBudgetConfig, IndexerPollConfig,
+    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos, ZolanaClient,
+    ZolanaIndexer,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -65,6 +67,8 @@ use crate::{
 /// replaces it before any request is made, so it is never contacted.
 const UNUSED_PROVER_URL: &str = "https://prover.invalid";
 
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Where the wallet reads chain state and stores proving keys.
 pub struct WalletConfig {
     pub rpc_url: String,
@@ -72,6 +76,9 @@ pub struct WalletConfig {
     /// Their values are kept out of logs.
     pub rpc_headers: Option<HashMap<String, String>>,
     pub indexer_url: String,
+    /// Extra HTTP headers on every indexer request, such as an auth token for
+    /// the application's indexer proxy. Their values are kept out of logs.
+    pub indexer_headers: Option<HashMap<String, String>>,
     /// Directory for downloaded proving keys; keep it across launches.
     pub proving_key_dir: String,
     /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
@@ -269,15 +276,22 @@ impl MobileWallet {
                 .map_err(error)?;
         let proving_keys = KeyStore::new(config.proving_key_dir, config.proving_key_url)?;
         let rpc = solana_rpc(config.rpc_url, config.rpc_headers.unwrap_or_default())?;
-        let client = if config.allow_insecure_http {
-            ZolanaClient::from_urls_allowing_insecure_http(
-                rpc,
-                &config.indexer_url,
-                UNUSED_PROVER_URL,
-            )
-        } else {
-            ZolanaClient::from_urls(rpc, &config.indexer_url, UNUSED_PROVER_URL).map_err(error)?
+        if !config.allow_insecure_http {
+            // The SDK's transport check: https, or http on loopback only.
+            ZolanaClient::from_urls((), &config.indexer_url, UNUSED_PROVER_URL).map_err(error)?;
         }
+        let indexer = indexer(
+            &config.indexer_url,
+            config.indexer_headers.unwrap_or_default(),
+        )?;
+        // Only the blocking indexer is used; the async clients are required.
+        let client = ZolanaClient::new(
+            rpc,
+            indexer,
+            ProverClient::new(UNUSED_PROVER_URL.to_string()),
+            AsyncZolanaIndexer::new(&config.indexer_url),
+            AsyncProverClient::new(UNUSED_PROVER_URL.to_string()),
+        )
         .with_prover(NativeProver::new(proving_keys));
         Ok(MobileWallet {
             owner,
@@ -785,25 +799,46 @@ fn withdraw_to(
 /// A Solana RPC client as `SolanaRpc::new` builds it, with `headers` added.
 fn solana_rpc(url: String, headers: HashMap<String, String>) -> Result<SolanaRpc, String> {
     let mut header_map = HttpSender::default_headers();
-    for (name, value) in headers {
-        let name = HeaderName::from_bytes(name.as_bytes())
-            .map_err(|_| "rpc_header_invalid".to_string())?;
-        let mut value =
-            HeaderValue::from_str(&value).map_err(|_| "rpc_header_invalid".to_string())?;
-        value.set_sensitive(true);
-        header_map.insert(name, value);
-    }
-    let timeout = Duration::from_secs(30);
+    add_headers(&mut header_map, headers, "rpc_header_invalid")?;
     let client = reqwest::Client::builder()
         .default_headers(header_map)
-        .timeout(timeout)
-        .pool_idle_timeout(timeout)
+        .timeout(REQUEST_TIMEOUT)
+        .pool_idle_timeout(REQUEST_TIMEOUT)
         .build()
         .map_err(|_| "rpc_client_unavailable".to_string())?;
     Ok(SolanaRpc::with_client(RpcClient::new_sender(
         HttpSender::new_with_client(url, client),
         RpcClientConfig::with_commitment(CommitmentConfig::confirmed()),
     )))
+}
+
+/// The indexer client, with `headers` on every request.
+fn indexer(url: &str, headers: HashMap<String, String>) -> Result<ZolanaIndexer, String> {
+    let mut header_map = HeaderMap::new();
+    add_headers(&mut header_map, headers, "indexer_header_invalid")?;
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(header_map)
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|_| "indexer_client_unavailable".to_string())?;
+    Ok(ZolanaIndexer::with_api(BlockingZolanaApi::with_client(
+        url, client,
+    )))
+}
+
+/// Header values are marked sensitive, so they are not printed in logs.
+fn add_headers(
+    header_map: &mut HeaderMap,
+    headers: HashMap<String, String>,
+    invalid: &str,
+) -> Result<(), String> {
+    for (name, value) in headers {
+        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| invalid.to_string())?;
+        let mut value = HeaderValue::from_str(&value).map_err(|_| invalid.to_string())?;
+        value.set_sensitive(true);
+        header_map.insert(name, value);
+    }
+    Ok(())
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
@@ -900,6 +935,7 @@ mod tests {
             rpc_url: "http://127.0.0.1:1".to_string(),
             rpc_headers: None,
             indexer_url: "http://127.0.0.1:1".to_string(),
+            indexer_headers: None,
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             allow_insecure_http: false,
@@ -1012,21 +1048,71 @@ mod tests {
     }
 
     #[test]
-    fn rejects_rpc_headers_that_are_not_http() {
+    fn rejects_headers_that_are_not_http() {
         let signer = Keypair::new();
-        let with_header = |name: &str, value: &str| WalletConfig {
-            rpc_headers: Some(HashMap::from([(name.into(), value.into())])),
-            ..config()
-        };
+        let header = |name: &str, value: &str| Some(HashMap::from([(name.into(), value.into())]));
         for (name, value) in [("bad name", "value"), ("x-token", "line\nbreak")] {
+            let rpc = WalletConfig {
+                rpc_headers: header(name, value),
+                ..config()
+            };
+            let indexer = WalletConfig {
+                indexer_headers: header(name, value),
+                ..config()
+            };
             assert_eq!(
-                open_with(&signer, with_header(name, value))
-                    .err()
-                    .as_deref(),
+                open_with(&signer, rpc).err().as_deref(),
                 Some("rpc_header_invalid")
             );
+            assert_eq!(
+                open_with(&signer, indexer).err().as_deref(),
+                Some("indexer_header_invalid")
+            );
         }
-        assert!(open_with(&signer, with_header("x-token", "secret")).is_ok());
+        let both = WalletConfig {
+            rpc_headers: header("x-token", "secret"),
+            indexer_headers: header("x-token", "secret"),
+            ..config()
+        };
+        assert!(open_with(&signer, both).is_ok());
+    }
+
+    #[test]
+    fn sends_the_indexer_headers() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let indexer_url = format!("http://{}", listener.local_addr().unwrap());
+        let request = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = vec![0; 8192];
+            let read = stream.read(&mut request).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\n\r\n")
+                .unwrap();
+            String::from_utf8_lossy(&request[..read]).to_lowercase()
+        });
+        let config = WalletConfig {
+            indexer_url,
+            indexer_headers: Some(HashMap::from([("x-token".into(), "secret".into())])),
+            ..config()
+        };
+        let mut wallet = open_with(&Keypair::new(), config).unwrap();
+        let error = wallet.private_balance(None).unwrap_err();
+        assert!(!error.contains("secret"), "{error}");
+        assert!(request.join().unwrap().contains("x-token: secret"));
+    }
+
+    #[test]
+    fn refuses_a_plaintext_indexer_off_loopback() {
+        let plaintext = |allow_insecure_http| WalletConfig {
+            indexer_url: "http://indexer.example".to_string(),
+            allow_insecure_http,
+            ..config()
+        };
+        let error = open_with(&Keypair::new(), plaintext(false)).err().unwrap();
+        assert!(error.contains("indexer_url"), "{error}");
+        assert!(open_with(&Keypair::new(), plaintext(true)).is_ok());
     }
 
     #[test]
