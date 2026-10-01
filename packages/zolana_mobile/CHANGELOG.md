@@ -31,5 +31,6 @@ Unreleased.
 * `LocalProver`: prepare a circuit once and prove structured Zolana requests
   repeatedly. `poseidonHash`.
 * `initZolanaMobile()` loads the native library on every platform.
+* Android native libraries are aligned for 16 KB memory pages.
 * Signed precompiled native libraries for Android (API 24+) and iOS (15+);
   building from source with Rust and Go is the fallback.

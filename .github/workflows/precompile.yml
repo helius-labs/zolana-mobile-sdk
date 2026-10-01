@@ -14,7 +14,9 @@ permissions:
   contents: read
 
 env:
-  NDK_VERSION: 27.2.12479018
+  # Flutter's default. The libraries pass -z max-page-size=16384 themselves,
+  # so their 16 KB page alignment does not depend on it.
+  NDK_VERSION: 28.2.13676358
 
 jobs:
   android:
@@ -113,6 +115,8 @@ jobs:
             done
           done
         working-directory: packages/zolana_mobile/example
+      - name: Check 16 KB page alignment
+        run: bash scripts/check-android-page-size.sh packages/zolana_mobile/example/build/app/outputs/flutter-apk/app-release.apk
 
   ios-prebuilt:
     needs: ios

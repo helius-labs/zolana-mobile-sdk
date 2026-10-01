@@ -60,6 +60,14 @@ fn main() {
         }
     }
 
+    // Go links libgnark.so with the NDK clang itself: align its segments to
+    // 16 KB pages, as Android 15+ devices with 16 KB pages and Google Play
+    // require. Older NDKs default to 4 KB.
+    let ldflags = if is_android {
+        "-ldflags=-s -w -extldflags=-Wl,-z,max-page-size=16384"
+    } else {
+        "-ldflags=-s -w"
+    };
     let mut cmd = Command::new(go_binary());
     cmd.current_dir(&go_dir).env("CGO_ENABLED", "1").args([
         "build",
@@ -67,7 +75,7 @@ fn main() {
         "-buildvcs=false",
         "-mod=readonly",
         &format!("-buildmode={buildmode}"),
-        "-ldflags=-s -w",
+        ldflags,
         "-o",
         dest.to_str().expect("Invalid output path"),
         ".",
