@@ -17,6 +17,19 @@ abstract interface class SolanaSigner {
   Future<Uint8List> signMessage(Uint8List message, {required String purpose});
 }
 
+/// The application's backend prover, for spends proved with
+/// `Proving.remote`. It receives [request], the `/prove` request body the
+/// Zolana SDK's prover client sends, unchanged, and returns its prover's
+/// proof: the gnark proof JSON, alone or as the `proof` of the prover's
+/// response. When it throws, the spend fails with `remote_prover_failed`.
+///
+/// The wallet verifies the proof on the device against the pinned verifying
+/// key, before it builds the message. The request carries the transaction's
+/// witness, the wallet's nullifier secret included. The wallet, and
+/// [ZolanaWallet.close], wait for it: give it a timeout, and do not call the
+/// wallet from it.
+typedef RemoteProver = Future<Uint8List> Function(Uint8List request);
+
 /// A failure reported by the native wallet, such as
 /// `recipient_not_registered` or `signature_invalid`, or a client error
 /// describing what failed. It never contains key material.
@@ -131,9 +144,12 @@ class ZolanaWallet {
 
   /// Open the wallet [signer] controls. Asks the signer to sign the Zolana
   /// derivation message; the resulting keys stay in memory for this session.
+  ///
+  /// [remoteProver] proves the spends that ask for `Proving.remote`.
   static Future<ZolanaWallet> open({
     required native.WalletConfig config,
     required SolanaSigner signer,
+    RemoteProver? remoteProver,
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
     final message = await backend.derivationMessage(signer.publicKey);
@@ -142,6 +158,7 @@ class ZolanaWallet {
       purpose: 'Open your private Zolana wallet',
     );
     final wallet = await backend.open(config, signer.publicKey, signature);
+    await _setRemoteProver(wallet, remoteProver);
     return ZolanaWallet._(
       signer.publicKey,
       signer,
@@ -157,17 +174,20 @@ class ZolanaWallet {
   /// Without a [signer], [register], [deposit], [transfer] and [withdraw] fail
   /// with `signer_missing`; the `prepare` methods, [submit] and [confirm]
   /// work. A [signer] for another account fails with `signer_mismatch`.
+  /// [remoteProver] works as in [open].
   static Future<ZolanaWallet> openWithKeys({
     required native.WalletConfig config,
     required String solanaPublicKey,
     required native.WalletKeys keys,
     SolanaSigner? signer,
+    RemoteProver? remoteProver,
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
     if (signer != null && signer.publicKey != solanaPublicKey) {
       throw const ZolanaWalletException('signer_mismatch');
     }
     final wallet = await backend.openWithKeys(config, solanaPublicKey, keys);
+    await _setRemoteProver(wallet, remoteProver);
     return ZolanaWallet._(
       solanaPublicKey,
       signer,
@@ -230,11 +250,16 @@ class ZolanaWallet {
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
   /// so it cannot change afterwards. [PreparedTransaction.signers] is then
   /// `[feePayer, solanaPublicKey]`.
+  ///
+  /// [proving] says where the spend is proved, `WalletConfig.proving` when
+  /// null. `Proving.remote` asks the [RemoteProver] given at open; without
+  /// one it fails with `remote_prover_missing`.
   Future<PreparedTransaction> prepareTransfer({
     required String recipient,
     required BigInt amount,
     String? mint,
     String? feePayer,
+    native.Proving? proving,
   }) => _serial(
     () => _prepare(
       _wallet.prepareTransfer(
@@ -242,6 +267,7 @@ class ZolanaWallet {
         mint: mint,
         amount: amount,
         feePayer: feePayer,
+        proving: proving,
       ),
     ),
   );
@@ -250,12 +276,13 @@ class ZolanaWallet {
   /// asset and amount are public. Tokens go to the recipient's associated
   /// token account; without one this fails with
   /// `recipient_token_account_missing` (see [prepareTokenAccount]).
-  /// [feePayer] works as in [prepareTransfer].
+  /// [feePayer] and [proving] work as in [prepareTransfer].
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     required BigInt amount,
     String? mint,
     String? feePayer,
+    native.Proving? proving,
   }) => _serial(
     () => _prepare(
       _wallet.prepareWithdrawal(
@@ -263,6 +290,7 @@ class ZolanaWallet {
         mint: mint,
         amount: amount,
         feePayer: feePayer,
+        proving: proving,
       ),
     ),
   );
@@ -341,9 +369,15 @@ class ZolanaWallet {
     required String recipient,
     required BigInt amount,
     String? mint,
+    native.Proving? proving,
   }) => _serial(
     () => _send(
-      _wallet.prepareTransfer(recipient: recipient, mint: mint, amount: amount),
+      _wallet.prepareTransfer(
+        recipient: recipient,
+        mint: mint,
+        amount: amount,
+        proving: proving,
+      ),
     ),
   );
 
@@ -352,12 +386,14 @@ class ZolanaWallet {
     required String recipient,
     required BigInt amount,
     String? mint,
+    native.Proving? proving,
   }) => _serial(
     () => _send(
       _wallet.prepareWithdrawal(
         recipient: recipient,
         mint: mint,
         amount: amount,
+        proving: proving,
       ),
     ),
   );
@@ -439,6 +475,23 @@ class ZolanaWallet {
     _last = result.then((_) {}, onError: (_) {});
     return result;
   }
+}
+
+/// The native wallet takes a failed proof as `null`.
+Future<void> _setRemoteProver(
+  native.MobileWallet wallet,
+  RemoteProver? prove,
+) async {
+  if (prove == null) return;
+  await wallet.setRemoteProver(
+    prove: (request) async {
+      try {
+        return await prove(request);
+      } catch (_) {
+        return null;
+      }
+    },
+  );
 }
 
 Future<T> _native<T>(Future<T> Function() operation) async {

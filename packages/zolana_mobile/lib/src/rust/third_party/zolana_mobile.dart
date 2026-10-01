@@ -125,23 +125,29 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// `fee_payer` pays the network fee, this account when `None`. The proof
   /// binds it, so it cannot change after this call. Another fee payer signs
   /// first, before this account.
+  ///
+  /// `proving` says where it is proved, [`WalletConfig::proving`] when
+  /// `None`. Remote proving without [`Self::set_remote_prover`] fails with
+  /// `remote_prover_missing`.
   Future<PendingTransaction> prepareTransfer({
     required String recipient,
     String? mint,
     required BigInt amount,
     String? feePayer,
+    Proving? proving,
   });
 
   /// Build and prove a withdrawal of private funds to the public account
   /// `recipient`. Tokens go to its associated token account, which must
   /// exist: [`Self::prepare_token_account`] creates it.
   ///
-  /// `fee_payer` works as in [`Self::prepare_transfer`].
+  /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
   Future<PendingTransaction> prepareWithdrawal({
     required String recipient,
     String? mint,
     required BigInt amount,
     String? feePayer,
+    Proving? proving,
   });
 
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -173,6 +179,20 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// them: for a prepared spend that will not be sent, such as one the user
   /// declined. Submitting or confirming it does this too.
   Future<void> release({required PendingTransaction pending});
+
+  /// Prove the spends that ask for [`Proving::Remote`] with `prove`, the
+  /// application's backend. It receives the `/prove` request body the Zolana
+  /// SDK's prover client sends and returns its prover's proof: the gnark
+  /// proof JSON, alone or as the `proof` of the prover's response. `None`
+  /// fails the spend with `remote_prover_failed`.
+  ///
+  /// The client verifies the proof against the pinned verifying key and the
+  /// public input it computed itself, before the message is built. A proof
+  /// that does not parse fails with `proof_malformed`, one that does not
+  /// verify with `proof_invalid`.
+  Future<void> setRemoteProver({
+    required FutureOr<Uint8List?> Function(Uint8List) prove,
+  });
 
   Future<String> shieldedAddress();
 
@@ -349,6 +369,19 @@ class PreparedProverInfo {
           loadMs == other.loadMs;
 }
 
+/// Where a spend is proved.
+enum Proving {
+  /// On the device, with the pinned proving key for its shape. The witness
+  /// stays in this process.
+  local,
+
+  /// By the application's backend, given with
+  /// [`MobileWallet::set_remote_prover`](crate::MobileWallet::set_remote_prover).
+  /// The backend receives the witness, the wallet's nullifier secret
+  /// included.
+  remote,
+}
+
 /// Whether the user registry publishes this wallet's shielded address.
 enum RegistrationStatus {
   /// No record: others cannot pay this account privately yet.
@@ -401,6 +434,11 @@ class WalletConfig {
   /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
   final String? provingKeyUrl;
 
+  /// Where spends are proved unless a call says otherwise: on the device
+  /// when `None`. [`Proving::Remote`] needs
+  /// [`MobileWallet::set_remote_prover`].
+  final Proving? proving;
+
   /// Allow a plaintext indexer off loopback (an emulator reaching its host).
   /// The indexer sees the wallet's view tags, so never set this for funds
   /// that matter.
@@ -419,6 +457,7 @@ class WalletConfig {
     this.indexerHeaders,
     required this.provingKeyDir,
     this.provingKeyUrl,
+    this.proving,
     required this.allowInsecureHttp,
     required this.mints,
   });
@@ -431,6 +470,7 @@ class WalletConfig {
       indexerHeaders.hashCode ^
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
+      proving.hashCode ^
       allowInsecureHttp.hashCode ^
       mints.hashCode;
 
@@ -445,6 +485,7 @@ class WalletConfig {
           indexerHeaders == other.indexerHeaders &&
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
+          proving == other.proving &&
           allowInsecureHttp == other.allowInsecureHttp &&
           mints == other.mints;
 }
