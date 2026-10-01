@@ -30,7 +30,10 @@ bindings when upgrading them.
 The plugin downloads precompiled native libraries from the GitHub releases of
 this repository:
 
-- Android: `arm64-v8a`, `armeabi-v7a` and `x86_64`.
+- Android: `arm64-v8a`, `armeabi-v7a` and `x86_64`, aligned for 16 KB memory
+  pages as Google Play requires. Builds from source are aligned too, with any
+  NDK. CI checks the alignment of the APK built from the released libraries
+  and of one built from source.
 - iOS: device (`arm64`) and simulator (`arm64`, `x86_64`).
 
 Each file is signed. Cargokit checks the signature with the Ed25519 public key
