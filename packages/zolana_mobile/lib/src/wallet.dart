@@ -9,14 +9,18 @@ import 'rust/third_party/zolana_mobile.dart' show WalletError;
 /// remote custodian. The Solana secret key never enters this package.
 ///
 /// [signMessage] is asked for two things: once, the Zolana derivation message
-/// that opens the wallet, and then each transaction message. [purpose] is a
-/// description to show the user before signing.
+/// that opens the wallet, with no [transaction], and then each prepared
+/// transaction's message, with the [transaction] to show the user before
+/// signing.
 abstract interface class SolanaSigner {
   /// Base58 public key.
   String get publicKey;
 
   /// Ed25519 signature over [message].
-  Future<Uint8List> signMessage(Uint8List message, {required String purpose});
+  Future<Uint8List> signMessage(
+    Uint8List message, {
+    PreparedTransaction? transaction,
+  });
 }
 
 /// The application's backend prover, for spends proved with
@@ -93,11 +97,16 @@ abstract interface class WalletBackend {
 
 /// A transaction the wallet built and, where needed, proved, awaiting
 /// signatures. Each of [signers] signs [message] with Ed25519, in order.
+/// [kind], [amount], [mint], [recipient] and [feePayer] are what to show the
+/// user before signing.
 class PreparedTransaction {
   PreparedTransaction._(
     this._pending,
     this.kind,
-    this.summary,
+    this.amount,
+    this.mint,
+    this.recipient,
+    this.feePayer,
     this.message,
     this.signers,
     this.lastValidBlockHeight,
@@ -108,7 +117,10 @@ class PreparedTransaction {
   ) async => PreparedTransaction._(
     pending,
     await pending.kind(),
-    await pending.summary(),
+    await pending.amount(),
+    await pending.mint(),
+    await pending.recipient(),
+    await pending.feePayer(),
     await pending.messageBytes(),
     await pending.signers(),
     await pending.lastValidBlockHeight(),
@@ -117,8 +129,19 @@ class PreparedTransaction {
   final native.PendingTransaction _pending;
   final native.PendingTransactionKind kind;
 
-  /// Description to show the user before signing.
-  final String summary;
+  /// Base units a deposit, transfer or withdrawal moves.
+  final BigInt? amount;
+
+  /// The mint of the asset moved, or of the token account created; `null`
+  /// for SOL.
+  final String? mint;
+
+  /// The account a transfer or withdrawal pays, or whose token account is
+  /// created.
+  final String? recipient;
+
+  /// Base58 account that pays the network fee: the first of [signers].
+  final String feePayer;
 
   /// The serialized Solana message every signer signs.
   final Uint8List message;
@@ -192,9 +215,9 @@ class ZolanaWallet {
   /// closed with it. It refuses a plaintext URL off loopback in [config]
   /// before anything else, with [WalletError.rpcUrlInsecure],
   /// [WalletError.indexerUrlInsecure] or [WalletError.provingKeyUrlInsecure],
-  /// unless [allowInsecureHttp] is set: the
-  /// indexer sees the wallet's view tags, so set it only for a test cluster.
-  /// The wallet opens no connection itself either way.
+  /// unless [allowInsecureHttp] is set: the indexer sees the wallet's view
+  /// tags, so set it only for a test cluster. The wallet opens no connection
+  /// itself either way.
   static Future<ZolanaWallet> open({
     required native.WalletConfig config,
     required SolanaSigner signer,
@@ -205,10 +228,7 @@ class ZolanaWallet {
   }) => _native(() async {
     if (transport == null) _refusePlaintext(config, allowInsecureHttp);
     final message = await backend.derivationMessage(signer.publicKey);
-    final signature = await signer.signMessage(
-      message,
-      purpose: 'Open your private Zolana wallet',
-    );
+    final signature = await signer.signMessage(message);
     return _open(
       signer.publicKey,
       signer,
@@ -559,10 +579,7 @@ class ZolanaWallet {
         WalletError.unexpectedSigners(signers: signers),
       );
     }
-    return signer.signMessage(
-      transaction.message,
-      purpose: transaction.summary,
-    );
+    return signer.signMessage(transaction.message, transaction: transaction);
   }
 
   void _ensureOpen() {

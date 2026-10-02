@@ -141,7 +141,13 @@ fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PendingTransacti
         .iter()
         .map(|s| s.sign_message(&pending.message_bytes()).as_ref().to_vec())
         .collect();
-    println!("{}", pending.summary());
+    println!(
+        "{:?} {:?} {:?} to {:?}",
+        pending.kind(),
+        pending.amount(),
+        pending.mint(),
+        pending.recipient()
+    );
     wallet.submit(&pending, signatures).expect("submit")
 }
 
@@ -286,7 +292,10 @@ fn register_deposit_transfer_and_receive() {
         .expect("a new blockhash");
     assert!(refreshed.last_valid_block_height() >= pending.last_valid_block_height());
     assert_eq!(refreshed.signers(), pending.signers());
-    assert_eq!(refreshed.summary(), pending.summary());
+    assert_eq!(
+        (refreshed.amount(), refreshed.mint(), refreshed.recipient()),
+        (pending.amount(), pending.mint(), pending.recipient())
+    );
     let transfer = submit(&sender_wallet, &[&sender], refreshed);
 
     assert_eq!(

@@ -136,10 +136,7 @@ void main() {
       greaterThanOrEqualTo(prepared.lastValidBlockHeight),
     );
     final signature = await sender.submit(transaction, [
-      await signer.signMessage(
-        transaction.message,
-        purpose: transaction.summary,
-      ),
+      await signer.signMessage(transaction.message, transaction: transaction),
     ]);
     // ignore: avoid_print
     print(

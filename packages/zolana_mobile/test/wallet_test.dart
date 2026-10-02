@@ -29,15 +29,15 @@ class DecliningSigner extends RecordingSigner {
   @override
   Future<Uint8List> signMessage(
     Uint8List message, {
-    required String purpose,
+    PreparedTransaction? transaction,
   }) async {
     if (requests.isNotEmpty) throw StateError('declined');
-    return super.signMessage(message, purpose: purpose);
+    return super.signMessage(message, transaction: transaction);
   }
 }
 
 class RecordingSigner implements SolanaSigner {
-  final requests = <(Uint8List, String)>[];
+  final requests = <(Uint8List, PreparedTransaction?)>[];
 
   @override
   String get publicKey => owner;
@@ -45,9 +45,9 @@ class RecordingSigner implements SolanaSigner {
   @override
   Future<Uint8List> signMessage(
     Uint8List message, {
-    required String purpose,
+    PreparedTransaction? transaction,
   }) async {
-    requests.add((message, purpose));
+    requests.add((message, transaction));
     return Uint8List.fromList([...message.reversed]);
   }
 }
@@ -79,7 +79,16 @@ class FakePending implements PendingTransaction {
   Future<List<String>> signers() async => signerKeys;
 
   @override
-  Future<String> summary() async => 'summary of ${bytes.first}';
+  Future<BigInt?> amount() async => BigInt.from(bytes.first);
+
+  @override
+  Future<String?> mint() async => null;
+
+  @override
+  Future<String?> recipient() async => 'Recipient';
+
+  @override
+  Future<String> feePayer() async => signerKeys.first;
 }
 
 class FakeWallet implements MobileWallet {
@@ -297,7 +306,7 @@ void main() {
 
     expect(wallet.shieldedAddress, 'shielded');
     expect(signer.requests.single.$1, Uint8List.fromList(owner.codeUnits));
-    expect(signer.requests.single.$2, 'Open your private Zolana wallet');
+    expect(signer.requests.single.$2, isNull);
     expect(
       backend.openedWith,
       Uint8List.fromList(owner.codeUnits.reversed.toList()),
@@ -695,7 +704,7 @@ void main() {
     );
 
     expect(await wallet.deposit(BigInt.one), 'signature');
-    expect(signer.requests.single.$2, 'summary of 1');
+    expect(signer.requests.single.$2?.amount, BigInt.one);
     await expectLater(
       ZolanaWallet.openWithKeys(
         config: config,
@@ -747,7 +756,10 @@ void main() {
     expect(refreshed.lastValidBlockHeight, BigInt.from(250));
     expect(refreshed.message, isNot(prepared.message));
     expect(refreshed.signers, prepared.signers);
-    expect(refreshed.summary, prepared.summary);
+    expect(
+      (refreshed.amount, refreshed.recipient, refreshed.feePayer),
+      (prepared.amount, prepared.recipient, prepared.feePayer),
+    );
 
     await wallet.submit(refreshed, [Uint8List(64)]);
     expect(
@@ -761,7 +773,7 @@ void main() {
     );
   });
 
-  test('signs the proved message with its summary and submits it', () async {
+  test('signs the proved message with its facts and submits it', () async {
     final (wallet, native, signer, _) = await openWallet();
 
     final signature = await wallet.transfer(
@@ -771,7 +783,7 @@ void main() {
 
     expect(signature, 'signature');
     expect(signer.requests.last.$1, [7, 8]);
-    expect(signer.requests.last.$2, 'summary of 7');
+    expect(signer.requests.last.$2?.amount, BigInt.from(7));
     expect(native.submitted.single.$2.single, [8, 7]);
   });
 
@@ -787,7 +799,15 @@ void main() {
     expect(transaction.kind, PendingTransactionKind.transfer);
     expect(transaction.message, [7, 8]);
     expect(transaction.signers, [owner]);
-    expect(transaction.summary, 'summary of 7');
+    expect(
+      (
+        transaction.amount,
+        transaction.mint,
+        transaction.recipient,
+        transaction.feePayer,
+      ),
+      (BigInt.from(7), null, 'Recipient', owner),
+    );
 
     await wallet.confirm(transaction, 'sent-by-the-app');
     expect(native.confirmed.single.$2, 'sent-by-the-app');
@@ -919,7 +939,7 @@ void main() {
 
     native.status = RegistrationStatus.notRegistered;
     expect(await wallet.register(), 'signature');
-    expect(signer.requests.last.$2, 'summary of 3');
+    expect(signer.requests.last.$2?.amount, BigInt.from(3));
 
     native.status = RegistrationStatus.registered;
     expect(await wallet.register(), isNull);

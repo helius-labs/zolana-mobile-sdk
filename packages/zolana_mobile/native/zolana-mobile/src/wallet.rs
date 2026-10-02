@@ -122,16 +122,28 @@ pub enum PendingTransactionKind {
     TokenAccount,
 }
 
-/// A built, and where needed proved, v1 transaction awaiting signatures.
+/// A built, and where needed proved, v1 transaction awaiting signatures. The
+/// application shows what it does, from [`Self::kind`], [`Self::amount`],
+/// [`Self::mint`], [`Self::recipient`] and [`Self::fee_payer`], before it asks
+/// for them.
 pub struct PendingTransaction {
     /// Unique per wallet: the key of the notes a spend reserves.
     id: u64,
     kind: PendingTransactionKind,
     message: VersionedMessage,
-    summary: String,
+    moved: Moved,
     last_valid_block_height: u64,
     /// Nullifiers of the notes it spends; empty unless it is a spend.
     spends: Vec<[u8; 32]>,
+}
+
+/// What a transaction moves and to whom; nothing for a registration.
+#[derive(Clone, Default)]
+struct Moved {
+    amount: Option<u64>,
+    /// `None` for SOL.
+    mint: Option<String>,
+    recipient: Option<String>,
 }
 
 impl PendingTransaction {
@@ -139,15 +151,32 @@ impl PendingTransaction {
         self.kind
     }
 
+    /// Base units a deposit, transfer or withdrawal moves.
+    pub fn amount(&self) -> Option<u64> {
+        self.moved.amount
+    }
+
+    /// The mint of the asset moved, or of the token account created; `None`
+    /// for SOL.
+    pub fn mint(&self) -> Option<String> {
+        self.moved.mint.clone()
+    }
+
+    /// The account a transfer or withdrawal pays, or whose token account is
+    /// created.
+    pub fn recipient(&self) -> Option<String> {
+        self.moved.recipient.clone()
+    }
+
+    /// The base58 account that pays the network fee: the first signer.
+    pub fn fee_payer(&self) -> String {
+        self.message.static_account_keys()[0].to_string()
+    }
+
     /// The last block height at which the message can still land. Past it,
     /// [`MobileWallet::refresh`] gives it a new blockhash.
     pub fn last_valid_block_height(&self) -> u64 {
         self.last_valid_block_height
-    }
-
-    /// Human-readable description to show before asking for a signature.
-    pub fn summary(&self) -> String {
-        self.summary.clone()
     }
 
     /// The bytes every signer signs with Ed25519.
@@ -380,7 +409,7 @@ impl MobileWallet {
                 self.pending(
                     PendingTransactionKind::Registration,
                     message,
-                    format!("Register {} for private payments", self.shielded_address()),
+                    Moved::default(),
                 )
             })
             .transpose()
@@ -421,7 +450,7 @@ impl MobileWallet {
         self.pending(
             PendingTransactionKind::Deposit,
             self.message(deposit)?,
-            format!("Deposit {} (public)", asset.describe(amount)),
+            moved(asset, amount, None),
         )
     }
 
@@ -515,7 +544,7 @@ impl MobileWallet {
         let pending = self.pending(
             PendingTransactionKind::Transfer,
             self.prove(transaction, Vec::new(), payer, remote)?,
-            format!("Send {} privately to {recipient}", asset.describe(amount)),
+            moved(asset, amount, Some(recipient)),
         )?;
         Ok(self.reserve(pending, spends))
     }
@@ -552,10 +581,7 @@ impl MobileWallet {
         let pending = self.pending(
             PendingTransactionKind::Withdrawal,
             self.prove(transaction, vec![settlement], payer, remote)?,
-            format!(
-                "Withdraw {} to {recipient} (public)",
-                asset.describe(amount)
-            ),
+            moved(asset, amount, Some(recipient)),
         )?;
         Ok(self.reserve(pending, spends))
     }
@@ -582,7 +608,11 @@ impl MobileWallet {
         self.pending(
             PendingTransactionKind::TokenAccount,
             self.message(create.instruction())?,
-            format!("Create a {} token account for {owner}", asset.mint),
+            Moved {
+                amount: None,
+                mint: Some(asset.mint.to_string()),
+                recipient: Some(owner.to_string()),
+            },
         )
         .map(Some)
     }
@@ -620,7 +650,7 @@ impl MobileWallet {
         &self,
         kind: PendingTransactionKind,
         mut message: VersionedMessage,
-        summary: String,
+        moved: Moved,
     ) -> Result<PendingTransaction, WalletError> {
         let (blockhash, last_valid_block_height) = self.client.get_latest_blockhash()?;
         message.set_recent_blockhash(blockhash);
@@ -631,7 +661,7 @@ impl MobileWallet {
             id,
             kind,
             message,
-            summary,
+            moved,
             last_valid_block_height,
             spends: Vec::new(),
         })
@@ -700,11 +730,8 @@ impl MobileWallet {
     /// A refreshed spend reserves its notes again until its new last valid
     /// block height.
     pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, WalletError> {
-        let refreshed = self.pending(
-            pending.kind,
-            pending.message.clone(),
-            pending.summary.clone(),
-        )?;
+        let refreshed =
+            self.pending(pending.kind, pending.message.clone(), pending.moved.clone())?;
         self.release(pending);
         Ok(if pending.spends.is_empty() {
             refreshed
@@ -866,6 +893,15 @@ fn spend_failure(amount: u64, failure: TransactionError) -> WalletError {
     }
 }
 
+/// `amount` of `asset`, paid to `recipient` for a transfer or withdrawal.
+fn moved(asset: Asset, amount: u64, recipient: Option<Pubkey>) -> Moved {
+    Moved {
+        amount: Some(amount),
+        mint: mint_name(&asset.mint),
+        recipient: recipient.map(|recipient| recipient.to_string()),
+    }
+}
+
 fn invalid_mint(asset: Asset) -> WalletError {
     WalletError::InvalidMint {
         mint: asset.mint.to_string(),
@@ -1022,7 +1058,7 @@ mod tests {
             id: 0,
             kind: PendingTransactionKind::Deposit,
             message,
-            summary: String::new(),
+            moved: Moved::default(),
             last_valid_block_height: 0,
             spends: Vec::new(),
         }

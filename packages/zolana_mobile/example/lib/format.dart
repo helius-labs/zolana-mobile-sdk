@@ -37,6 +37,24 @@ String shortAddress(String value) => value.length <= 12
 String explorerUrl(String signature) =>
     'https://explorer.solana.com/tx/$signature?cluster=devnet';
 
+/// What a prepared transaction does, to show before signing. The demo holds
+/// SOL only, so token amounts stay in base units.
+String approvalText(PreparedTransaction tx) {
+  final amount = switch ((tx.amount, tx.mint)) {
+    (null, _) => '',
+    (final lamports?, null) => formatSol(lamports),
+    (final units?, final mint?) => '$units units of ${shortAddress(mint)}',
+  };
+  final to = tx.recipient == null ? '' : shortAddress(tx.recipient!);
+  return switch (tx.kind) {
+    PendingTransactionKind.registration => 'Register for private payments',
+    PendingTransactionKind.deposit => 'Shield $amount',
+    PendingTransactionKind.transfer => 'Send $amount privately to $to',
+    PendingTransactionKind.withdrawal => 'Unshield $amount to $to',
+    PendingTransactionKind.tokenAccount => 'Create a token account for $to',
+  };
+}
+
 /// A sentence for the wallet's failures; other errors pass through.
 String friendlyError(Object error) {
   if (error is! ZolanaWalletException) return '$error';
