@@ -239,11 +239,11 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>
 abstract class Transport implements RustOpaqueInterface {
   // HINT: Make it `#[frb(sync)]` to let it become the default constructor of Dart class.
-  /// `send` answers a request with the server's response, and fails only
+  /// `send` answers a request with the server's response, or with a failure
   /// when there is none. The wallet waits for it, so it must not call the
   /// wallet.
   static Future<Transport> newInstance({
-    required FutureOr<TransportResponse> Function(TransportRequest) send,
+    required FutureOr<TransportOutcome> Function(TransportRequest) send,
   }) => RustLib.instance.api.zolanaMobileTransportNew(send: send);
 }
 
@@ -431,6 +431,27 @@ class TokenBalance {
           amount == other.amount;
 }
 
+/// What the application's transport answered: the server's response, or the
+/// message of the failure that left none. The package's Dart side builds it
+/// and never throws, so no Dart stack trace reaches the wallet.
+class TransportOutcome {
+  final TransportResponse? response;
+  final String? failure;
+
+  const TransportOutcome({this.response, this.failure});
+
+  @override
+  int get hashCode => response.hashCode ^ failure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportOutcome &&
+          runtimeType == other.runtimeType &&
+          response == other.response &&
+          failure == other.failure;
+}
+
 /// One HTTP request of the wallet.
 class TransportRequest {
   /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
@@ -443,16 +464,26 @@ class TransportRequest {
   /// Empty for a `GET`.
   final Uint8List body;
 
+  /// The most bytes the response body may hold, for a proving-key download
+  /// (the key's size in the lockfile). A transport stops reading and fails
+  /// past it; the wallet refuses a longer body either way.
+  final int? maxResponseBytes;
+
   const TransportRequest({
     required this.method,
     required this.url,
     required this.headers,
     required this.body,
+    this.maxResponseBytes,
   });
 
   @override
   int get hashCode =>
-      method.hashCode ^ url.hashCode ^ headers.hashCode ^ body.hashCode;
+      method.hashCode ^
+      url.hashCode ^
+      headers.hashCode ^
+      body.hashCode ^
+      maxResponseBytes.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -462,7 +493,8 @@ class TransportRequest {
           method == other.method &&
           url == other.url &&
           headers == other.headers &&
-          body == other.body;
+          body == other.body &&
+          maxResponseBytes == other.maxResponseBytes;
 }
 
 /// The server's response, whatever its status.
@@ -500,12 +532,6 @@ class WalletConfig {
   /// [`MobileWallet::set_remote_prover`].
   final Proving? proving;
 
-  /// Read by the package's default transport: allow a plaintext URL off
-  /// loopback (an emulator reaching its host). The indexer sees the wallet's
-  /// view tags, so never set this for funds that matter. An application's
-  /// own transport decides for itself.
-  final bool allowInsecureHttp;
-
   /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
   /// and a mint named in any call is added for the rest of the session.
   /// Notes in other mints are left out, as the Zolana SDK leaves out assets
@@ -518,7 +544,6 @@ class WalletConfig {
     required this.provingKeyDir,
     this.provingKeyUrl,
     this.proving,
-    required this.allowInsecureHttp,
     required this.mints,
   });
 
@@ -529,7 +554,6 @@ class WalletConfig {
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
       proving.hashCode ^
-      allowInsecureHttp.hashCode ^
       mints.hashCode;
 
   @override
@@ -542,7 +566,6 @@ class WalletConfig {
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
-          allowInsecureHttp == other.allowInsecureHttp &&
           mints == other.mints;
 }
 

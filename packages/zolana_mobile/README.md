@@ -84,7 +84,6 @@ final wallet = await ZolanaWallet.open(
     rpcUrl: rpcUrl,
     indexerUrl: indexerUrl,
     provingKeyDir: '${(await getApplicationSupportDirectory()).path}/keys',
-    allowInsecureHttp: false,
     mints: const [],                  // SPL mints balances() lists
   ),
 );
@@ -118,8 +117,8 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   for a public payment.
 - **Privacy**: deposits and withdrawals are public. Private transfers reveal
   neither amount nor recipient. The indexer learns this wallet's view tags, so
-  `allowInsecureHttp`, which lets the default transport use a plaintext URL
-  off loopback, is only for a local test cluster.
+  `allowInsecureHttp` on `open`, which lets the default transport use a
+  plaintext URL off loopback, is only for a local test cluster.
 - **History**: `activity()` lists the transactions that moved this wallet's
   notes, newest first, as `shielded`, `unshielded`, `sent`, `received` or
   `internal` (merges and transfers to itself), one entry per asset. The indexer
@@ -281,26 +280,32 @@ returned whole and checked against the lockfile), goes through one transport
 in Dart:
 
 - By default, the package's own transport on `package:http`: one connection
-  pool per wallet, closed with `close()`. It refuses a plaintext (`http`) URL
-  off loopback unless `WalletConfig.allowInsecureHttp` is set, and fails a
-  request whose response stalls for 30 seconds.
+  pool per wallet, closed with `close()`. `open` and `openWithKeys` refuse a
+  plaintext (`http`) URL off loopback in the config before anything else, with
+  `rpc_url_insecure`, `indexer_url_insecure` or `proving_key_url_insecure`,
+  unless `allowInsecureHttp: true` is passed. It follows redirects, fails a
+  request whose response stalls for 30 seconds, and stops reading a body past
+  `maxResponseBytes`.
 - Or the application's: pass a `transport` to `ZolanaWallet.open` or
   `ZolanaWallet.openWithKeys` to send through your own stack (a proxy,
   certificate pinning, your backend). Headers, timeouts and which URLs it
-  accepts are then yours.
+  accepts are then yours; `allowInsecureHttp` does not apply.
 
 ```dart
 final client = http.Client();
+const timeout = Duration(seconds: 30);
 
 Future<TransportResponse> send(TransportRequest request) async {
-  final response = await client.send(
-    http.Request(request.method, Uri.parse(request.url))
-      ..headers.addAll(request.headers)
-      ..bodyBytes = request.body,
-  );
+  final response = await client
+      .send(
+        http.Request(request.method, Uri.parse(request.url))
+          ..headers.addAll(request.headers)
+          ..bodyBytes = request.body,
+      )
+      .timeout(timeout);
   return TransportResponse(
     status: response.statusCode,
-    body: await response.stream.toBytes(),
+    body: await http.ByteStream(response.stream.timeout(timeout)).toBytes(),
   );
 }
 
@@ -312,12 +317,17 @@ final wallet = await ZolanaWallet.open(
 ```
 
 - The request carries the method, the URL with its `api-key` parameter, and
-  the content type of a `POST`; nothing else. Send it as it is.
+  the content type of a `POST`; nothing else. Send it as it is, and follow
+  redirects: the proving-key host may redirect.
+- A key download sets `maxResponseBytes`, the key's size in the lockfile.
+  Stop reading and throw when the body exceeds it; the wallet refuses a longer
+  body either way, but only after the whole of it arrived.
 - Return the response whatever its status. Throw only when there is no
-  response (no network, DNS, TLS). The wallet then fails with
-  `transport failed: ` and the exception message, `api-key` values masked.
-- The wallet waits for each answer, so the transport must not call the
-  wallet.
+  response (no network, DNS, TLS, a timeout). The wallet then fails with
+  `transport failed: ` and the exception message, never its stack trace,
+  `api-key` values masked.
+- Time out your requests: the wallet and `close()` wait for each answer.
+  For the same reason the transport must not call the wallet.
 - A `remoteProver` is not a transport request: the wallet hands it the
   `/prove` request body directly, and the application sends it to its backend.
 - `example/lib/app_transport.dart` is the transport above with a log of what

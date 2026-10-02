@@ -84,7 +84,6 @@ void main() {
     indexerUrl: Network.devnet.indexerUrl,
     provingKeyDir:
         '${(await getApplicationSupportDirectory()).path}/proving-keys',
-    allowInsecureHttp: false,
     mints: const [],
   );
 

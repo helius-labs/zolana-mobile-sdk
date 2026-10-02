@@ -36,7 +36,9 @@ Unreleased.
 * The wallet never opens a connection: every request (Solana RPC, indexer,
   proving-key downloads) goes through a transport in Dart, the package's own
   on `package:http` by default, or the application's networking passed as
-  `transport` to `ZolanaWallet.open` and `ZolanaWallet.openWithKeys`.
+  `transport` to `ZolanaWallet.open` and `ZolanaWallet.openWithKeys`. With
+  the default transport, `open` refuses plaintext URLs off loopback unless
+  `allowInsecureHttp` is passed.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile.
 * Errors carry no key material, and `api-key` values in them are masked.

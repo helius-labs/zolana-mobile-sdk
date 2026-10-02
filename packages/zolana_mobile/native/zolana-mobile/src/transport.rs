@@ -24,6 +24,10 @@ pub struct TransportRequest {
     pub headers: HashMap<String, String>,
     /// Empty for a `GET`.
     pub body: Vec<u8>,
+    /// The most bytes the response body may hold, for a proving-key download
+    /// (the key's size in the lockfile). A transport stops reading and fails
+    /// past it; the wallet refuses a longer body either way.
+    pub max_response_bytes: Option<u32>,
 }
 
 /// The server's response, whatever its status.
@@ -32,23 +36,26 @@ pub struct TransportResponse {
     pub body: Vec<u8>,
 }
 
+/// What the application's transport answered: the server's response, or the
+/// message of the failure that left none. The package's Dart side builds it
+/// and never throws, so no Dart stack trace reaches the wallet.
+pub struct TransportOutcome {
+    pub response: Option<TransportResponse>,
+    pub failure: Option<String>,
+}
+
 /// Sends the wallet's requests through the application.
 #[derive(Clone)]
 pub struct Transport {
-    callback: Arc<
-        dyn Fn(TransportRequest) -> DartFnFuture<anyhow::Result<TransportResponse>> + Send + Sync,
-    >,
+    callback: Arc<dyn Fn(TransportRequest) -> DartFnFuture<TransportOutcome> + Send + Sync>,
 }
 
 impl Transport {
-    /// `send` answers a request with the server's response, and fails only
+    /// `send` answers a request with the server's response, or with a failure
     /// when there is none. The wallet waits for it, so it must not call the
     /// wallet.
     pub fn new(
-        send: impl Fn(TransportRequest) -> DartFnFuture<anyhow::Result<TransportResponse>>
-            + Send
-            + Sync
-            + 'static,
+        send: impl Fn(TransportRequest) -> DartFnFuture<TransportOutcome> + Send + Sync + 'static,
     ) -> Transport {
         Transport {
             callback: Arc::new(send),
@@ -56,7 +63,10 @@ impl Transport {
     }
 
     async fn send(&self, request: TransportRequest) -> Result<TransportResponse, TransportFailed> {
-        (self.callback)(request).await.map_err(TransportFailed::new)
+        let outcome = (self.callback)(request).await;
+        outcome
+            .response
+            .ok_or_else(|| TransportFailed(outcome.failure.unwrap_or_default()))
     }
 
     /// Blocks until the application answers. The wallet's methods run on a
@@ -94,16 +104,6 @@ impl Transport {
 /// The application's transport failed without a response.
 #[derive(Debug)]
 pub(crate) struct TransportFailed(String);
-
-impl TransportFailed {
-    /// The Dart exception, without the stack trace the bridge appends after a
-    /// blank line.
-    fn new(error: anyhow::Error) -> Self {
-        let message = error.to_string();
-        let exception = message.split("\n\n").next().unwrap_or_default();
-        Self(exception.to_string())
-    }
-}
 
 impl fmt::Display for TransportFailed {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -152,6 +152,7 @@ impl Middleware for Sender {
                 url: url.to_string(),
                 headers,
                 body,
+                max_response_bytes: None,
             })
             .await
             .map_err(reqwest_middleware::Error::middleware)?;
@@ -171,6 +172,7 @@ impl BlockingHttpClient for Sender {
             url: url.to_string(),
             headers: HashMap::from([("content-type".to_string(), "application/json".to_string())]),
             body,
+            max_response_bytes: None,
         };
         let response = self
             .0
@@ -197,16 +199,20 @@ pub(crate) mod tests {
 
     pub(crate) type Requests = Arc<Mutex<Vec<TransportRequest>>>;
 
-    /// A transport that answers each request with `answer` and records it.
+    /// A transport that answers each request with `answer`, a response or a
+    /// failure message, and records it.
     pub(crate) fn fake(
-        answer: impl Fn(&TransportRequest) -> anyhow::Result<TransportResponse> + Send + Sync + 'static,
+        answer: impl Fn(&TransportRequest) -> Result<TransportResponse, String> + Send + Sync + 'static,
     ) -> (Transport, Requests) {
         let requests = Requests::default();
         let recorded = requests.clone();
         let transport = Transport::new(move |request| {
-            let response = answer(&request);
+            let (response, failure) = match answer(&request) {
+                Ok(response) => (Some(response), None),
+                Err(failure) => (None, Some(failure)),
+            };
             recorded.lock().unwrap().push(request);
-            Box::pin(async move { response })
+            Box::pin(async move { TransportOutcome { response, failure } })
         });
         (transport, requests)
     }
@@ -214,10 +220,10 @@ pub(crate) mod tests {
     /// A transport with no network: every request fails as a refused
     /// connection does, naming the URL as the application's exception would.
     pub(crate) fn unreachable() -> Transport {
-        fake(|request| Err(anyhow::anyhow!("connection refused ({})", request.url))).0
+        fake(|request| Err(format!("connection refused ({})", request.url))).0
     }
 
-    pub(crate) fn ok(body: &str) -> anyhow::Result<TransportResponse> {
+    pub(crate) fn ok(body: &str) -> Result<TransportResponse, String> {
         Ok(TransportResponse {
             status: 200,
             body: body.as_bytes().to_vec(),
@@ -234,7 +240,6 @@ pub(crate) mod tests {
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
-            allow_insecure_http: false,
             mints: Vec::new(),
         };
         let pubkey = signer.pubkey().to_string();
@@ -269,6 +274,7 @@ pub(crate) mod tests {
         let rpc = requests.lock().unwrap().pop().unwrap();
         assert_eq!((rpc.method.as_str(), rpc.url.as_str()), ("POST", RPC_URL));
         assert_eq!(rpc.headers, json_content_type());
+        assert_eq!(rpc.max_response_bytes, None);
         assert_eq!(json(&rpc.body)["method"], "getAccountInfo");
 
         assert_eq!(wallet.private_balance(None), Ok(0));
@@ -287,10 +293,10 @@ pub(crate) mod tests {
 
     #[test]
     fn transport_failures_surface_without_secrets() {
-        // The bridge hands over the Dart exception and its stack trace.
+        // The package hands over the exception message, which can name the URL.
         let (transport, _) = fake(|request| {
-            Err(anyhow::anyhow!(
-                "SocketException: connection refused ({})\n\n#0 frame",
+            Err(format!(
+                "SocketException: connection refused ({})",
                 request.url
             ))
         });
@@ -304,10 +310,7 @@ pub(crate) mod tests {
                 "{error}"
             );
             assert!(error.contains("api-key=redacted"), "{error}");
-            assert!(
-                !error.contains("secret") && !error.contains("#0"),
-                "{error}"
-            );
+            assert!(!error.contains("secret"), "{error}");
         }
 
         let (transport, _) = fake(|_| {

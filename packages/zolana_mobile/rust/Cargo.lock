@@ -5258,7 +5258,6 @@ dependencies = [
 name = "zolana-mobile"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "flutter_rust_bridge",
  "futures-executor",

@@ -90,16 +90,22 @@ class _WalletScreenState extends State<WalletScreen> {
       final signer = await DemoSigner.fromSeedHex(_account.seedHex);
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';
+      final config = WalletConfig(
+        rpcUrl: _network.rpcUrl,
+        indexerUrl: _network.indexerUrl,
+        provingKeyDir: keys,
+        // The demo holds SOL only.
+        mints: const [],
+      );
       final wallet = await ZolanaWallet.open(
         signer: signer,
-        config: WalletConfig(
-          rpcUrl: _network.rpcUrl,
-          indexerUrl: _network.indexerUrl,
-          provingKeyDir: keys,
-          allowInsecureHttp: Uri.parse(_network.indexerUrl).scheme == 'http',
-          // The demo holds SOL only.
-          mints: const [],
-        ),
+        config: config,
+        // A test cluster on the host machine is plaintext.
+        allowInsecureHttp: [
+          config.rpcUrl,
+          config.indexerUrl,
+          config.provingKeyUrl,
+        ].nonNulls.any((url) => Uri.parse(url).scheme == 'http'),
       );
       if (!_current(generation)) {
         unawaited(wallet.close());

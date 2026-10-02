@@ -33,7 +33,8 @@ use solana_signer::Signer;
 use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{
     derivation_message, ActivityKind, MobileWallet, PendingTransaction, Proving,
-    RegistrationStatus, Transport, TransportRequest, TransportResponse, WalletConfig,
+    RegistrationStatus, Transport, TransportOutcome, TransportRequest, TransportResponse,
+    WalletConfig,
 };
 
 const FUNDING: u64 = 1_000_000_000;
@@ -73,7 +74,6 @@ fn config() -> WalletConfig {
         proving_key_dir: key_dir,
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
-        allow_insecure_http: true,
         mints: Vec::new(),
     }
 }
@@ -89,19 +89,33 @@ fn transport() -> Transport {
         .expect("HTTP client");
     Transport::new(move |request| {
         let http = http.clone();
-        let response = std::thread::spawn(move || send(&http, request))
+        let outcome = match std::thread::spawn(move || send(&http, request))
             .join()
-            .expect("transport thread");
-        Box::pin(async move { response })
+            .expect("transport thread")
+        {
+            Ok(response) => TransportOutcome {
+                response: Some(response),
+                failure: None,
+            },
+            Err(error) => TransportOutcome {
+                response: None,
+                failure: Some(error.to_string()),
+            },
+        };
+        Box::pin(async move { outcome })
     })
 }
 
 fn send(
     http: &reqwest::blocking::Client,
     request: TransportRequest,
-) -> anyhow::Result<TransportResponse> {
-    let method = reqwest::Method::from_bytes(request.method.as_bytes())?;
-    let mut outgoing = http.request(method, &request.url).body(request.body);
+) -> reqwest::Result<TransportResponse> {
+    let mut outgoing = http
+        .request(
+            reqwest::Method::from_bytes(request.method.as_bytes()).expect("HTTP method"),
+            &request.url,
+        )
+        .body(request.body);
     for (name, value) in request.headers {
         outgoing = outgoing.header(name, value);
     }

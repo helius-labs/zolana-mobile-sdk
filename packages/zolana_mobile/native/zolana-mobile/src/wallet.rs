@@ -78,11 +78,6 @@ pub struct WalletConfig {
     /// when `None`. [`Proving::Remote`] needs
     /// [`MobileWallet::set_remote_prover`].
     pub proving: Option<Proving>,
-    /// Read by the package's default transport: allow a plaintext URL off
-    /// loopback (an emulator reaching its host). The indexer sees the wallet's
-    /// view tags, so never set this for funds that matter. An application's
-    /// own transport decides for itself.
-    pub allow_insecure_http: bool,
     /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
     /// and a mint named in any call is added for the rest of the session.
     /// Notes in other mints are left out, as the Zolana SDK leaves out assets
@@ -1073,7 +1068,6 @@ mod tests {
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
-            allow_insecure_http: false,
             mints: Vec::new(),
         }
     }

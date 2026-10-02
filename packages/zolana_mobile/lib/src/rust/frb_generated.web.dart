@@ -81,8 +81,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  FutureOr<TransportResponse> Function(TransportRequest)
-  dco_decode_DartFn_Inputs_transport_request_Output_transport_response_AnyhowException(
+  FutureOr<TransportOutcome> Function(TransportRequest)
+  dco_decode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
     dynamic raw,
   );
 
@@ -130,6 +130,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Proving dco_decode_box_autoadd_proving(dynamic raw);
+
+  @protected
+  TransportResponse dco_decode_box_autoadd_transport_response(dynamic raw);
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
   WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw);
@@ -180,6 +186,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Proving? dco_decode_opt_box_autoadd_proving(dynamic raw);
 
   @protected
+  TransportResponse? dco_decode_opt_box_autoadd_transport_response(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
   Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
 
   @protected
@@ -199,6 +211,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenBalance dco_decode_token_balance(dynamic raw);
+
+  @protected
+  TransportOutcome dco_decode_transport_outcome(dynamic raw);
 
   @protected
   TransportRequest dco_decode_transport_request(dynamic raw);
@@ -317,6 +332,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Proving sse_decode_box_autoadd_proving(SseDeserializer deserializer);
 
   @protected
+  TransportResponse sse_decode_box_autoadd_transport_response(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
   WalletConfig sse_decode_box_autoadd_wallet_config(
     SseDeserializer deserializer,
   );
@@ -375,6 +398,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Proving? sse_decode_opt_box_autoadd_proving(SseDeserializer deserializer);
 
   @protected
+  TransportResponse? sse_decode_opt_box_autoadd_transport_response(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
   Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
@@ -402,6 +433,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenBalance sse_decode_token_balance(SseDeserializer deserializer);
+
+  @protected
+  TransportOutcome sse_decode_transport_outcome(SseDeserializer deserializer);
 
   @protected
   TransportRequest sse_decode_transport_request(SseDeserializer deserializer);
@@ -490,8 +524,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void
-  sse_encode_DartFn_Inputs_transport_request_Output_transport_response_AnyhowException(
-    FutureOr<TransportResponse> Function(TransportRequest) self,
+  sse_encode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
+    FutureOr<TransportOutcome> Function(TransportRequest) self,
     SseSerializer serializer,
   );
 
@@ -546,6 +580,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_proving(Proving self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_transport_response(
+    TransportResponse self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_wallet_config(
@@ -624,6 +667,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_transport_response(
+    TransportResponse? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_list_prim_u_8_strict(
     Uint8List? self,
     SseSerializer serializer,
@@ -658,6 +710,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_token_balance(TokenBalance self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_transport_outcome(
+    TransportOutcome self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_transport_request(

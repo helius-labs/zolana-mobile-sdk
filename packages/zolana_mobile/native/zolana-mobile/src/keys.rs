@@ -97,7 +97,8 @@ impl KeyStore {
     }
 
     fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), String> {
-        let body = self.fetch(format!("{}/{}/{name}", self.base_url, lockfile().prefix))?;
+        let url = format!("{}/{}/{name}", self.base_url, lockfile().prefix);
+        let body = self.fetch(url, entry.size)?;
         let partial = path.with_extension("key.partial");
         let result = (|| {
             let mut file = File::create(&partial).map_err(|_| "proving_key_dir_unwritable")?;
@@ -114,8 +115,9 @@ impl KeyStore {
         result
     }
 
-    /// The body of `url`, whole: it is checked before it is written.
-    fn fetch(&self, url: String) -> Result<Vec<u8>, String> {
+    /// The body of `url`, whole: it is checked before it is written. The
+    /// transport is asked to stop past `size` bytes.
+    fn fetch(&self, url: String, size: u64) -> Result<Vec<u8>, String> {
         let response = self
             .transport
             .send_blocking(TransportRequest {
@@ -123,6 +125,7 @@ impl KeyStore {
                 url,
                 headers: HashMap::new(),
                 body: Vec::new(),
+                max_response_bytes: u32::try_from(size).ok(),
             })
             .map_err(download_failed)?;
         if !(200..300).contains(&response.status) {
@@ -265,6 +268,7 @@ mod tests {
             format!("{DEFAULT_PROVING_KEYS_URL}/{}/k.key", lockfile().prefix)
         );
         assert!(request.headers.is_empty() && request.body.is_empty());
+        assert_eq!(request.max_response_bytes, Some(3));
 
         fs::remove_file(&path).unwrap();
         let (missing, _) = fake(|_| {
