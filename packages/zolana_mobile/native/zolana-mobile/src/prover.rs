@@ -265,10 +265,11 @@ mod tests {
         ] {
             let (backend, received) = backend(Some(response));
             let prover = WalletProver {
-                native: NativeProver::new(
-                    keys::KeyStore::new(std::env::temp_dir().display().to_string(), None, None)
-                        .unwrap(),
-                ),
+                native: NativeProver::new(keys::KeyStore::new(
+                    std::env::temp_dir().display().to_string(),
+                    None,
+                    crate::transport::tests::unreachable(),
+                )),
                 remote: Arc::new(Mutex::new(Some(Arc::new(backend)))),
             };
             let error = proving_error(assembled.prove(&prover, &sender).unwrap_err());
@@ -412,7 +413,11 @@ mod tests {
                 .display()
                 .to_string()
         });
-        let prover = NativeProver::new(keys::KeyStore::new(dir, None, None).unwrap());
+        let prover = NativeProver::new(keys::KeyStore::new(
+            dir,
+            None,
+            crate::transport::tests::unreachable(),
+        ));
         let proof = prover
             .prove(&Captured(transfer_2_3_key()))
             .expect("prove the captured client request");

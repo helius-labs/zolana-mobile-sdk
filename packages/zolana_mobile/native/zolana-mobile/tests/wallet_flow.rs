@@ -33,7 +33,7 @@ use solana_signer::Signer;
 use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{
     derivation_message, ActivityKind, MobileWallet, PendingTransaction, Proving,
-    RegistrationStatus, WalletConfig,
+    RegistrationStatus, Transport, TransportRequest, TransportResponse, WalletConfig,
 };
 
 const FUNDING: u64 = 1_000_000_000;
@@ -69,9 +69,7 @@ fn config() -> WalletConfig {
     });
     WalletConfig {
         rpc_url: required("ZOLANA_E2E_RPC_URL"),
-        rpc_headers: None,
         indexer_url: required("ZOLANA_E2E_INDEXER_URL"),
-        indexer_headers: None,
         proving_key_dir: key_dir,
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
@@ -80,10 +78,45 @@ fn config() -> WalletConfig {
     }
 }
 
+/// An application's transport: a blocking HTTP client, answering on its own
+/// thread as the application's event loop does. The Solana RPC client calls
+/// the transport inside its own async runtime, where a blocking client on the
+/// same thread would panic.
+fn transport() -> Transport {
+    let http = reqwest::blocking::Client::builder()
+        .timeout(None)
+        .build()
+        .expect("HTTP client");
+    Transport::new(move |request| {
+        let http = http.clone();
+        let response = std::thread::spawn(move || send(&http, request))
+            .join()
+            .expect("transport thread");
+        Box::pin(async move { response })
+    })
+}
+
+fn send(
+    http: &reqwest::blocking::Client,
+    request: TransportRequest,
+) -> anyhow::Result<TransportResponse> {
+    let method = reqwest::Method::from_bytes(request.method.as_bytes())?;
+    let mut outgoing = http.request(method, &request.url).body(request.body);
+    for (name, value) in request.headers {
+        outgoing = outgoing.header(name, value);
+    }
+    let response = outgoing.send()?;
+    Ok(TransportResponse {
+        status: response.status().as_u16(),
+        body: response.bytes()?.to_vec(),
+    })
+}
+
 fn open(signer: &Keypair) -> MobileWallet {
     let pubkey = signer.pubkey().to_string();
     let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
-    MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), None).expect("open wallet")
+    MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), transport())
+        .expect("open wallet")
 }
 
 /// Sign as `signers`, which must be the required signers in order.
@@ -224,7 +257,7 @@ fn register_deposit_transfer_and_receive() {
         config(),
         sender.pubkey().to_string(),
         sender_wallet.export_keys(),
-        None,
+        transport(),
     )
     .expect("open from saved keys");
     assert_eq!(stale.shielded_address(), sender_wallet.shielded_address());

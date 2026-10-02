@@ -27,17 +27,16 @@ Unreleased.
 * `close()` for lock and account switch: it rejects queued operations and a
   `prepare` call that is proving at the time, never signs or submits after the
   call, and releases the native wallet once the running step ends.
-* `WalletConfig.rpcHeaders` and `WalletConfig.indexerHeaders`: extra HTTP
-  headers on every Solana RPC and indexer request.
 * Backend proving: a `remoteProver` given at open receives a spend's `/prove`
   request as the Zolana SDK's prover client sends it, for the application's
   backend to prove. The device verifies the returned proof against the pinned
   verifying key before it builds the message. `WalletConfig.proving` sets the
   default; `proving` on `prepareTransfer`, `prepareWithdrawal`, `transfer` and
   `withdraw` chooses per call.
-* `transport` on `ZolanaWallet.open` and `ZolanaWallet.openWithKeys`: the
-  wallet sends every request (Solana RPC, indexer, proving-key downloads)
-  through the application's own networking, with those headers added.
+* The wallet never opens a connection: every request (Solana RPC, indexer,
+  proving-key downloads) goes through a transport in Dart, the package's own
+  on `package:http` by default, or the application's networking passed as
+  `transport` to `ZolanaWallet.open` and `ZolanaWallet.openWithKeys`.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile.
 * Errors carry no key material, and `api-key` values in them are masked.

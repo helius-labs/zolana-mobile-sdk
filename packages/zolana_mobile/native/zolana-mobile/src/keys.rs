@@ -10,7 +10,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
-    io::{Cursor, Read, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
@@ -47,29 +47,21 @@ fn lockfile() -> &'static Lockfile {
 pub struct KeyStore {
     dir: PathBuf,
     base_url: String,
-    /// Downloads go through it when there is one.
-    transport: Option<Transport>,
+    transport: Transport,
     /// Keys whose digest was checked this process. Re-hashing a 240 MB merge
     /// key before every proof would cost more than the proof.
     verified: Mutex<HashSet<String>>,
 }
 
 impl KeyStore {
-    pub fn new(
-        dir: impl Into<PathBuf>,
-        base_url: Option<String>,
-        transport: Option<Transport>,
-    ) -> Result<Self, String> {
+    pub fn new(dir: impl Into<PathBuf>, base_url: Option<String>, transport: Transport) -> Self {
         let base_url = base_url.unwrap_or_else(|| DEFAULT_PROVING_KEYS_URL.to_string());
-        if !is_allowed_url(&base_url) {
-            return Err("proving_key_url_insecure".to_string());
-        }
-        Ok(Self {
+        Self {
             dir: dir.into(),
             base_url: base_url.trim_end_matches('/').to_string(),
             transport,
             verified: Mutex::new(HashSet::new()),
-        })
+        }
     }
 
     /// Path of `key` in the store, downloading it first if it is missing or
@@ -105,11 +97,11 @@ impl KeyStore {
     }
 
     fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), String> {
-        let mut response = self.fetch(format!("{}/{}/{name}", self.base_url, lockfile().prefix))?;
+        let body = self.fetch(format!("{}/{}/{name}", self.base_url, lockfile().prefix))?;
         let partial = path.with_extension("key.partial");
         let result = (|| {
             let mut file = File::create(&partial).map_err(|_| "proving_key_dir_unwritable")?;
-            let digest = copy_bounded(&mut response, &mut file, entry.size)?;
+            let digest = copy_bounded(&mut body.as_slice(), &mut file, entry.size)?;
             file.sync_all().map_err(|_| "proving_key_dir_unwritable")?;
             if digest != entry.sha256 {
                 return Err("proving_key_checksum_mismatch".to_string());
@@ -122,19 +114,10 @@ impl KeyStore {
         result
     }
 
-    /// The body of `url`. Through the transport it arrives whole, before it
-    /// is checked.
-    fn fetch(&self, url: String) -> Result<Box<dyn Read>, String> {
-        let Some(transport) = &self.transport else {
-            let response = reqwest::blocking::Client::builder()
-                .timeout(None)
-                .build()
-                .and_then(|client| client.get(url).send())
-                .and_then(reqwest::blocking::Response::error_for_status)
-                .map_err(download_failed)?;
-            return Ok(Box::new(response));
-        };
-        let response = transport
+    /// The body of `url`, whole: it is checked before it is written.
+    fn fetch(&self, url: String) -> Result<Vec<u8>, String> {
+        let response = self
+            .transport
             .send_blocking(TransportRequest {
                 method: "GET".to_string(),
                 url,
@@ -145,7 +128,7 @@ impl KeyStore {
         if !(200..300).contains(&response.status) {
             return Err(download_failed(response.status));
         }
-        Ok(Box::new(Cursor::new(response.body)))
+        Ok(response.body)
     }
 }
 
@@ -199,22 +182,10 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// Keys are public setup parameters, but a tampered key yields proofs the
-/// program rejects, so the transport still has to be authenticated.
-fn is_allowed_url(url: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(url) else {
-        return false;
-    };
-    match url.scheme() {
-        "https" => true,
-        "http" => matches!(url.host_str(), Some("127.0.0.1" | "localhost")),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::tests::{fake, ok, unreachable};
 
     #[test]
     fn every_transfer_shape_has_a_pinned_key() {
@@ -239,7 +210,7 @@ mod tests {
 
     #[test]
     fn a_key_the_verifying_key_does_not_pin_is_refused() {
-        let store = KeyStore::new(std::env::temp_dir(), None, None).unwrap();
+        let store = KeyStore::new(std::env::temp_dir(), None, unreachable());
         let unknown = ExpectedProvingKey {
             name: "transfer_confidential_9_9.key".into(),
             sha256: [0; 32],
@@ -274,8 +245,6 @@ mod tests {
 
     #[test]
     fn downloads_through_the_transport() {
-        use crate::transport::tests::{fake, ok};
-
         let dir = std::env::temp_dir().join(format!("zolana-key-transport-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("k.key");
@@ -284,7 +253,7 @@ mod tests {
             sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
             size: 3,
         };
-        let store = |transport| KeyStore::new(&dir, None, Some(transport)).unwrap();
+        let store = |transport| KeyStore::new(&dir, None, transport);
 
         let (transport, requests) = fake(|_| ok("abc"));
         store(transport).download("k.key", &entry, &path).unwrap();
@@ -318,14 +287,5 @@ mod tests {
             assert!(!path.exists());
         }
         fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn plaintext_key_hosts_are_refused() {
-        let store = |url: Option<&str>| KeyStore::new("/tmp", url.map(Into::into), None);
-        assert!(store(Some("http://keys.example.com")).is_err());
-        assert!(store(Some("http://localhost.evil.com")).is_err());
-        assert!(store(Some("http://127.0.0.1:9000")).is_ok());
-        assert!(store(None).is_ok());
     }
 }

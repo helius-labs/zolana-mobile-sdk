@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:zolana_mobile/src/http_transport.dart';
 import 'package:zolana_mobile/src/rust/third_party/zolana_mobile.dart'
     show MobileWallet, PendingTransaction;
 import 'package:zolana_mobile/zolana_mobile.dart';
@@ -245,7 +248,7 @@ class FakeBackend implements WalletBackend {
     WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
-    ZolanaTransport? transport,
+    ZolanaTransport transport,
   ) async {
     openedWith = derivationSignature;
     this.transport = transport;
@@ -257,7 +260,7 @@ class FakeBackend implements WalletBackend {
     WalletConfig config,
     String solanaPubkey,
     WalletKeys keys,
-    ZolanaTransport? transport,
+    ZolanaTransport transport,
   ) async {
     openedWithKeys = keys;
     this.transport = transport;
@@ -329,10 +332,113 @@ void main() {
     );
     await reopened.transport!(request);
     expect(requests, [request, request]);
+  });
 
-    // Without one the native wallet uses its own HTTP clients.
-    final (_, _, _, backend) = await openWallet();
-    expect(backend.transport, isNull);
+  test('hands the default transport to the native wallet without one', () async {
+    final (wallet, _, _, backend) = await openWallet();
+    final transport = backend.transport!;
+    final plaintext = TransportRequest(
+      method: 'POST',
+      url: 'http://rpc.example/?api-key=secret',
+      headers: const {},
+      body: Uint8List(0),
+    );
+    // The default transport's policy, applied before any connection.
+    await expectLater(
+      transport(plaintext),
+      throwsA(
+        isA<Exception>().having(
+          (e) => '$e',
+          'message',
+          allOf(contains('allowInsecureHttp'), isNot(contains('secret'))),
+        ),
+      ),
+    );
+
+    // Closing the wallet closes its connection pool.
+    await wallet.close();
+    final secure = TransportRequest(
+      method: 'POST',
+      url: 'https://rpc.example',
+      headers: const {},
+      body: Uint8List(0),
+    );
+    await expectLater(
+      transport(secure),
+      throwsA(isA<http.ClientException>()),
+    );
+  });
+
+  group('HttpTransport', () {
+    final request = TransportRequest(
+      method: 'POST',
+      url: 'https://rpc.example/?api-key=secret',
+      headers: const {'content-type': 'application/json'},
+      body: Uint8List.fromList([1, 2]),
+    );
+
+    test('sends the request as it is and returns any status', () async {
+      http.Request? sent;
+      final transport = HttpTransport(
+        allowInsecureHttp: false,
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response.bytes([9], 401);
+        }),
+      );
+      final response = await transport.send(request);
+      expect(response.status, 401);
+      expect(response.body, [9]);
+      expect(sent!.method, 'POST');
+      expect(sent!.url.toString(), request.url);
+      expect(sent!.headers, request.headers);
+      expect(sent!.bodyBytes, [1, 2]);
+    });
+
+    test('refuses plaintext off loopback unless allowed', () async {
+      final urls = <String>[];
+      HttpTransport transport(bool allowInsecureHttp) => HttpTransport(
+        allowInsecureHttp: allowInsecureHttp,
+        client: MockClient((request) async {
+          urls.add(request.url.toString());
+          return http.Response('', 200);
+        }),
+      );
+      TransportRequest to(String url) => TransportRequest(
+        method: 'GET',
+        url: url,
+        headers: const {},
+        body: Uint8List(0),
+      );
+      const allowed = [
+        'https://keys.example/k.key',
+        'http://localhost:8899/',
+        'http://127.0.0.1:8784/v1/zolana',
+        'http://[::1]:1/',
+      ];
+      for (final url in allowed) {
+        await transport(false).send(to(url));
+      }
+      expect(urls, allowed);
+
+      const plaintext = 'http://10.0.2.2:8784/v1/zolana?api-key=secret';
+      await expectLater(
+        transport(false).send(to(plaintext)),
+        throwsA(
+          isA<Exception>().having(
+            (e) => '$e',
+            'message',
+            allOf(
+              contains('http://10.0.2.2 is plaintext off loopback'),
+              isNot(contains('secret')),
+            ),
+          ),
+        ),
+      );
+      expect(urls, allowed);
+      await transport(true).send(to(plaintext));
+      expect(urls.last, plaintext);
+    });
   });
 
   test('opens from saved keys without asking for a signature', () async {

@@ -94,9 +94,9 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
 ```
 
 - **Proving keys** download on first use from the Zolana key host into
-  `provingKeyDir` (through the application's transport when it has one, see
-  below), and are used only after they match the proving-key lockfile of
-  the pinned Zolana revision. The wallet picks the circuit shape, so the first
+  `provingKeyDir` (through the transport, see [Networking](#networking)), and
+  are used only after they match the proving-key lockfile of the pinned
+  Zolana revision. The wallet picks the circuit shape, so the first
   transfer of a new shape downloads its key (8–240 MB); keep the directory
   across launches.
 - **Tokens**: pass `mint` (base58) for an SPL Token or Token-2022 asset; no
@@ -108,11 +108,6 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   goes to the recipient's associated token account: when it fails with
   `recipient_token_account_missing`, `prepareTokenAccount` creates the account.
   Transaction fees are paid in SOL by this account.
-- **Request headers**: `WalletConfig.rpcHeaders` adds HTTP headers to every
-  Solana RPC request, and `WalletConfig.indexerHeaders` to every indexer
-  request, for example an auth token for your proxy. The values are marked
-  sensitive, so they are not printed in logs. An invalid header fails `open`
-  with `rpc_header_invalid` or `indexer_header_invalid`.
 - **Registration**: `registrationStatus()` is `notRegistered`, `registered` or
   `conflict`. A conflict means the account's user record holds other keys: set
   by another app, by a key rotation, or derived by a signer whose signatures
@@ -123,7 +118,8 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   for a public payment.
 - **Privacy**: deposits and withdrawals are public. Private transfers reveal
   neither amount nor recipient. The indexer learns this wallet's view tags, so
-  `allowInsecureHttp` is only for a local test cluster.
+  `allowInsecureHttp`, which lets the default transport use a plaintext URL
+  off loopback, is only for a local test cluster.
 - **History**: `activity()` lists the transactions that moved this wallet's
   notes, newest first, as `shielded`, `unshielded`, `sent`, `received` or
   `internal` (merges and transfers to itself), one entry per asset. The indexer
@@ -277,18 +273,35 @@ Current limits: notes are not merged, so a spend takes at most 5 notes on one
 tree and fails with `merge_required` beyond that; one prepared prover is
 loaded per process, so close a `LocalProver` before the wallet proves.
 
-### Networking through the app
+### Networking
 
-By default the wallet sends its requests with its own HTTP clients. An
-application that sends all traffic through its own networking stack (a proxy,
-certificate pinning, its backend) passes a `transport` to `ZolanaWallet.open`
-or `ZolanaWallet.openWithKeys`:
+The wallet never opens a connection. Every request, Solana RPC and indexer
+calls (`POST`, JSON) and proving-key downloads (`GET`, the key files above,
+returned whole and checked against the lockfile), goes through one transport
+in Dart:
+
+- By default, the package's own transport on `package:http`: one connection
+  pool per wallet, closed with `close()`. It refuses a plaintext (`http`) URL
+  off loopback unless `WalletConfig.allowInsecureHttp` is set, and fails a
+  request whose response stalls for 30 seconds.
+- Or the application's: pass a `transport` to `ZolanaWallet.open` or
+  `ZolanaWallet.openWithKeys` to send through your own stack (a proxy,
+  certificate pinning, your backend). Headers, timeouts and which URLs it
+  accepts are then yours.
 
 ```dart
+final client = http.Client();
+
 Future<TransportResponse> send(TransportRequest request) async {
-  // Send request.method to request.url with request.headers and request.body.
-  final response = await appHttp.send(request);
-  return TransportResponse(status: response.statusCode, body: response.bytes);
+  final response = await client.send(
+    http.Request(request.method, Uri.parse(request.url))
+      ..headers.addAll(request.headers)
+      ..bodyBytes = request.body,
+  );
+  return TransportResponse(
+    status: response.statusCode,
+    body: await response.stream.toBytes(),
+  );
 }
 
 final wallet = await ZolanaWallet.open(
@@ -298,23 +311,17 @@ final wallet = await ZolanaWallet.open(
 );
 ```
 
-- Every request of the wallet goes through the transport: Solana RPC and
-  indexer calls (`POST`, JSON) and proving-key downloads (`GET`, the key files
-  above, returned whole and checked against the lockfile). The wallet opens no
-  connection itself.
-- A `remoteProver` is not a transport request: the wallet hands it the
-  `/prove` request body directly, and the application sends it to its backend.
-- `request.headers` already holds `WalletConfig.rpcHeaders` or
-  `WalletConfig.indexerHeaders` and the content type; send them as they are.
-  The URL keeps its `api-key` parameter.
+- The request carries the method, the URL with its `api-key` parameter, and
+  the content type of a `POST`; nothing else. Send it as it is.
 - Return the response whatever its status. Throw only when there is no
   response (no network, DNS, TLS). The wallet then fails with
   `transport failed: ` and the exception message, `api-key` values masked.
-- Timeouts are the transport's; the wallet's own 30-second limit does not
-  apply. The wallet waits for each answer, so the transport must not call the
+- The wallet waits for each answer, so the transport must not call the
   wallet.
-- `example/lib/http_client_transport.dart` is a transport on `dart:io`'s
-  `HttpClient`.
+- A `remoteProver` is not a transport request: the wallet hands it the
+  `/prove` request body directly, and the application sends it to its backend.
+- `example/lib/app_transport.dart` is the transport above with a log of what
+  it sent; the example's devnet test sends through it.
 
 ## Prepare once, prove repeatedly
 

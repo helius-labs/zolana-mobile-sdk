@@ -1,22 +1,26 @@
-//! The application's HTTP client. A wallet opened with a [`Transport`] sends
-//! every request through it, Solana RPC and indexer calls and proving-key
-//! downloads, and opens no connection of its own.
+//! The application's HTTP client, the wallet's only network path. Solana RPC
+//! and indexer calls and proving-key downloads all go through it; the wallet
+//! opens no connection of its own.
 
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use flutter_rust_bridge::DartFnFuture;
-use reqwest::{
-    header::{HeaderMap, HeaderValue, CONTENT_TYPE},
-    ResponseBuilderExt, StatusCode,
+use reqwest::{ResponseBuilderExt, StatusCode};
+use reqwest_middleware::{ClientBuilder, Middleware, Next};
+use solana_commitment_config::CommitmentConfig;
+use solana_rpc_client::{
+    http_sender::HttpSender,
+    rpc_client::{RpcClient, RpcClientConfig},
 };
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next};
-use zolana_api::{ApiError, BlockingHttpClient, HttpResponse};
+use zolana_api::{ApiError, BlockingHttpClient, BlockingZolanaApi, HttpResponse};
+use zolana_client::{SolanaRpc, ZolanaIndexer};
 
 /// One HTTP request of the wallet.
 pub struct TransportRequest {
     /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
     pub method: String,
     pub url: String,
+    /// The content type of a `POST`; nothing else.
     pub headers: HashMap<String, String>,
     /// Empty for a `GET`.
     pub body: Vec<u8>,
@@ -65,27 +69,25 @@ impl Transport {
         futures_executor::block_on(self.send(request))
     }
 
-    /// The HTTP client of the Solana RPC client: `client` builds each request,
-    /// and this transport sends it with `headers` added.
-    pub(crate) fn solana_rpc(
-        &self,
-        client: reqwest::Client,
-        headers: HeaderMap,
-    ) -> ClientWithMiddleware {
-        ClientBuilder::new(client)
-            .with(WithHeaders {
-                transport: self.clone(),
-                headers,
-            })
+    /// The Solana RPC client of `url`: solana-rpc-client's own sender, whose
+    /// requests this transport answers, so its JSON-RPC parsing, error data
+    /// and retries stay.
+    pub(crate) fn solana_rpc(&self, url: String) -> Result<SolanaRpc, String> {
+        // The middleware stack needs a base client. The sender below answers
+        // every request itself, so the base never sends.
+        let base = reqwest::Client::builder()
             .build()
+            .map_err(|_| "rpc_client_unavailable".to_string())?;
+        let client = ClientBuilder::new(base).with(Sender(self.clone())).build();
+        Ok(SolanaRpc::with_client(RpcClient::new_sender(
+            HttpSender::new_with_client_with_middleware(url, client),
+            RpcClientConfig::with_commitment(CommitmentConfig::confirmed()),
+        )))
     }
 
-    /// The HTTP client of the indexer, with `headers` on every request.
-    pub(crate) fn indexer(&self, headers: HeaderMap) -> impl BlockingHttpClient {
-        WithHeaders {
-            transport: self.clone(),
-            headers,
-        }
+    /// The indexer client of `url`, through this transport.
+    pub(crate) fn indexer(&self, url: &str) -> ZolanaIndexer {
+        ZolanaIndexer::with_api(BlockingZolanaApi::with_client(url, Sender(self.clone())))
     }
 }
 
@@ -111,84 +113,68 @@ impl fmt::Display for TransportFailed {
 
 impl std::error::Error for TransportFailed {}
 
-/// A transport with the headers one service adds to every request. The
-/// request's own headers win, as they do over a `reqwest` client's defaults.
-struct WithHeaders {
-    transport: Transport,
-    headers: HeaderMap,
-}
+/// The HTTP client the SDK's clients call: each request becomes a
+/// [`TransportRequest`] with its headers as they are.
+struct Sender(Transport);
 
-impl WithHeaders {
-    fn request(
-        &self,
-        method: &str,
-        url: &str,
-        headers: &HeaderMap,
-        body: Vec<u8>,
-    ) -> TransportRequest {
-        let mut merged = HashMap::new();
-        for (name, value) in headers.iter().chain(&self.headers) {
-            merged
-                .entry(name.to_string())
-                .or_insert_with(|| String::from_utf8_lossy(value.as_bytes()).into_owned());
-        }
-        TransportRequest {
-            method: method.to_string(),
-            url: url.to_string(),
-            headers: merged,
-            body,
-        }
-    }
-}
-
-impl fmt::Debug for WithHeaders {
+impl fmt::Debug for Sender {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("WithHeaders")
-            .finish_non_exhaustive()
+        formatter.write_str("Sender")
     }
 }
 
 #[async_trait::async_trait]
-impl Middleware for WithHeaders {
+impl Middleware for Sender {
     async fn handle(
         &self,
         request: reqwest::Request,
         _: &mut http::Extensions,
         _: Next<'_>,
     ) -> reqwest_middleware::Result<reqwest::Response> {
+        let url = request.url().clone();
+        let headers = request
+            .headers()
+            .iter()
+            .map(|(name, value)| {
+                let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+                (name.to_string(), value)
+            })
+            .collect();
         let body = request
             .body()
             .and_then(reqwest::Body::as_bytes)
             .unwrap_or_default()
             .to_vec();
-        let url = request.url();
         let response = self
-            .transport
-            .send(self.request(
-                request.method().as_str(),
-                url.as_str(),
-                request.headers(),
+            .0
+            .send(TransportRequest {
+                method: request.method().to_string(),
+                url: url.to_string(),
+                headers,
                 body,
-            ))
+            })
             .await
             .map_err(reqwest_middleware::Error::middleware)?;
         let response = http::Response::builder()
             .status(response.status)
-            .url(url.clone())
+            .url(url)
             .body(response.body)
             .map_err(reqwest_middleware::Error::middleware)?;
         Ok(response.into())
     }
 }
 
-impl BlockingHttpClient for WithHeaders {
+impl BlockingHttpClient for Sender {
     fn post_json(&self, url: &str, body: Vec<u8>) -> Result<HttpResponse, ApiError> {
-        let json =
-            HeaderMap::from_iter([(CONTENT_TYPE, HeaderValue::from_static("application/json"))]);
+        let request = TransportRequest {
+            method: "POST".to_string(),
+            url: url.to_string(),
+            headers: HashMap::from([("content-type".to_string(), "application/json".to_string())]),
+            body,
+        };
         let response = self
-            .transport
-            .send_blocking(self.request("POST", url, &json, body))
+            .0
+            .send_blocking(request)
             .map_err(|error| ApiError::HttpClient(Box::new(error)))?;
         let status = StatusCode::from_u16(response.status)
             .map_err(|error| ApiError::HttpClient(Box::new(error)))?;
@@ -225,6 +211,12 @@ pub(crate) mod tests {
         (transport, requests)
     }
 
+    /// A transport with no network: every request fails as a refused
+    /// connection does, naming the URL as the application's exception would.
+    pub(crate) fn unreachable() -> Transport {
+        fake(|request| Err(anyhow::anyhow!("connection refused ({})", request.url))).0
+    }
+
     pub(crate) fn ok(body: &str) -> anyhow::Result<TransportResponse> {
         Ok(TransportResponse {
             status: 200,
@@ -236,12 +228,9 @@ pub(crate) mod tests {
     const INDEXER_URL: &str = "https://indexer.example/v1/zolana?api-key=secret";
 
     fn open(signer: &Keypair, transport: Transport) -> MobileWallet {
-        let header = |name: &str, value: &str| Some(HashMap::from([(name.into(), value.into())]));
         let config = WalletConfig {
             rpc_url: RPC_URL.to_string(),
-            rpc_headers: header("x-rpc-token", "rpc-secret"),
             indexer_url: INDEXER_URL.to_string(),
-            indexer_headers: header("x-indexer-token", "indexer-secret"),
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
@@ -250,11 +239,15 @@ pub(crate) mod tests {
         };
         let pubkey = signer.pubkey().to_string();
         let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
-        MobileWallet::open(config, pubkey, signature.as_ref().to_vec(), Some(transport)).unwrap()
+        MobileWallet::open(config, pubkey, signature.as_ref().to_vec(), transport).unwrap()
     }
 
     fn json(body: &[u8]) -> serde_json::Value {
         serde_json::from_slice(body).unwrap()
+    }
+
+    fn json_content_type() -> HashMap<String, String> {
+        HashMap::from([("content-type".to_string(), "application/json".to_string())])
     }
 
     #[test]
@@ -275,9 +268,7 @@ pub(crate) mod tests {
         );
         let rpc = requests.lock().unwrap().pop().unwrap();
         assert_eq!((rpc.method.as_str(), rpc.url.as_str()), ("POST", RPC_URL));
-        assert_eq!(rpc.headers["x-rpc-token"], "rpc-secret");
-        assert_eq!(rpc.headers["content-type"], "application/json");
-        assert!(!rpc.headers.contains_key("x-indexer-token"));
+        assert_eq!(rpc.headers, json_content_type());
         assert_eq!(json(&rpc.body)["method"], "getAccountInfo");
 
         assert_eq!(wallet.private_balance(None), Ok(0));
@@ -290,9 +281,7 @@ pub(crate) mod tests {
                 request.url,
                 format!("https://indexer.example/v1/zolana/{method}?api-key=secret")
             );
-            assert_eq!(request.headers["x-indexer-token"], "indexer-secret");
-            assert_eq!(request.headers["content-type"], "application/json");
-            assert!(!request.headers.contains_key("x-rpc-token"));
+            assert_eq!(request.headers, json_content_type());
         }
     }
 

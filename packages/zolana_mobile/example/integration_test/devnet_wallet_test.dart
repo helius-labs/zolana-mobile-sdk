@@ -7,19 +7,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
+import 'package:zolana_mobile_demo/app_transport.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
-import 'package:zolana_mobile_demo/http_client_transport.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
 /// device or simulator running the test, with A reopened from its exported
 /// keys and the transfer signed by the test after a blockhash refresh, as an
 /// application that signs itself does; one proved by a backend that forwards
-/// the request to the Helius prover. In both, A sends every request through a
-/// `dart:io` transport, as an application with its own networking does; B
-/// uses the wallet's HTTP clients. Opt in, since it spends devnet SOL and
-/// needs A funded and a Helius key for devnet:
+/// the request to the Helius prover. In both, A sends every request through
+/// the application's own transport (`package:http`, logged), as an
+/// application with its own networking does; B uses the package's default
+/// transport. Opt in, since it spends devnet SOL and needs A funded and a
+/// Helius key for devnet:
 ///
 /// ```sh
 /// flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
@@ -105,7 +106,7 @@ void main() {
     final signed = await open(demoAccounts[0]);
     final keys = await signed.exportKeys();
     await signed.close();
-    final transport = HttpClientTransport();
+    final transport = AppTransport();
     addTearDown(transport.close);
     final sender = await ZolanaWallet.openWithKeys(
       config: await config(),
@@ -165,7 +166,7 @@ void main() {
   ) async {
     final lamports = BigInt.from(1000000);
     RemoteProver backend = (_) => throw const SocketException('unreachable');
-    final transport = HttpClientTransport();
+    final transport = AppTransport();
     addTearDown(transport.close);
     final sender = await ZolanaWallet.open(
       signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),

@@ -74,13 +74,13 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<WalletKeys> exportKeys();
 
   /// Open the wallet of `solana_pubkey` from its signature over
-  /// [`derivation_message`]. With a `transport`, every request goes through
-  /// it, with the configured headers added.
+  /// [`derivation_message`]. Every request of the wallet goes through
+  /// `transport`; it opens no connection itself.
   static Future<MobileWallet> open({
     required WalletConfig config,
     required String solanaPubkey,
     required List<int> derivationSignature,
-    Transport? transport,
+    required Transport transport,
   }) => RustLib.instance.api.zolanaMobileMobileWalletOpen(
     config: config,
     solanaPubkey: solanaPubkey,
@@ -95,7 +95,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
     required WalletConfig config,
     required String solanaPubkey,
     required WalletKeys keys,
-    Transport? transport,
+    required Transport transport,
   }) => RustLib.instance.api.zolanaMobileMobileWalletOpenWithKeys(
     config: config,
     solanaPubkey: solanaPubkey,
@@ -436,6 +436,8 @@ class TransportRequest {
   /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
   final String method;
   final String url;
+
+  /// The content type of a `POST`; nothing else.
   final Map<String, String> headers;
 
   /// Empty for a `GET`.
@@ -485,15 +487,7 @@ class TransportResponse {
 /// Where the wallet reads chain state and stores proving keys.
 class WalletConfig {
   final String rpcUrl;
-
-  /// Extra HTTP headers on every Solana RPC request, such as an auth token.
-  /// Their values are kept out of logs.
-  final Map<String, String>? rpcHeaders;
   final String indexerUrl;
-
-  /// Extra HTTP headers on every indexer request, such as an auth token for
-  /// the application's indexer proxy. Their values are kept out of logs.
-  final Map<String, String>? indexerHeaders;
 
   /// Directory for downloaded proving keys; keep it across launches.
   final String provingKeyDir;
@@ -506,9 +500,10 @@ class WalletConfig {
   /// [`MobileWallet::set_remote_prover`].
   final Proving? proving;
 
-  /// Allow a plaintext indexer off loopback (an emulator reaching its host).
-  /// The indexer sees the wallet's view tags, so never set this for funds
-  /// that matter.
+  /// Read by the package's default transport: allow a plaintext URL off
+  /// loopback (an emulator reaching its host). The indexer sees the wallet's
+  /// view tags, so never set this for funds that matter. An application's
+  /// own transport decides for itself.
   final bool allowInsecureHttp;
 
   /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
@@ -519,9 +514,7 @@ class WalletConfig {
 
   const WalletConfig({
     required this.rpcUrl,
-    this.rpcHeaders,
     required this.indexerUrl,
-    this.indexerHeaders,
     required this.provingKeyDir,
     this.provingKeyUrl,
     this.proving,
@@ -532,9 +525,7 @@ class WalletConfig {
   @override
   int get hashCode =>
       rpcUrl.hashCode ^
-      rpcHeaders.hashCode ^
       indexerUrl.hashCode ^
-      indexerHeaders.hashCode ^
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
       proving.hashCode ^
@@ -547,9 +538,7 @@ class WalletConfig {
       other is WalletConfig &&
           runtimeType == other.runtimeType &&
           rpcUrl == other.rpcUrl &&
-          rpcHeaders == other.rpcHeaders &&
           indexerUrl == other.indexerUrl &&
-          indexerHeaders == other.indexerHeaders &&
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&

@@ -285,7 +285,7 @@ fn wire__zolana_mobile__MobileWallet_open_impl(
             let api_config = <zolana_mobile::WalletConfig>::sse_decode(&mut deserializer);
             let api_solana_pubkey = <String>::sse_decode(&mut deserializer);
             let api_derivation_signature = <Vec<u8>>::sse_decode(&mut deserializer);
-            let api_transport = <Option<Transport>>::sse_decode(&mut deserializer);
+            let api_transport = <Transport>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -326,7 +326,7 @@ fn wire__zolana_mobile__MobileWallet_open_with_keys_impl(
             let api_config = <zolana_mobile::WalletConfig>::sse_decode(&mut deserializer);
             let api_solana_pubkey = <String>::sse_decode(&mut deserializer);
             let api_keys = <zolana_mobile::WalletKeys>::sse_decode(&mut deserializer);
-            let api_transport = <Option<Transport>>::sse_decode(&mut deserializer);
+            let api_transport = <Transport>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -1679,9 +1679,7 @@ const _: fn() = || {
     {
         let WalletConfig = None::<zolana_mobile::WalletConfig>.unwrap();
         let _: String = WalletConfig.rpc_url;
-        let _: Option<std::collections::HashMap<String, String>> = WalletConfig.rpc_headers;
         let _: String = WalletConfig.indexer_url;
-        let _: Option<std::collections::HashMap<String, String>> = WalletConfig.indexer_headers;
         let _: String = WalletConfig.proving_key_dir;
         let _: Option<String> = WalletConfig.proving_key_url;
         let _: Option<zolana_mobile::Proving> = WalletConfig.proving;
@@ -2031,19 +2029,6 @@ impl SseDecode for zolana_mobile::LocalProofResult {
     }
 }
 
-impl SseDecode for Option<std::collections::HashMap<String, String>> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        if (<bool>::sse_decode(deserializer)) {
-            return Some(<std::collections::HashMap<String, String>>::sse_decode(
-                deserializer,
-            ));
-        } else {
-            return None;
-        }
-    }
-}
-
 impl SseDecode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2060,17 +2045,6 @@ impl SseDecode for Option<PendingTransaction> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<PendingTransaction>::sse_decode(deserializer));
-        } else {
-            return None;
-        }
-    }
-}
-
-impl SseDecode for Option<Transport> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        if (<bool>::sse_decode(deserializer)) {
-            return Some(<Transport>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -2244,11 +2218,7 @@ impl SseDecode for zolana_mobile::WalletConfig {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_rpcUrl = <String>::sse_decode(deserializer);
-        let mut var_rpcHeaders =
-            <Option<std::collections::HashMap<String, String>>>::sse_decode(deserializer);
         let mut var_indexerUrl = <String>::sse_decode(deserializer);
-        let mut var_indexerHeaders =
-            <Option<std::collections::HashMap<String, String>>>::sse_decode(deserializer);
         let mut var_provingKeyDir = <String>::sse_decode(deserializer);
         let mut var_provingKeyUrl = <Option<String>>::sse_decode(deserializer);
         let mut var_proving = <Option<zolana_mobile::Proving>>::sse_decode(deserializer);
@@ -2256,9 +2226,7 @@ impl SseDecode for zolana_mobile::WalletConfig {
         let mut var_mints = <Vec<String>>::sse_decode(deserializer);
         return zolana_mobile::WalletConfig {
             rpc_url: var_rpcUrl,
-            rpc_headers: var_rpcHeaders,
             indexer_url: var_indexerUrl,
-            indexer_headers: var_indexerHeaders,
             proving_key_dir: var_provingKeyDir,
             proving_key_url: var_provingKeyUrl,
             proving: var_proving,
@@ -2693,9 +2661,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::WalletConfig> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.0.rpc_url.into_into_dart().into_dart(),
-            self.0.rpc_headers.into_into_dart().into_dart(),
             self.0.indexer_url.into_into_dart().into_dart(),
-            self.0.indexer_headers.into_into_dart().into_dart(),
             self.0.proving_key_dir.into_into_dart().into_dart(),
             self.0.proving_key_url.into_into_dart().into_dart(),
             self.0.proving.into_into_dart().into_dart(),
@@ -2950,16 +2916,6 @@ impl SseEncode for zolana_mobile::LocalProofResult {
     }
 }
 
-impl SseEncode for Option<std::collections::HashMap<String, String>> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.is_some(), serializer);
-        if let Some(value) = self {
-            <std::collections::HashMap<String, String>>::sse_encode(value, serializer);
-        }
-    }
-}
-
 impl SseEncode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2976,16 +2932,6 @@ impl SseEncode for Option<PendingTransaction> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <PendingTransaction>::sse_encode(value, serializer);
-        }
-    }
-}
-
-impl SseEncode for Option<Transport> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.is_some(), serializer);
-        if let Some(value) = self {
-            <Transport>::sse_encode(value, serializer);
         }
     }
 }
@@ -3151,15 +3097,7 @@ impl SseEncode for zolana_mobile::WalletConfig {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.rpc_url, serializer);
-        <Option<std::collections::HashMap<String, String>>>::sse_encode(
-            self.rpc_headers,
-            serializer,
-        );
         <String>::sse_encode(self.indexer_url, serializer);
-        <Option<std::collections::HashMap<String, String>>>::sse_encode(
-            self.indexer_headers,
-            serializer,
-        );
         <String>::sse_encode(self.proving_key_dir, serializer);
         <Option<String>>::sse_encode(self.proving_key_url, serializer);
         <Option<zolana_mobile::Proving>>::sse_encode(self.proving, serializer);
