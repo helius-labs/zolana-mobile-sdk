@@ -563,6 +563,24 @@ void main() {
       expect(chunks, hasLength(6));
     });
 
+    test('bounds a request by its timeoutMs', () async {
+      final slow = HttpTransport(
+        client: MockClient((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          return http.Response('', 200);
+        }),
+      );
+      TransportRequest after(int timeoutMs) => TransportRequest(
+        method: 'POST',
+        url: 'https://prover.example/prove',
+        headers: const {},
+        body: Uint8List(0),
+        timeoutMs: timeoutMs,
+      );
+      await expectLater(slow.send(after(20)), throwsA(isA<TimeoutException>()));
+      expect((await slow.send(after(2000))).status, 200);
+    });
+
     test('isSecureUrl allows https and http to this device only', () {
       for (final url in [
         'https://keys.example/k.key',

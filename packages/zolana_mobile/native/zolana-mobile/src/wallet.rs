@@ -44,8 +44,8 @@ use zolana_client::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, try_resolve_registered_address,
     },
-    AsyncProverClient, AsyncZolanaIndexer, ClientError, ComputeBudgetConfig, IndexerPollConfig,
-    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos, ZolanaClient,
+    ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SignedPrivateTransaction, SolanaRpc,
+    SpendableUtxos, ZolanaClient,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -296,13 +296,9 @@ impl MobileWallet {
             transport.clone(),
         );
         let spend_prover = SpendProver::default();
-        let (prover, async_indexer, async_prover) = unused_clients(&config.indexer_url);
-        let client = ZolanaClient::new(
+        let client = ZolanaClient::new_blocking(
             transport.solana_rpc(config.rpc_url)?,
             transport.indexer(&config.indexer_url),
-            prover,
-            async_indexer,
-            async_prover,
         )
         .with_prover(WalletProver {
             native: NativeProver::new(proving_keys),
@@ -956,20 +952,6 @@ fn withdraw_to(
             token_program,
         },
     ))
-}
-
-/// The clients `ZolanaClient::new` requires but the wallet never calls: it
-/// reads the indexer through the blocking client only, and `with_prover`
-/// replaces the prover client before any request. They open no connection.
-/// PRI-74 adds an upstream constructor for blocking callers; this is the one
-/// place to change when it lands.
-fn unused_clients(indexer_url: &str) -> (ProverClient, AsyncZolanaIndexer, AsyncProverClient) {
-    const UNUSED_PROVER_URL: &str = "https://prover.invalid";
-    (
-        ProverClient::new(UNUSED_PROVER_URL.to_string()),
-        AsyncZolanaIndexer::new(indexer_url),
-        AsyncProverClient::new(UNUSED_PROVER_URL.to_string()),
-    )
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.

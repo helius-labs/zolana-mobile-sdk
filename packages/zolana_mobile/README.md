@@ -284,7 +284,8 @@ in Dart:
   plaintext (`http`) URL off loopback in the config before anything else, with
   `rpc_url_insecure`, `indexer_url_insecure` or `proving_key_url_insecure`,
   unless `allowInsecureHttp: true` is passed. It follows redirects, fails a
-  request whose response stalls for 30 seconds, and stops reading a body past
+  request whose response or any part of its body takes longer than
+  `timeoutMs` (30 seconds without one), and stops reading a body past
   `maxResponseBytes`.
 - Or the application's: pass a `transport` to `ZolanaWallet.open` or
   `ZolanaWallet.openWithKeys` to send through your own stack (a proxy,
@@ -326,8 +327,10 @@ final wallet = await ZolanaWallet.open(
   response (no network, DNS, TLS, a timeout). The wallet then fails with
   `transport failed: ` and the exception message, never its stack trace,
   `api-key` values masked.
-- Time out your requests: the wallet and `close()` wait for each answer.
-  For the same reason the transport must not call the wallet.
+- A request with `timeoutMs` set carries the SDK's bound for it, in
+  milliseconds; use it in place of your own. Time out every other request
+  too: the wallet and `close()` wait for each answer. For the same reason the
+  transport must not call the wallet.
 - A `remoteProver` is not a transport request: the wallet hands it the
   `/prove` request body directly, and the application sends it to its backend.
 - `example/lib/app_transport.dart` is the transport above with a log of what

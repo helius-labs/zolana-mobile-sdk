@@ -469,12 +469,17 @@ class TransportRequest {
   /// past it; the wallet refuses a longer body either way.
   final int? maxResponseBytes;
 
+  /// The caller's bound on the request, in milliseconds, when it has one;
+  /// otherwise the transport's own applies.
+  final int? timeoutMs;
+
   const TransportRequest({
     required this.method,
     required this.url,
     required this.headers,
     required this.body,
     this.maxResponseBytes,
+    this.timeoutMs,
   });
 
   @override
@@ -483,7 +488,8 @@ class TransportRequest {
       url.hashCode ^
       headers.hashCode ^
       body.hashCode ^
-      maxResponseBytes.hashCode;
+      maxResponseBytes.hashCode ^
+      timeoutMs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -494,7 +500,8 @@ class TransportRequest {
           url == other.url &&
           headers == other.headers &&
           body == other.body &&
-          maxResponseBytes == other.maxResponseBytes;
+          maxResponseBytes == other.maxResponseBytes &&
+          timeoutMs == other.timeoutMs;
 }
 
 /// The server's response, whatever its status.

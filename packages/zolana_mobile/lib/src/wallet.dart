@@ -43,9 +43,10 @@ typedef RemoteProver = Future<Uint8List> Function(Uint8List request);
 /// there is none; the wallet then fails with the exception's message, never
 /// its stack trace. Stop reading and throw when a body exceeds
 /// [native.TransportRequest.maxResponseBytes]; the wallet refuses a longer
-/// body either way. Give requests a timeout: the wallet, and
-/// [ZolanaWallet.close], wait for each answer, so the transport must not
-/// call the wallet either.
+/// body either way. Bound each request by
+/// [native.TransportRequest.timeoutMs] when it is set, and by a timeout of
+/// your own otherwise: the wallet, and [ZolanaWallet.close], wait for each
+/// answer, so the transport must not call the wallet either.
 typedef ZolanaTransport = Future<native.TransportResponse> Function(
   native.TransportRequest request,
 );

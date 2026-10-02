@@ -1676,6 +1676,7 @@ const _: fn() = || {
         let _: std::collections::HashMap<String, String> = TransportRequest.headers;
         let _: Vec<u8> = TransportRequest.body;
         let _: Option<u32> = TransportRequest.max_response_bytes;
+        let _: Option<u32> = TransportRequest.timeout_ms;
     }
     {
         let TransportResponse = None::<zolana_mobile::TransportResponse>.unwrap();
@@ -2186,12 +2187,14 @@ impl SseDecode for zolana_mobile::TransportRequest {
         let mut var_headers = <std::collections::HashMap<String, String>>::sse_decode(deserializer);
         let mut var_body = <Vec<u8>>::sse_decode(deserializer);
         let mut var_maxResponseBytes = <Option<u32>>::sse_decode(deserializer);
+        let mut var_timeoutMs = <Option<u32>>::sse_decode(deserializer);
         return zolana_mobile::TransportRequest {
             method: var_method,
             url: var_url,
             headers: var_headers,
             body: var_body,
             max_response_bytes: var_maxResponseBytes,
+            timeout_ms: var_timeoutMs,
         };
     }
 }
@@ -2674,6 +2677,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::TransportReques
             self.0.headers.into_into_dart().into_dart(),
             self.0.body.into_into_dart().into_dart(),
             self.0.max_response_bytes.into_into_dart().into_dart(),
+            self.0.timeout_ms.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -3121,6 +3125,7 @@ impl SseEncode for zolana_mobile::TransportRequest {
         <std::collections::HashMap<String, String>>::sse_encode(self.headers, serializer);
         <Vec<u8>>::sse_encode(self.body, serializer);
         <Option<u32>>::sse_encode(self.max_response_bytes, serializer);
+        <Option<u32>>::sse_encode(self.timeout_ms, serializer);
     }
 }
 

@@ -2,17 +2,17 @@
 //! and indexer calls and proving-key downloads all go through it; the wallet
 //! opens no connection of its own.
 
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use flutter_rust_bridge::DartFnFuture;
-use reqwest::{ResponseBuilderExt, StatusCode};
+use reqwest::{header::HeaderMap, ResponseBuilderExt, StatusCode};
 use reqwest_middleware::{ClientBuilder, Middleware, Next};
 use solana_commitment_config::CommitmentConfig;
 use solana_rpc_client::{
     http_sender::HttpSender,
     rpc_client::{RpcClient, RpcClientConfig},
 };
-use zolana_api::{ApiError, BlockingHttpClient, BlockingZolanaApi, HttpResponse};
+use zolana_api::{ApiError, BlockingHttpClient, BlockingZolanaApi, HttpRequest, HttpResponse};
 use zolana_client::{SolanaRpc, ZolanaIndexer};
 
 /// One HTTP request of the wallet.
@@ -28,6 +28,9 @@ pub struct TransportRequest {
     /// (the key's size in the lockfile). A transport stops reading and fails
     /// past it; the wallet refuses a longer body either way.
     pub max_response_bytes: Option<u32>,
+    /// The caller's bound on the request, in milliseconds, when it has one;
+    /// otherwise the transport's own applies.
+    pub timeout_ms: Option<u32>,
 }
 
 /// The server's response, whatever its status.
@@ -117,6 +120,20 @@ impl std::error::Error for TransportFailed {}
 /// [`TransportRequest`] with its headers as they are.
 struct Sender(Transport);
 
+fn header_map(headers: &HeaderMap) -> HashMap<String, String> {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+            (name.to_string(), value)
+        })
+        .collect()
+}
+
+fn millis(timeout: Duration) -> u32 {
+    u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX)
+}
+
 impl fmt::Debug for Sender {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("Sender")
@@ -132,14 +149,7 @@ impl Middleware for Sender {
         _: Next<'_>,
     ) -> reqwest_middleware::Result<reqwest::Response> {
         let url = request.url().clone();
-        let headers = request
-            .headers()
-            .iter()
-            .map(|(name, value)| {
-                let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
-                (name.to_string(), value)
-            })
-            .collect();
+        let headers = header_map(request.headers());
         let body = request
             .body()
             .and_then(reqwest::Body::as_bytes)
@@ -153,6 +163,7 @@ impl Middleware for Sender {
                 headers,
                 body,
                 max_response_bytes: None,
+                timeout_ms: None,
             })
             .await
             .map_err(reqwest_middleware::Error::middleware)?;
@@ -165,14 +176,26 @@ impl Middleware for Sender {
     }
 }
 
+/// A failure is always [`ApiError::HttpClient`]: the transport does not say
+/// whether the status arrived before it failed ([`ApiError::ResponseLost`]).
+/// The indexer, the one client on this path, retries both alike.
 impl BlockingHttpClient for Sender {
-    fn post_json(&self, url: &str, body: Vec<u8>) -> Result<HttpResponse, ApiError> {
+    fn send(&self, request: HttpRequest) -> Result<HttpResponse, ApiError> {
+        let HttpRequest {
+            method,
+            url,
+            headers,
+            mut body,
+            timeout,
+        } = request;
         let request = TransportRequest {
-            method: "POST".to_string(),
-            url: url.to_string(),
-            headers: HashMap::from([("content-type".to_string(), "application/json".to_string())]),
-            body,
+            method: method.to_string(),
+            url,
+            headers: header_map(&headers),
+            // Moved, not copied: the bridge hands it to the application.
+            body: std::mem::take(&mut *body),
             max_response_bytes: None,
+            timeout_ms: timeout.map(millis),
         };
         let response = self
             .0
@@ -274,7 +297,7 @@ pub(crate) mod tests {
         let rpc = requests.lock().unwrap().pop().unwrap();
         assert_eq!((rpc.method.as_str(), rpc.url.as_str()), ("POST", RPC_URL));
         assert_eq!(rpc.headers, json_content_type());
-        assert_eq!(rpc.max_response_bytes, None);
+        assert_eq!((rpc.max_response_bytes, rpc.timeout_ms), (None, None));
         assert_eq!(json(&rpc.body)["method"], "getAccountInfo");
 
         assert_eq!(wallet.private_balance(None), Ok(0));
@@ -289,6 +312,35 @@ pub(crate) mod tests {
             );
             assert_eq!(request.headers, json_content_type());
         }
+    }
+
+    #[test]
+    fn sends_the_sdk_request_as_it_is() {
+        let (transport, requests) = fake(|_| ok("{}"));
+        let request = HttpRequest::post_json("https://indexer.example/m", b"{}".to_vec())
+            .with_header(
+                "x-request".parse().unwrap(),
+                reqwest::header::HeaderValue::from_static("1"),
+            )
+            .with_timeout(Duration::from_millis(2500));
+        let response = Sender(transport).send(request).unwrap();
+        assert_eq!(
+            (response.status.as_u16(), response.body.as_str()),
+            (200, "{}")
+        );
+        let sent = requests.lock().unwrap().pop().unwrap();
+        assert_eq!(
+            (sent.method.as_str(), sent.url.as_str()),
+            ("POST", "https://indexer.example/m")
+        );
+        let mut headers = json_content_type();
+        headers.insert("x-request".into(), "1".into());
+        assert_eq!(sent.headers, headers);
+        assert_eq!(sent.body, b"{}");
+        assert_eq!(
+            (sent.max_response_bytes, sent.timeout_ms),
+            (None, Some(2500))
+        );
     }
 
     #[test]

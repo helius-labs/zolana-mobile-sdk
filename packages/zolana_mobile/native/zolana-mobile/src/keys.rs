@@ -126,6 +126,7 @@ impl KeyStore {
                 headers: HashMap::new(),
                 body: Vec::new(),
                 max_response_bytes: u32::try_from(size).ok(),
+                timeout_ms: None,
             })
             .map_err(download_failed)?;
         if !(200..300).contains(&response.status) {

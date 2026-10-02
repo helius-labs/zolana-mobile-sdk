@@ -10,8 +10,9 @@ import 'rust/third_party/zolana_mobile.dart'
 /// one connection pool per wallet, closed with it.
 ///
 /// It sends each request as it is and follows redirects. It fails a request
-/// whose response stalls for 30 seconds, and stops reading a body past
-/// [TransportRequest.maxResponseBytes]. `ZolanaWallet.open` checks the URLs
+/// whose response, or any part of its body, takes longer than
+/// [TransportRequest.timeoutMs], or 30 seconds without one, and stops
+/// reading a body past [TransportRequest.maxResponseBytes]. `ZolanaWallet.open` checks the URLs
 /// before the wallet uses it (see [isSecureUrl]).
 class HttpTransport {
   HttpTransport({http.Client? client}) : _client = client ?? http.Client();
@@ -24,14 +25,18 @@ class HttpTransport {
     final outgoing = http.Request(request.method, Uri.parse(request.url))
       ..headers.addAll(request.headers)
       ..bodyBytes = request.body;
-    final response = await _client.send(outgoing).timeout(_stall);
+    final timeoutMs = request.timeoutMs;
+    final stall = timeoutMs == null
+        ? _stall
+        : Duration(milliseconds: timeoutMs);
+    final response = await _client.send(outgoing).timeout(stall);
     final limit = request.maxResponseBytes;
     if (limit != null && (response.contentLength ?? 0) > limit) {
       unawaited(response.stream.listen(null).cancel());
       throw _TooLarge(limit);
     }
     final body = BytesBuilder(copy: false);
-    await for (final chunk in response.stream.timeout(_stall)) {
+    await for (final chunk in response.stream.timeout(stall)) {
       body.add(chunk);
       if (limit != null && body.length > limit) throw _TooLarge(limit);
     }

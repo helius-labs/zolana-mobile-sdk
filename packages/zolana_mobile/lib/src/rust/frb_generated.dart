@@ -1996,14 +1996,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TransportRequest dco_decode_transport_request(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return TransportRequest(
       method: dco_decode_String(arr[0]),
       url: dco_decode_String(arr[1]),
       headers: dco_decode_Map_String_String_None(arr[2]),
       body: dco_decode_list_prim_u_8_strict(arr[3]),
       maxResponseBytes: dco_decode_opt_box_autoadd_u_32(arr[4]),
+      timeoutMs: dco_decode_opt_box_autoadd_u_32(arr[5]),
     );
   }
 
@@ -2559,12 +2560,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_headers = sse_decode_Map_String_String_None(deserializer);
     var var_body = sse_decode_list_prim_u_8_strict(deserializer);
     var var_maxResponseBytes = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_timeoutMs = sse_decode_opt_box_autoadd_u_32(deserializer);
     return TransportRequest(
       method: var_method,
       url: var_url,
       headers: var_headers,
       body: var_body,
       maxResponseBytes: var_maxResponseBytes,
+      timeoutMs: var_timeoutMs,
     );
   }
 
@@ -3165,6 +3168,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_Map_String_String_None(self.headers, serializer);
     sse_encode_list_prim_u_8_strict(self.body, serializer);
     sse_encode_opt_box_autoadd_u_32(self.maxResponseBytes, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.timeoutMs, serializer);
   }
 
   @protected
