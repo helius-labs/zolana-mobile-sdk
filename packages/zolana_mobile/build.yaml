@@ -1,0 +1,7 @@
+# freezed generates the bindings' error type; keep build_runner out of the
+# example and its symlinks.
+targets:
+  $default:
+    sources:
+      - lib/src/rust/**
+      - pubspec.yaml

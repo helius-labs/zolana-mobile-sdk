@@ -98,26 +98,27 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   Zolana revision. The wallet picks the circuit shape, so the first
   transfer of a new shape downloads its key (8–240 MB); keep the directory
   across launches. With the default transport, a download that receives no
-  data for 30 s fails with `proving_key_download_failed`, and the next call
-  downloads the key again; an application's transport applies its own
-  timeout.
+  data for 30 s fails with `WalletError.provingKeyDownloadFailed`, and the
+  next call downloads the key again; an application's transport applies its
+  own timeout.
 - **Tokens**: pass `mint` (base58) for an SPL Token or Token-2022 asset; no
   `mint` is SOL. Amounts are in base units. A mint works once the shielded pool
-  has registered it, otherwise calls fail with `asset_not_supported`.
+  has registered it, otherwise calls fail with `WalletError.assetNotSupported`.
   `balances()` lists the private balance of SOL and of each mint in
   `WalletConfig.mints` or named in a call; notes in other mints are left out.
-  A token withdrawal
-  goes to the recipient's associated token account: when it fails with
-  `recipient_token_account_missing`, `prepareTokenAccount` creates the account.
+  A token withdrawal goes to the recipient's associated token account: when it
+  fails with `WalletError.recipientTokenAccountMissing`, `prepareTokenAccount`
+  creates the account.
   Transaction fees are paid in SOL by this account.
 - **Registration**: `registrationStatus()` is `notRegistered`, `registered` or
   `conflict`. A conflict means the account's user record holds other keys: set
   by another app, by a key rotation, or derived by a signer whose signatures
-  change between calls. `register()` then fails with `registration_conflict` and
-  never replaces them. The wallet can still spend and withdraw its own notes.
+  change between calls. `register()` then fails with
+  `WalletError.registrationConflict` and never replaces them. The wallet can
+  still spend and withdraw its own notes.
 - **Recipients** are Solana accounts that have registered. A transfer to an
-  unregistered account fails with `recipient_not_registered`; use `withdraw`
-  for a public payment.
+  unregistered account fails with `WalletError.recipientNotRegistered`; use
+  `withdraw` for a public payment.
 - **Privacy**: deposits and withdrawals are public. Private transfers reveal
   neither amount nor recipient. The indexer learns this wallet's view tags, so
   `allowInsecureHttp` on `open`, which lets the default transport use a
@@ -133,11 +134,12 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   the indexer when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
   has the transaction, so notes spent by another session or device are never
   picked.
-- **Errors** are `ZolanaWalletException`s with a code or a client error
-  description, never key material.
+- **Errors** are `ZolanaWalletException`s. Their `error` is a `WalletError`
+  that says what happened, with its data; the table below lists them. Errors
+  never contain key material.
 
 - **Lock and account switch**: call `wallet.close()`. Operations not yet
-  started fail with `wallet_closed`, and so does a `prepare` call that is
+  started fail with `WalletError.walletClosed`, and so does a `prepare` call that is
   proving at the time: the application never receives a transaction after the
   lock. Nothing is signed or submitted after the call, so lock the UI without
   awaiting `close()`. It waits for the running native step (a proof cannot be
@@ -145,6 +147,67 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   Then it releases the native wallet: its keys and the proving key it loaded.
   Open the next account after `close()` completes. A transaction already
   submitted is not recalled.
+
+### Errors
+
+Every failure is a `ZolanaWalletException` whose `error` is one of these
+`WalletError` variants. Amounts are in base units, accounts and mints base58.
+
+| Variant | Data | When |
+|---|---|---|
+| `insufficientPrivateBalance` | `requested`, `available` | the spendable notes of the asset do not cover the amount |
+| `mergeRequired` | `amount`, `maxInputs` | the amount needs more notes than one spend takes |
+| `tooManyInputTrees` | `trees`, `maxTrees` | the notes that cover the amount are on more trees than one spend takes (2) |
+| `amountZero` | | the amount of a spend is zero |
+| `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
+| `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
+| `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient has no associated token account for the mint |
+| `registrationConflict` | `owner` | the registry holds other keys for this account |
+| `assetNotSupported` | `mint` | the shielded pool has not registered the mint |
+| `mintNotFound` | `mint` | no account exists at the mint |
+| `invalidMint` | `mint` | not a base58 key, or not an SPL Token or Token-2022 mint |
+| `invalidPubkey` | `value` | not a base58 public key |
+| `invalidTokenAccount` | `account` | the account's data is not a token account's |
+| `invalidDerivationSignature` | | the signature is not the account's over the derivation message |
+| `invalidWalletKeys` | | saved keys are malformed or do not match their public keys |
+| `rpcUrlInsecure`, `indexerUrlInsecure`, `provingKeyUrlInsecure` | `url` | with the default transport, a plaintext URL off loopback without `allowInsecureHttp` |
+| `transportFailed` | `message` | the Solana RPC client could not be built |
+| `signatureInvalid` | | a signature is malformed or not the signer's over the message |
+| `signatureCountMismatch` | `expected`, `got` | `submit` received the wrong number of signatures |
+| `transactionNotConfirmed` | `signature` | Solana did not confirm the transaction within the wait |
+| `remoteProverMissing` | | the spend asked for remote proving without a `remoteProver` |
+| `remoteProverFailed` | | the `remoteProver` threw or returned nothing |
+| `proofMalformed` | | the remote prover's response is not a gnark proof |
+| `proofInvalid` | | the proof does not verify against the pinned verifying key |
+| `proofFailed` | | the device prover could not prove the request |
+| `proverBusy`, `proverClosed`, `proverUnavailable` | | the prepared prover slot is taken, released or unusable |
+| `proverInitFailed`, `proverLoadFailed` | | gnark or the proving key could not be loaded |
+| `unsupportedCircuit` | | the prepared circuit's shape is not one the wallet proves |
+| `provingKeyUnknown`, `provingKeyMismatch` | `name` | the lockfile does not pin the key the client expects |
+| `provingKeyDownloadFailed`, `provingKeyCorrupt` | `name` | the key could not be downloaded, or does not hash to the pinned value |
+| `provingKeyStoreFailed` | `path` | the key directory could not be read or written |
+| `poseidonInputCountInvalid`, `poseidonInputLengthInvalid` | `count`; `index`, `length` | `poseidonHash` input is not 1 to 12 elements of 32 bytes |
+| `signerMissing` | | the wallet was opened without a signer |
+| `signerMismatch` | `wallet`, `signer` | the signer signs for another account |
+| `unexpectedSigners` | `signers` | the transaction needs other signers than this account alone |
+| `walletClosed` | | the wallet was closed |
+| `client` | `message` | any other Zolana client failure, such as a transport failure (`transport failed: ...`), with `api-key` values masked |
+
+Match on the variant classes, `WalletError_InsufficientPrivateBalance` and so
+on, to read the data:
+
+```dart
+try {
+  await wallet.transfer(recipient: account, amount: amount);
+} on ZolanaWalletException catch (e) {
+  final text = switch (e.error) {
+    WalletError_InsufficientPrivateBalance(:final available) =>
+      'Only $available lamports available',
+    WalletError_RecipientNotRegistered() => 'Recipient not registered',
+    _ => e.message,
+  };
+}
+```
 
 ### Opening from saved keys
 
@@ -171,11 +234,12 @@ final wallet = await ZolanaWallet.openWithKeys(
 | `nullifierPublicKey` | 32 | Poseidon hash of the nullifier secret |
 
 `openWithKeys` checks each private key against its public key and fails with
-`wallet_keys_invalid` otherwise; the error never contains key bytes. Keys of
-another account open under another shielded address, and
+`WalletError.invalidWalletKeys` otherwise; the error never contains key bytes.
+Keys of another account open under another shielded address, and
 `registrationStatus()` reports `conflict` for them. Without a `signer`,
-`register`, `deposit`, `transfer` and `withdraw` fail with `signer_missing`;
-the `prepare` methods, `submit` and `confirm` work.
+`register`, `deposit`, `transfer` and `withdraw` fail with
+`WalletError.signerMissing`; the `prepare` methods, `submit` and `confirm`
+work.
 
 The keys cannot move funds: spending needs the Solana account's signature.
 They show the wallet's private balances and history and link its spends.
@@ -217,8 +281,8 @@ sends through the wallet's RPC instead.
   selects other notes until it is submitted or confirmed, released with
   `wallet.release(tx)` (for example when the user declines it), or past its
   `lastValidBlockHeight`. A spend that needs a reserved note fails with
-  `notes_reserved`. `register`, `deposit`, `transfer` and `withdraw` release
-  the notes themselves when signing fails.
+  `WalletError.notesReserved`. `register`, `deposit`, `transfer` and `withdraw`
+  release the notes themselves when signing fails.
 - After a restart the prepared transaction is gone, but its signature is
   enough: `wallet.waitForTransaction(signature)` waits until Solana confirms
   it and the indexer has it, and fails with the chain's error if it failed.
@@ -253,16 +317,16 @@ await wallet.transfer(
 - **The response**: `remoteProver` returns the proof as the prover returns
   it: the gnark proof JSON (`{ar, bs, krs}`), alone or as the `proof` of the
   response (the `result` of a completed job). When it throws, the spend fails
-  with `remote_prover_failed`.
+  with `WalletError.remoteProverFailed`.
 - **Verification on the device**: the wallet verifies the proof against the
   pinned verifying key and the public input it computed itself, before it
   builds the message. A response that is not a proof fails with
-  `proof_malformed`, a proof that does not verify with `proof_invalid`. A bad
-  proof never reaches the user's approval.
+  `WalletError.proofMalformed`, a proof that does not verify with
+  `WalletError.proofInvalid`. A bad proof never reaches the user's approval.
 - **Choice per call**: `WalletConfig.proving` is the default, `Proving.local`
   when it is null. `prepareTransfer`, `prepareWithdrawal`, `transfer` and
   `withdraw` take `proving` to override it. `Proving.remote` without a
-  `remoteProver` fails with `remote_prover_missing`.
+  `remoteProver` fails with `WalletError.remoteProverMissing`.
 - **Privacy**: the request carries the transaction's full witness: the notes
   it spends and creates, their amounts and owners, and the wallet's nullifier
   secret (the `nullifierPrivateKey` of `exportKeys()`). The backend and its
@@ -273,9 +337,10 @@ await wallet.transfer(
   a timeout, and do not call the wallet from it.
 
 Current limits: notes are not merged, so a spend takes at most 40 notes from
-at most two trees and fails with `merge_required` beyond that; one prepared
+at most two trees and fails with `WalletError.mergeRequired` or
+`WalletError.tooManyInputTrees` beyond that; one prepared
 prover is loaded per process, so close a `LocalProver` before the wallet
-proves. A spend of zero fails with `amount_zero`.
+proves. A spend of zero fails with `WalletError.amountZero`.
 
 ### Networking
 
@@ -287,8 +352,9 @@ in Dart:
 - By default, the package's own transport on `package:http`: one connection
   pool per wallet, closed with `close()`. `open` and `openWithKeys` refuse a
   plaintext (`http`) URL off loopback in the config before anything else, with
-  `rpc_url_insecure`, `indexer_url_insecure` or `proving_key_url_insecure`,
-  unless `allowInsecureHttp: true` is passed. It follows redirects, fails a
+  `WalletError.rpcUrlInsecure`, `WalletError.indexerUrlInsecure` or
+  `WalletError.provingKeyUrlInsecure`, unless `allowInsecureHttp: true` is
+  passed. It follows redirects, fails a
   request whose response or any part of its body takes longer than
   `timeoutMs` (30 seconds without one), and stops reading a body past
   `maxResponseBytes`.
@@ -329,9 +395,9 @@ final wallet = await ZolanaWallet.open(
   Stop reading and throw when the body exceeds it; the wallet refuses a longer
   body either way, but only after the whole of it arrived.
 - Return the response whatever its status. Throw only when there is no
-  response (no network, DNS, TLS, a timeout). The wallet then fails with
-  `transport failed: ` and the exception message, never its stack trace,
-  `api-key` values masked.
+  response (no network, DNS, TLS, a timeout). The wallet then fails with a
+  `WalletError.client` whose message holds `transport failed: ` and the
+  exception message, never its stack trace, `api-key` values masked.
 - A request with `timeoutMs` set carries the SDK's bound for it, in
   milliseconds; use it in place of your own. Time out every other request
   too: the wallet and `close()` wait for each answer. For the same reason the

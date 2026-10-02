@@ -3,13 +3,13 @@
 
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, Mutex, PoisonError,
+    Arc, Mutex, MutexGuard, PoisonError,
 };
 
 use flutter_rust_bridge::DartFnFuture;
 use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
 
-use crate::{init_gnark, keys, Loaded, PREPARED};
+use crate::{error::WalletError, init_gnark, keys, Loaded, PREPARED};
 
 /// Where a spend is proved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,17 +39,14 @@ impl RemoteProver {
     ) -> Self {
         Self(Box::new(prove))
     }
-}
 
-/// Waits in the calling thread, a flutter_rust_bridge worker, while the Dart
-/// thread runs the callback.
-impl Prover for RemoteProver {
-    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
+    /// Waits in the calling thread, a flutter_rust_bridge worker, while the
+    /// Dart thread runs the callback.
+    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, WalletError> {
         let body = request.body()?;
         let response = futures_executor::block_on((self.0)(body.as_bytes().to_vec()))
-            .ok_or_else(|| ClientError::Prover("remote_prover_failed".to_string()))?;
-        proof_from_response(&response)
-            .ok_or_else(|| ClientError::Prover("proof_malformed".to_string()))
+            .ok_or(WalletError::RemoteProverFailed)?;
+        proof_from_response(&response).ok_or(WalletError::ProofMalformed)
     }
 }
 
@@ -61,38 +58,44 @@ fn proof_from_response(response: &[u8]) -> Option<Proof> {
     Proof::from_gnark_json(&proof.to_string()).ok()
 }
 
-/// The backend proving the current spend, or `None` to prove it on the device.
-/// The wallet sets it for each spend; its client owns the [`WalletProver`]
-/// that reads it.
-pub(crate) type SpendProver = Arc<Mutex<Option<Arc<RemoteProver>>>>;
+/// What the wallet tells its client's prover for the current spend, and what
+/// the prover tells back. The wallet sets `remote` for each spend; the client
+/// owns the [`WalletProver`] that reads it. `failure` is why the last proof
+/// failed, which the `ClientError` the client sees cannot carry.
+#[derive(Default)]
+pub(crate) struct ProverSlot {
+    /// The backend proving the current spend, or `None` to prove it on the
+    /// device.
+    pub(crate) remote: Option<Arc<RemoteProver>>,
+    pub(crate) failure: Option<WalletError>,
+}
+
+pub(crate) type SpendProver = Arc<Mutex<ProverSlot>>;
 
 /// The prover the wallet's client holds.
 pub(crate) struct WalletProver {
     pub(crate) native: NativeProver,
-    pub(crate) remote: SpendProver,
+    pub(crate) slot: SpendProver,
+}
+
+impl WalletProver {
+    fn slot(&self) -> MutexGuard<'_, ProverSlot> {
+        self.slot.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 impl Prover for WalletProver {
     fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
-        let remote = self
-            .remote
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        match remote {
+        let remote = self.slot().remote.clone();
+        let proved = match remote {
             Some(remote) => remote.prove(request),
             None => self.native.prove(request),
-        }
-    }
-}
-
-/// A failed proof as the wallet reports it: the wallet's provers fail with a
-/// code, and a proof the pinned verifying key rejects with `proof_invalid`.
-pub(crate) fn proving_error(error: ClientError) -> String {
-    match error {
-        ClientError::Prover(code) => code,
-        ClientError::ProofVerification(_) => "proof_invalid".to_string(),
-        error => crate::wallet::error(error),
+        };
+        proved.map_err(|failure| {
+            let message = format!("{failure:?}");
+            self.slot().failure = Some(failure);
+            ClientError::Prover(message)
+        })
     }
 }
 
@@ -113,24 +116,32 @@ impl NativeProver {
         }
     }
 
-    fn prove_json(&self, body: &str, key: &ExpectedProvingKey) -> Result<String, String> {
+    /// Proves in the calling thread, so [`ProveRequest::delivery`] does not
+    /// apply.
+    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, WalletError> {
+        let body = request.body()?;
+        let key = request.proving_key()?;
+        let proof_json = self.prove_json(&body, &key)?;
+        Ok(Proof::from_gnark_json(&proof_json)?)
+    }
+
+    fn prove_json(&self, body: &str, key: &ExpectedProvingKey) -> Result<String, WalletError> {
         let name = key.name.as_str();
         let path = self.keys.ensure(key)?;
         let mut state = PREPARED
             .lock()
-            .map_err(|_| "prover_unavailable".to_string())?;
+            .map_err(|_| WalletError::ProverUnavailable)?;
         let loaded_key = state.loaded.as_ref().map(|loaded| loaded.key.as_deref());
         if loaded_key != Some(Some(name)) {
             if loaded_key == Some(None) {
                 // The application holds its own prepared system; leave it.
-                return Err("prover_busy".to_string());
+                return Err(WalletError::ProverBusy);
             }
             // Drop the previous key before loading the next: gnark holds one.
             state.loaded = None;
             init_gnark()?;
-            let path = path.to_str().ok_or("proving_key_path_invalid")?;
-            let prover = rust_gnark::PreparedProver::load_key(path)
-                .map_err(|_| "prover_load_failed".to_string())?;
+            let prover = rust_gnark::PreparedProver::load_key(&path.display().to_string())
+                .map_err(|_| WalletError::ProverLoadFailed)?;
             let id = state.next_id()?;
             self.loaded.store(id, Ordering::Relaxed);
             state.loaded = Some(Loaded {
@@ -139,11 +150,11 @@ impl NativeProver {
                 prover,
             });
         }
-        let loaded = state.loaded.as_ref().ok_or("prover_closed")?;
+        let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
         let proof = loaded
             .prover
             .prove_request(body)
-            .map_err(|_| "proof_failed".to_string())?;
+            .map_err(|_| WalletError::ProofFailed)?;
         Ok(proof.proof_json)
     }
 }
@@ -159,16 +170,6 @@ impl Drop for NativeProver {
         if state.loaded.as_ref().is_some_and(|loaded| loaded.id == id) {
             state.loaded = None;
         }
-    }
-}
-
-/// Proves in the calling thread, so [`ProveRequest::delivery`] does not apply.
-impl Prover for NativeProver {
-    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
-        let body = request.body()?;
-        let key = request.proving_key()?;
-        let proof_json = self.prove_json(&body, &key).map_err(ClientError::Prover)?;
-        Proof::from_gnark_json(&proof_json)
     }
 }
 
@@ -233,14 +234,16 @@ mod tests {
         .expect("the fixture proof verifies");
 
         let request = Captured(transfer_2_2_key());
-        for (response, code) in [
-            (None, "remote_prover_failed"),
-            (Some(&b"not json"[..]), "proof_malformed"),
-            (Some(&br#"{"proof":{"ar":["0x1"]}}"#[..]), "proof_malformed"),
+        for (response, failure) in [
+            (None, WalletError::RemoteProverFailed),
+            (Some(&b"not json"[..]), WalletError::ProofMalformed),
+            (
+                Some(&br#"{"proof":{"ar":["0x1"]}}"#[..]),
+                WalletError::ProofMalformed,
+            ),
         ] {
             let (prover, _) = backend(response);
-            let error = proving_error(prover.prove(&request).unwrap_err());
-            assert_eq!(error, code);
+            assert_eq!(prover.prove(&request).unwrap_err(), failure);
         }
     }
 
@@ -258,10 +261,10 @@ mod tests {
         assert_eq!(shape, (2, 2), "the shape of the fixture proof");
         let sent = prover_client_body(&mut assembled, &sender);
 
-        for (response, code) in [
+        for (response, failure) in [
             // A real proof, of another transaction.
-            (RESPONSE, "proof_invalid"),
-            (&b"{}"[..], "proof_malformed"),
+            (RESPONSE, WalletError::ProofInvalid),
+            (&b"{}"[..], WalletError::ProofMalformed),
         ] {
             let (backend, received) = backend(Some(response));
             let prover = WalletProver {
@@ -270,10 +273,14 @@ mod tests {
                     None,
                     crate::transport::tests::unreachable(),
                 )),
-                remote: Arc::new(Mutex::new(Some(Arc::new(backend)))),
+                slot: Arc::new(Mutex::new(ProverSlot {
+                    remote: Some(Arc::new(backend)),
+                    failure: None,
+                })),
             };
-            let error = proving_error(assembled.prove(&prover, &sender).unwrap_err());
-            assert_eq!(error, code);
+            let error = assembled.prove(&prover, &sender).unwrap_err();
+            let reported = prover.slot().failure.take().unwrap_or_else(|| error.into());
+            assert_eq!(reported, failure);
             assert_eq!(
                 *received.lock().unwrap(),
                 sent,

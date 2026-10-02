@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'http_transport.dart';
 import 'rust/third_party/zolana_mobile.dart' as native;
+import 'rust/third_party/zolana_mobile.dart' show WalletError;
 
 /// Signs as one Solana account: a platform keystore, a wallet adapter or a
 /// remote custodian. The Solana secret key never enters this package.
@@ -22,7 +23,8 @@ abstract interface class SolanaSigner {
 /// `Proving.remote`. It receives [request], the `/prove` request body the
 /// Zolana SDK's prover client sends, unchanged, and returns its prover's
 /// proof: the gnark proof JSON, alone or as the `proof` of the prover's
-/// response. When it throws, the spend fails with `remote_prover_failed`.
+/// response. When it throws, the spend fails with
+/// [WalletError.remoteProverFailed].
 ///
 /// The wallet verifies the proof on the device against the pinned verifying
 /// key, before it builds the message. The request carries the transaction's
@@ -57,16 +59,19 @@ typedef NativeTransport = Future<native.TransportOutcome> Function(
   native.TransportRequest request,
 );
 
-/// A failure reported by the native wallet, such as
-/// `recipient_not_registered` or `signature_invalid`, or a client error
-/// describing what failed. It never contains key material.
+/// A failure the wallet reports. [error] says what happened, with its data:
+/// the amounts of a short balance, the account a conflict is about. It never
+/// contains key material.
 class ZolanaWalletException implements Exception {
-  const ZolanaWalletException(this.message);
+  const ZolanaWalletException(this.error);
 
-  final String message;
+  final WalletError error;
+
+  /// [error] as text, for logs.
+  String get message => '$error';
 
   @override
-  String toString() => 'Zolana wallet: $message';
+  String toString() => 'Zolana wallet: $error';
 }
 
 /// The native calls that open a [ZolanaWallet]; replaced in tests.
@@ -132,7 +137,7 @@ class PreparedTransaction {
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit for
 /// a token. `mint` is the base58 mint address, or `null` for SOL. A token
 /// works once the shielded pool has registered its mint; otherwise calls fail
-/// with `asset_not_supported`.
+/// with [WalletError.assetNotSupported].
 ///
 /// The wallet keeps no chain state: [balances], [privateBalance], [activity]
 /// and every spend read the wallet's notes from the indexer when they run.
@@ -140,7 +145,7 @@ class PreparedTransaction {
 /// spend selects other notes until a prepared spend is submitted or
 /// confirmed, [release]d, or past its
 /// [PreparedTransaction.lastValidBlockHeight]. A spend that would need a
-/// reserved note fails with `notes_reserved`.
+/// reserved note fails with [WalletError.notesReserved].
 ///
 /// Every operation runs after the previous one finishes: the native wallet
 /// holds one proving key at a time. [close] it when the application locks or
@@ -185,8 +190,9 @@ class ZolanaWallet {
   /// own networking, which applies its own URL policy. Without one, the
   /// package sends with `package:http`: one connection pool per wallet,
   /// closed with it. It refuses a plaintext URL off loopback in [config]
-  /// before anything else, with `rpc_url_insecure`, `indexer_url_insecure` or
-  /// `proving_key_url_insecure`, unless [allowInsecureHttp] is set: the
+  /// before anything else, with [WalletError.rpcUrlInsecure],
+  /// [WalletError.indexerUrlInsecure] or [WalletError.provingKeyUrlInsecure],
+  /// unless [allowInsecureHttp] is set: the
   /// indexer sees the wallet's view tags, so set it only for a test cluster.
   /// The wallet opens no connection itself either way.
   static Future<ZolanaWallet> open({
@@ -216,11 +222,13 @@ class ZolanaWallet {
 
   /// Open the wallet of [solanaPublicKey] from [keys] that [exportKeys]
   /// returned, without asking for a signature. Fails with
-  /// `wallet_keys_invalid` unless each private key yields its public key.
+  /// [WalletError.invalidWalletKeys] unless each private key yields its
+  /// public key.
   ///
   /// Without a [signer], [register], [deposit], [transfer] and [withdraw] fail
-  /// with `signer_missing`; the `prepare` methods, [submit] and [confirm]
-  /// work. A [signer] for another account fails with `signer_mismatch`.
+  /// with [WalletError.signerMissing]; the `prepare` methods, [submit] and
+  /// [confirm] work. A [signer] for another account fails with
+  /// [WalletError.signerMismatch].
   /// [remoteProver], [transport] and [allowInsecureHttp] work as in [open].
   static Future<ZolanaWallet> openWithKeys({
     required native.WalletConfig config,
@@ -233,7 +241,12 @@ class ZolanaWallet {
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
     if (signer != null && signer.publicKey != solanaPublicKey) {
-      throw const ZolanaWalletException('signer_mismatch');
+      throw ZolanaWalletException(
+        WalletError.signerMismatch(
+          wallet: solanaPublicKey,
+          signer: signer.publicKey,
+        ),
+      );
     }
     if (transport == null) _refusePlaintext(config, allowInsecureHttp);
     return _open(
@@ -308,8 +321,8 @@ class ZolanaWallet {
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
-  /// it is already registered. Fails with `registration_conflict` when the
-  /// registry holds other keys; the wallet never replaces them.
+  /// it is already registered. Fails with [WalletError.registrationConflict]
+  /// when the registry holds other keys; the wallet never replaces them.
   Future<PreparedTransaction?> prepareRegistration() =>
       _serial(() => _prepareOptional(_wallet.prepareRegistration()));
 
@@ -322,9 +335,9 @@ class ZolanaWallet {
 
   /// Send private funds to the registered wallet of [recipient] (a Solana
   /// public key). Reads the spendable notes, takes the largest first, builds
-  /// and proves on the device. Fails with `merge_required` when the amount
-  /// needs more notes than one transaction spends (40), or notes from more
-  /// than two trees.
+  /// and proves on the device. Fails with [WalletError.mergeRequired] when
+  /// the amount needs more notes than one transaction spends (40), and with
+  /// [WalletError.tooManyInputTrees] when they are on more than two trees.
   ///
   /// [feePayer] (a Solana public key, such as the application's backend)
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
@@ -333,7 +346,7 @@ class ZolanaWallet {
   ///
   /// [proving] says where the spend is proved, `WalletConfig.proving` when
   /// null. `Proving.remote` asks the [RemoteProver] given at open; without
-  /// one it fails with `remote_prover_missing`.
+  /// one it fails with [WalletError.remoteProverMissing].
   Future<PreparedTransaction> prepareTransfer({
     required String recipient,
     required BigInt amount,
@@ -355,7 +368,7 @@ class ZolanaWallet {
   /// Move private funds to the public account [recipient]. The recipient,
   /// asset and amount are public. Tokens go to the recipient's associated
   /// token account; without one this fails with
-  /// `recipient_token_account_missing` (see [prepareTokenAccount]).
+  /// [WalletError.recipientTokenAccountMissing] (see [prepareTokenAccount]).
   /// [feePayer] and [proving] work as in [prepareTransfer].
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
@@ -409,8 +422,8 @@ class ZolanaWallet {
   /// [signature]: until Solana confirms it and, for shielded-pool
   /// transactions, the indexer has it, so the next balance or spend reads the
   /// notes it created and not the ones it spent. Fails with
-  /// `signature_invalid` unless [signature] is the fee payer's signature over
-  /// [PreparedTransaction.message].
+  /// [WalletError.signatureInvalid] unless [signature] is the fee payer's
+  /// signature over [PreparedTransaction.message].
   Future<void> confirm(PreparedTransaction transaction, String signature) =>
       _serial(
         () => _wallet.confirm(
@@ -478,8 +491,9 @@ class ZolanaWallet {
     ),
   );
 
-  /// Stop this wallet. Operations not yet started fail with `wallet_closed`,
-  /// and so does a `prepare` call that is proving when [close] is called: the
+  /// Stop this wallet. Operations not yet started fail with
+  /// [WalletError.walletClosed], and so does a `prepare` call that is proving
+  /// when [close] is called: the
   /// application never receives a transaction after it locks. Nothing is
   /// signed or submitted after this call. Waits for the running native step
   /// (a proof cannot be interrupted), then releases the native wallet: its
@@ -537,11 +551,13 @@ class ZolanaWallet {
   Future<Uint8List> _sign(PreparedTransaction transaction) async {
     final signer = _signer;
     if (signer == null) {
-      throw const ZolanaWalletException('signer_missing');
+      throw const ZolanaWalletException(WalletError.signerMissing());
     }
     final signers = transaction.signers;
     if (signers.length != 1 || signers.single != solanaPublicKey) {
-      throw const ZolanaWalletException('unexpected_signers');
+      throw ZolanaWalletException(
+        WalletError.unexpectedSigners(signers: signers),
+      );
     }
     return signer.signMessage(
       transaction.message,
@@ -550,7 +566,9 @@ class ZolanaWallet {
   }
 
   void _ensureOpen() {
-    if (isClosed) throw const ZolanaWalletException('wallet_closed');
+    if (isClosed) {
+      throw const ZolanaWalletException(WalletError.walletClosed());
+    }
   }
 
   Future<T> _serial<T>(Future<T> Function() operation) {
@@ -602,20 +620,28 @@ String _message(Object error) {
 /// The default transport's policy: `https`, or `http` to this device.
 void _refusePlaintext(native.WalletConfig config, bool allowInsecureHttp) {
   if (allowInsecureHttp) return;
-  for (final (url, code) in [
-    (config.rpcUrl, 'rpc_url_insecure'),
-    (config.indexerUrl, 'indexer_url_insecure'),
-    (config.provingKeyUrl, 'proving_key_url_insecure'),
+  for (final (url, insecure) in [
+    (config.rpcUrl, (String url) => WalletError.rpcUrlInsecure(url: url)),
+    (
+      config.indexerUrl,
+      (String url) => WalletError.indexerUrlInsecure(url: url),
+    ),
+    (
+      config.provingKeyUrl,
+      (String url) => WalletError.provingKeyUrlInsecure(url: url),
+    ),
   ]) {
-    if (url != null && !isSecureUrl(url)) throw ZolanaWalletException(code);
+    if (url != null && !isSecureUrl(url)) {
+      throw ZolanaWalletException(insecure(url));
+    }
   }
 }
 
 Future<T> _native<T>(Future<T> Function() operation) async {
   try {
     return await operation();
-  } on String catch (message) {
-    throw ZolanaWalletException(message);
+  } on WalletError catch (error) {
+    throw ZolanaWalletException(error);
   }
 }
 

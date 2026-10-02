@@ -19,6 +19,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use zolana_client::prover::ExpectedProvingKey;
 
+use crate::error::WalletError;
 use crate::transport::{Transport, TransportRequest};
 
 /// The upstream prover's default key host.
@@ -67,47 +68,49 @@ impl KeyStore {
     /// Path of `key` in the store, downloading it first if it is missing or
     /// does not match the lockfile. The lockfile must pin the sha256 that the
     /// client expects, the one next to the on-chain verifying key.
-    pub fn ensure(&self, key: &ExpectedProvingKey) -> Result<PathBuf, String> {
+    pub fn ensure(&self, key: &ExpectedProvingKey) -> Result<PathBuf, WalletError> {
         let name = key.name.as_str();
         let entry = lockfile()
             .keys
             .get(name)
-            .ok_or_else(|| "proving_key_unknown".to_string())?;
+            .ok_or_else(|| WalletError::ProvingKeyUnknown { name: name.into() })?;
         if entry.sha256 != hex(&key.sha256) {
-            return Err("proving_key_mismatch".to_string());
+            return Err(WalletError::ProvingKeyMismatch { name: name.into() });
         }
         let path = self.dir.join(name);
         if self
             .verified
             .lock()
-            .map_err(|_| "key_store_poisoned")?
+            .map_err(|_| WalletError::ProverUnavailable)?
             .contains(name)
         {
             return Ok(path);
         }
-        if !matches_entry(&path, entry)? {
-            fs::create_dir_all(&self.dir).map_err(|_| "proving_key_dir_unwritable")?;
+        if !matches_entry(name, &path, entry)? {
+            fs::create_dir_all(&self.dir).map_err(|_| store_failed(&self.dir))?;
             self.download(name, entry, &path)?;
         }
         self.verified
             .lock()
-            .map_err(|_| "key_store_poisoned")?
+            .map_err(|_| WalletError::ProverUnavailable)?
             .insert(name.to_string());
         Ok(path)
     }
 
-    fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), String> {
+    fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), WalletError> {
         let url = format!("{}/{}/{name}", self.base_url, lockfile().prefix);
-        let body = self.fetch(url, entry.size)?;
+        let body = self
+            .fetch(url, entry.size)
+            .ok_or_else(|| WalletError::ProvingKeyDownloadFailed { name: name.into() })?;
         let partial = path.with_extension("key.partial");
         let result = (|| {
-            let mut file = File::create(&partial).map_err(|_| "proving_key_dir_unwritable")?;
-            let digest = copy_bounded(&mut body.as_slice(), &mut file, entry.size)?;
-            file.sync_all().map_err(|_| "proving_key_dir_unwritable")?;
+            let mut file = File::create(&partial).map_err(|_| store_failed(path))?;
+            let digest = copy_bounded(&mut body.as_slice(), &mut file, entry.size, name, path)?;
+            file.sync_all().map_err(|_| store_failed(path))?;
             if digest != entry.sha256 {
-                return Err("proving_key_checksum_mismatch".to_string());
+                return Err(WalletError::ProvingKeyCorrupt { name: name.into() });
             }
-            fs::rename(&partial, path).map_err(|_| "proving_key_dir_unwritable".to_string())
+            fs::rename(&partial, path).map_err(|_| store_failed(path))
         })();
         if result.is_err() {
             let _ = fs::remove_file(&partial);
@@ -117,7 +120,7 @@ impl KeyStore {
 
     /// The body of `url`, whole: it is checked before it is written. The
     /// transport is asked to stop past `size` bytes.
-    fn fetch(&self, url: String, size: u64) -> Result<Vec<u8>, String> {
+    fn fetch(&self, url: String, size: u64) -> Option<Vec<u8>> {
         let response = self
             .transport
             .send_blocking(TransportRequest {
@@ -128,58 +131,60 @@ impl KeyStore {
                 max_response_bytes: u32::try_from(size).ok(),
                 timeout_ms: None,
             })
-            .map_err(download_failed)?;
-        if !(200..300).contains(&response.status) {
-            return Err(download_failed(response.status));
-        }
-        Ok(response.body)
+            .ok()?;
+        (200..300)
+            .contains(&response.status)
+            .then_some(response.body)
     }
 }
 
-fn download_failed<E>(_: E) -> String {
-    "proving_key_download_failed".to_string()
-}
-
-/// Whether the file at `path` exists and hashes to `entry`.
-fn matches_entry(path: &Path, entry: &LockEntry) -> Result<bool, String> {
+/// Whether the file of key `name` at `path` exists and hashes to `entry`.
+fn matches_entry(name: &str, path: &Path, entry: &LockEntry) -> Result<bool, WalletError> {
     let Ok(mut file) = File::open(path) else {
         return Ok(false);
     };
     if file.metadata().map(|m| m.len()).ok() != Some(entry.size) {
         return Ok(false);
     }
-    Ok(copy_bounded(&mut file, &mut std::io::sink(), entry.size)? == entry.sha256)
+    Ok(copy_bounded(&mut file, &mut std::io::sink(), entry.size, name, path)? == entry.sha256)
 }
 
-/// Copy exactly `size` bytes, failing on a short or long source, and return
-/// their lowercase hex SHA-256.
+/// Copy exactly `size` bytes of key `name`, failing on a short or long
+/// source, and return their lowercase hex SHA-256.
 fn copy_bounded(
     source: &mut impl Read,
     sink: &mut impl Write,
     size: u64,
-) -> Result<String, String> {
+    name: &str,
+    path: &Path,
+) -> Result<String, WalletError> {
+    let corrupt = || WalletError::ProvingKeyCorrupt { name: name.into() };
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 1 << 20];
     let mut copied = 0u64;
     loop {
-        let read = source
-            .read(&mut buffer)
-            .map_err(|_| "proving_key_read_failed".to_string())?;
+        let read = source.read(&mut buffer).map_err(|_| store_failed(path))?;
         if read == 0 {
             break;
         }
         copied += read as u64;
         if copied > size {
-            return Err("proving_key_size_mismatch".to_string());
+            return Err(corrupt());
         }
         hasher.update(&buffer[..read]);
         sink.write_all(&buffer[..read])
-            .map_err(|_| "proving_key_dir_unwritable".to_string())?;
+            .map_err(|_| store_failed(path))?;
     }
     if copied != size {
-        return Err("proving_key_size_mismatch".to_string());
+        return Err(corrupt());
     }
     Ok(hex(&hasher.finalize()))
+}
+
+fn store_failed(path: &Path) -> WalletError {
+    WalletError::ProvingKeyStoreFailed {
+        path: path.display().to_string(),
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -219,12 +224,22 @@ mod tests {
             name: "transfer_confidential_9_9.key".into(),
             sha256: [0; 32],
         };
-        assert_eq!(store.ensure(&unknown).unwrap_err(), "proving_key_unknown");
+        assert_eq!(
+            store.ensure(&unknown).unwrap_err(),
+            WalletError::ProvingKeyUnknown {
+                name: "transfer_confidential_9_9.key".into()
+            }
+        );
         let foreign = ExpectedProvingKey {
             name: "transfer_confidential_2_2.key".into(),
             sha256: [0; 32],
         };
-        assert_eq!(store.ensure(&foreign).unwrap_err(), "proving_key_mismatch");
+        assert_eq!(
+            store.ensure(&foreign).unwrap_err(),
+            WalletError::ProvingKeyMismatch {
+                name: "transfer_confidential_2_2.key".into()
+            }
+        );
     }
 
     #[test]
@@ -238,12 +253,12 @@ mod tests {
         };
         let path = dir.join("k.key");
         fs::write(&path, b"abc").unwrap();
-        assert!(matches_entry(&path, &entry).unwrap());
+        assert!(matches_entry("k.key", &path, &entry).unwrap());
         fs::write(&path, b"abd").unwrap();
-        assert!(!matches_entry(&path, &entry).unwrap());
+        assert!(!matches_entry("k.key", &path, &entry).unwrap());
         fs::write(&path, b"abcd").unwrap();
-        assert!(!matches_entry(&path, &entry).unwrap());
-        assert!(!matches_entry(&dir.join("missing.key"), &entry).unwrap());
+        assert!(!matches_entry("k.key", &path, &entry).unwrap());
+        assert!(!matches_entry("missing.key", &dir.join("missing.key"), &entry).unwrap());
         fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -279,13 +294,21 @@ mod tests {
             })
         });
         let (tampered, _) = fake(|_| ok("abd"));
+        let download_failed = || WalletError::ProvingKeyDownloadFailed {
+            name: "k.key".into(),
+        };
         // The default transport fails a body that stalls for its bound.
         let (stalled, _) =
             fake(|_| Err("TimeoutException after 0:00:30.000000: No stream event".to_string()));
         for (transport, expected) in [
-            (missing, "proving_key_download_failed"),
-            (tampered, "proving_key_checksum_mismatch"),
-            (stalled, "proving_key_download_failed"),
+            (missing, download_failed()),
+            (
+                tampered,
+                WalletError::ProvingKeyCorrupt {
+                    name: "k.key".into(),
+                },
+            ),
+            (stalled, download_failed()),
         ] {
             assert_eq!(
                 store(transport)

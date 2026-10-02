@@ -15,6 +15,8 @@ use solana_rpc_client::{
 use zolana_api::{ApiError, BlockingHttpClient, BlockingZolanaApi, HttpRequest, HttpResponse};
 use zolana_client::{SolanaRpc, ZolanaIndexer};
 
+use crate::error::WalletError;
+
 /// One HTTP request of the wallet.
 pub struct TransportRequest {
     /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
@@ -85,12 +87,15 @@ impl Transport {
     /// The Solana RPC client of `url`: solana-rpc-client's own sender, whose
     /// requests this transport answers, so its JSON-RPC parsing, error data
     /// and retries stay.
-    pub(crate) fn solana_rpc(&self, url: String) -> Result<SolanaRpc, String> {
+    pub(crate) fn solana_rpc(&self, url: String) -> Result<SolanaRpc, WalletError> {
         // The middleware stack needs a base client. The sender below answers
         // every request itself, so the base never sends.
-        let base = reqwest::Client::builder()
-            .build()
-            .map_err(|_| "rpc_client_unavailable".to_string())?;
+        let base =
+            reqwest::Client::builder()
+                .build()
+                .map_err(|failure| WalletError::TransportFailed {
+                    message: failure.to_string(),
+                })?;
         let client = ClientBuilder::new(base).with(Sender(self.clone())).build();
         Ok(SolanaRpc::with_client(RpcClient::new_sender(
             HttpSender::new_with_client_with_middleware(url, client),
@@ -359,6 +364,9 @@ pub(crate) mod tests {
             wallet.registration_status().unwrap_err(),
             wallet.private_balance(None).unwrap_err(),
         ] {
+            let WalletError::Client { message: error } = error else {
+                panic!("{error:?}");
+            };
             assert!(
                 error.contains("transport failed: SocketException"),
                 "{error}"
@@ -378,6 +386,9 @@ pub(crate) mod tests {
             wallet.registration_status().unwrap_err(),
             wallet.private_balance(None).unwrap_err(),
         ] {
+            let WalletError::Client { message: error } = error else {
+                panic!("{error:?}");
+            };
             assert!(error.contains("401"), "{error}");
             assert!(!error.contains("secret"), "{error}");
         }

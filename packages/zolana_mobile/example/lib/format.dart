@@ -37,24 +37,34 @@ String shortAddress(String value) => value.length <= 12
 String explorerUrl(String signature) =>
     'https://explorer.solana.com/tx/$signature?cluster=devnet';
 
-/// A sentence for the wallet's failure codes; client errors pass through.
+/// A sentence for the wallet's failures; other errors pass through.
 String friendlyError(Object error) {
-  final message = error is ZolanaWalletException ? error.message : '$error';
-  return switch (message) {
-    'recipient_not_registered' =>
+  if (error is! ZolanaWalletException) return '$error';
+  return switch (error.error) {
+    WalletError_RecipientNotRegistered() =>
       "That account hasn't set up a private wallet yet.",
-    'registration_conflict' =>
+    WalletError_RegistrationConflict() =>
       'This account is registered with keys from another app.',
-    'prover_busy' => 'Another proof is running. Try again in a moment.',
-    'notes_reserved' =>
+    WalletError_InsufficientPrivateBalance(:final available) =>
+      'Insufficient private balance: ${formatSol(available)} available.',
+    WalletError_MergeRequired(:final maxInputs) =>
+      'This amount needs more than $maxInputs notes. Send a smaller amount.',
+    WalletError_TooManyInputTrees() =>
+      'Your balance is split across trees. Send a smaller amount.',
+    WalletError_AmountZero() => 'Enter an amount above zero.',
+    WalletError_NotesReserved() =>
       'Another payment is waiting to be sent. Finish or cancel it first.',
-    'proving_key_download_failed' =>
+    WalletError_ProverBusy() =>
+      'Another proof is running. Try again in a moment.',
+    WalletError_ProvingKeyDownloadFailed() =>
       "Couldn't download the proving key. Check your connection.",
-    'proof_failed' => "Couldn't prove this transaction.",
-    _ when message.contains('already used or queued') =>
+    WalletError_ProofFailed() => "Couldn't prove this transaction.",
+    WalletError_Client(:final message)
+        when message.contains('already used or queued') =>
       'Your balance just changed. Try again.',
-    _ when message.contains('insufficient') =>
+    WalletError_Client(:final message) when message.contains('insufficient') =>
       'Not enough balance for this and its fees.',
-    _ => message,
+    WalletError_Client(:final message) => message,
+    final other => '$other',
   };
 }

@@ -8,12 +8,14 @@ use zolana_hasher::{Hasher, Poseidon};
 
 mod activity;
 mod asset;
+mod error;
 mod keys;
 mod prover;
 mod transport;
 mod wallet;
 
 pub use activity::{ActivityEntry, ActivityKind};
+pub use error::WalletError;
 pub use keys::DEFAULT_PROVING_KEYS_URL;
 pub use prover::Proving;
 pub use transport::{Transport, TransportOutcome, TransportRequest, TransportResponse};
@@ -22,7 +24,7 @@ pub use wallet::{
     RegistrationStatus, TokenBalance, WalletConfig, WalletKeys,
 };
 
-static GNARK_INIT: OnceLock<Result<(), String>> = OnceLock::new();
+static GNARK_INIT: OnceLock<Result<(), WalletError>> = OnceLock::new();
 static PREPARED: Mutex<ProverState> = Mutex::new(ProverState {
     next_id: 1,
     loaded: None,
@@ -44,9 +46,9 @@ struct Loaded {
 }
 
 impl ProverState {
-    fn next_id(&mut self) -> Result<u64, String> {
+    fn next_id(&mut self) -> Result<u64, WalletError> {
         let id = self.next_id;
-        self.next_id = id.checked_add(1).ok_or("prover_id_exhausted")?;
+        self.next_id = id.checked_add(1).ok_or(WalletError::ProverUnavailable)?;
         Ok(id)
     }
 }
@@ -73,41 +75,43 @@ pub fn sdk_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-pub fn poseidon_hash(inputs: Vec<Vec<u8>>) -> Result<Vec<u8>, String> {
+pub fn poseidon_hash(inputs: Vec<Vec<u8>>) -> Result<Vec<u8>, WalletError> {
     if inputs.is_empty() || inputs.len() > 12 {
-        return Err("Poseidon expects between 1 and 12 field elements".to_string());
+        return Err(WalletError::PoseidonInputCountInvalid {
+            count: inputs.len() as u64,
+        });
     }
     if let Some((index, input)) = inputs
         .iter()
         .enumerate()
         .find(|(_, input)| input.len() != 32)
     {
-        return Err(format!(
-            "Poseidon input {index} has {} bytes, expected 32",
-            input.len()
-        ));
+        return Err(WalletError::PoseidonInputLengthInvalid {
+            index: index as u64,
+            length: input.len() as u64,
+        });
     }
     let refs = inputs.iter().map(Vec::as_slice).collect::<Vec<_>>();
     Poseidon::hashv(&refs)
         .map(|hash| hash.to_vec())
-        .map_err(|error| error.to_string())
+        .map_err(|failure| zolana_client::ClientError::from(failure).into())
 }
 
 pub fn load_prover(
     r1cs_path: String,
     proving_key_path: String,
     verifying_key_path: String,
-) -> Result<PreparedProverInfo, String> {
+) -> Result<PreparedProverInfo, WalletError> {
     let started = Instant::now();
-    let mut state = PREPARED.try_lock().map_err(|_| "prover_busy".to_string())?;
+    let mut state = PREPARED.try_lock().map_err(|_| WalletError::ProverBusy)?;
     if state.loaded.is_some() {
-        return Err("prover_busy".to_string());
+        return Err(WalletError::ProverBusy);
     }
     let id = state.next_id()?;
     init_gnark()?;
     let prover =
         rust_gnark::PreparedProver::load(&r1cs_path, &proving_key_path, &verifying_key_path)
-            .map_err(|_| "prover_load_failed".to_string())?;
+            .map_err(|_| WalletError::ProverLoadFailed)?;
     state.loaded = Some(Loaded {
         id,
         key: None,
@@ -119,36 +123,36 @@ pub fn load_prover(
     })
 }
 
-pub fn release_prover(id: u64) -> Result<(), String> {
+pub fn release_prover(id: u64) -> Result<(), WalletError> {
     let mut state = PREPARED
         .lock()
-        .map_err(|_| "prover_unavailable".to_string())?;
+        .map_err(|_| WalletError::ProverUnavailable)?;
     match &state.loaded {
         Some(loaded) if loaded.id == id => {
             state.loaded = None;
             Ok(())
         }
-        _ => Err("prover_closed".to_string()),
+        _ => Err(WalletError::ProverClosed),
     }
 }
 
 /// Prove a structured Zolana `/prove` request with the prepared prover `id`.
-pub fn prove_prepared(id: u64, input_json: String) -> Result<LocalProofResult, String> {
+pub fn prove_prepared(id: u64, input_json: String) -> Result<LocalProofResult, WalletError> {
     let input_json = Zeroizing::new(input_json);
     let started = Instant::now();
-    let state = PREPARED.try_lock().map_err(|_| "prover_busy".to_string())?;
+    let state = PREPARED.try_lock().map_err(|_| WalletError::ProverBusy)?;
     let prover = &state
         .loaded
         .as_ref()
         .filter(|loaded| loaded.id == id)
-        .ok_or("prover_closed")?
+        .ok_or(WalletError::ProverClosed)?
         .prover;
     let proof = prover
         .prove_request(&input_json)
-        .map_err(|_| "proof_failed".to_string())?;
+        .map_err(|_| WalletError::ProofFailed)?;
     let proof_ms = proof.prove_ms;
     if !proof.shape_known {
-        return Err("unsupported_circuit".to_string());
+        return Err(WalletError::UnsupportedCircuit);
     }
     Ok(LocalProofResult {
         proof_json: proof.proof_json,
@@ -162,9 +166,9 @@ pub fn prove_prepared(id: u64, input_json: String) -> Result<LocalProofResult, S
     })
 }
 
-fn init_gnark() -> Result<(), String> {
+fn init_gnark() -> Result<(), WalletError> {
     GNARK_INIT
-        .get_or_init(|| rust_gnark::init().map_err(|_| "prover_init_failed".to_string()))
+        .get_or_init(|| rust_gnark::init().map_err(|_| WalletError::ProverInitFailed))
         .clone()
 }
 
@@ -196,7 +200,7 @@ mod tests {
         };
         let load = || load_prover(asset("r1cs"), asset("pk"), asset("vk"));
         let prepared = load().unwrap();
-        assert_eq!(load().unwrap_err(), "prover_busy");
+        assert_eq!(load().unwrap_err(), WalletError::ProverBusy);
 
         let request = std::fs::read_to_string(assets.join("prove-request-2x2.json")).unwrap();
         let proof = prove_prepared(prepared.id, request).unwrap();
@@ -209,13 +213,16 @@ mod tests {
         // A failed proof says nothing about its input.
         let error = prove_prepared(prepared.id, "{\"Secret\":\"private-sentinel\"}".to_string())
             .unwrap_err();
-        assert_eq!(error, "proof_failed");
+        assert_eq!(error, WalletError::ProofFailed);
 
         release_prover(prepared.id).unwrap();
         assert_eq!(
             prove_prepared(prepared.id, "{}".to_string()).unwrap_err(),
-            "prover_closed"
+            WalletError::ProverClosed
         );
-        assert_eq!(release_prover(prepared.id).unwrap_err(), "prover_closed");
+        assert_eq!(
+            release_prover(prepared.id).unwrap_err(),
+            WalletError::ProverClosed
+        );
     }
 }
