@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'http_transport.dart';
 import 'rust/third_party/zolana_mobile.dart' as native;
 
 /// Signs as one Solana account: a platform keystore, a wallet adapter or a
@@ -30,6 +31,32 @@ abstract interface class SolanaSigner {
 /// wallet from it.
 typedef RemoteProver = Future<Uint8List> Function(Uint8List request);
 
+/// Sends one HTTP request of the wallet. The wallet never opens a connection:
+/// Solana RPC and indexer calls (`POST`, JSON) and proving-key downloads
+/// (`GET`, files of several MB) all go through its transport, the package's
+/// own on `package:http` or the one the application passes to
+/// [ZolanaWallet.open]. The request carries the method, the URL with its
+/// `api-key` and the content type of a `POST`, nothing else; send it as it
+/// is, following redirects (the key host may redirect).
+///
+/// Return the server's response whatever its status, and throw only when
+/// there is none; the wallet then fails with the exception's message, never
+/// its stack trace. Stop reading and throw when a body exceeds
+/// [native.TransportRequest.maxResponseBytes]; the wallet refuses a longer
+/// body either way. Bound each request by
+/// [native.TransportRequest.timeoutMs] when it is set, and by a timeout of
+/// your own otherwise: the wallet, and [ZolanaWallet.close], wait for each
+/// answer, so the transport must not call the wallet either.
+typedef ZolanaTransport = Future<native.TransportResponse> Function(
+  native.TransportRequest request,
+);
+
+/// A [ZolanaTransport] as the native wallet calls it: a failure is a message,
+/// never a throw.
+typedef NativeTransport = Future<native.TransportOutcome> Function(
+  native.TransportRequest request,
+);
+
 /// A failure reported by the native wallet, such as
 /// `recipient_not_registered` or `signature_invalid`, or a client error
 /// describing what failed. It never contains key material.
@@ -49,11 +76,13 @@ abstract interface class WalletBackend {
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
+    NativeTransport transport,
   );
   Future<native.MobileWallet> openWithKeys(
     native.WalletConfig config,
     String solanaPubkey,
     native.WalletKeys keys,
+    NativeTransport transport,
   );
 }
 
@@ -127,10 +156,15 @@ class ZolanaWallet {
     this._signer,
     this._wallet,
     this.shieldedAddress,
+    this._defaultTransport,
   );
 
   final SolanaSigner? _signer;
   final native.MobileWallet _wallet;
+
+  /// The package's transport, when the application passed none; closed with
+  /// the wallet.
+  final HttpTransport? _defaultTransport;
   Future<void> _last = Future.value();
   Future<void>? _closing;
 
@@ -146,24 +180,37 @@ class ZolanaWallet {
   /// derivation message; the resulting keys stay in memory for this session.
   ///
   /// [remoteProver] proves the spends that ask for `Proving.remote`.
+  ///
+  /// Every request of the wallet goes through [transport], the application's
+  /// own networking, which applies its own URL policy. Without one, the
+  /// package sends with `package:http`: one connection pool per wallet,
+  /// closed with it. It refuses a plaintext URL off loopback in [config]
+  /// before anything else, with `rpc_url_insecure`, `indexer_url_insecure` or
+  /// `proving_key_url_insecure`, unless [allowInsecureHttp] is set: the
+  /// indexer sees the wallet's view tags, so set it only for a test cluster.
+  /// The wallet opens no connection itself either way.
   static Future<ZolanaWallet> open({
     required native.WalletConfig config,
     required SolanaSigner signer,
     RemoteProver? remoteProver,
+    ZolanaTransport? transport,
+    bool allowInsecureHttp = false,
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
+    if (transport == null) _refusePlaintext(config, allowInsecureHttp);
     final message = await backend.derivationMessage(signer.publicKey);
     final signature = await signer.signMessage(
       message,
       purpose: 'Open your private Zolana wallet',
     );
-    final wallet = await backend.open(config, signer.publicKey, signature);
-    await _setRemoteProver(wallet, remoteProver);
-    return ZolanaWallet._(
+    return _open(
       signer.publicKey,
       signer,
-      wallet,
-      await wallet.shieldedAddress(),
+      config,
+      remoteProver,
+      transport,
+      (transport) =>
+          backend.open(config, signer.publicKey, signature, transport),
     );
   });
 
@@ -174,27 +221,60 @@ class ZolanaWallet {
   /// Without a [signer], [register], [deposit], [transfer] and [withdraw] fail
   /// with `signer_missing`; the `prepare` methods, [submit] and [confirm]
   /// work. A [signer] for another account fails with `signer_mismatch`.
-  /// [remoteProver] works as in [open].
+  /// [remoteProver], [transport] and [allowInsecureHttp] work as in [open].
   static Future<ZolanaWallet> openWithKeys({
     required native.WalletConfig config,
     required String solanaPublicKey,
     required native.WalletKeys keys,
     SolanaSigner? signer,
     RemoteProver? remoteProver,
+    ZolanaTransport? transport,
+    bool allowInsecureHttp = false,
     WalletBackend backend = const _NativeBackend(),
   }) => _native(() async {
     if (signer != null && signer.publicKey != solanaPublicKey) {
       throw const ZolanaWalletException('signer_mismatch');
     }
-    final wallet = await backend.openWithKeys(config, solanaPublicKey, keys);
-    await _setRemoteProver(wallet, remoteProver);
-    return ZolanaWallet._(
+    if (transport == null) _refusePlaintext(config, allowInsecureHttp);
+    return _open(
       solanaPublicKey,
       signer,
-      wallet,
-      await wallet.shieldedAddress(),
+      config,
+      remoteProver,
+      transport,
+      (transport) =>
+          backend.openWithKeys(config, solanaPublicKey, keys, transport),
     );
   });
+
+  /// Opens the native wallet with [transport], or with the package's own.
+  /// A failure after the native wallet opened releases it.
+  static Future<ZolanaWallet> _open(
+    String solanaPublicKey,
+    SolanaSigner? signer,
+    native.WalletConfig config,
+    RemoteProver? remoteProver,
+    ZolanaTransport? transport,
+    Future<native.MobileWallet> Function(NativeTransport transport) open,
+  ) async {
+    final http = transport == null ? HttpTransport() : null;
+    native.MobileWallet? wallet;
+    try {
+      wallet = await open(_nativeTransport(transport ?? http!.send));
+      await _setRemoteProver(wallet, remoteProver);
+      return ZolanaWallet._(
+        solanaPublicKey,
+        signer,
+        wallet,
+        await wallet.shieldedAddress(),
+        http,
+      );
+    } catch (_) {
+      wallet?.dispose();
+      http?.close();
+      rethrow;
+    }
+  }
 
   /// The keys [openWithKeys] opens this wallet from. They cannot move funds,
   /// but they show its balances and history and link its spends: keep them
@@ -407,7 +487,13 @@ class ZolanaWallet {
   /// before opening the next account.
   ///
   /// It does not recall a transaction already submitted.
-  Future<void> close() => _closing ??= _last.then((_) => _wallet.dispose());
+  Future<void> close() => _closing ??= _last.then((_) {
+    try {
+      _wallet.dispose();
+    } finally {
+      _defaultTransport?.close();
+    }
+  });
 
   /// The transaction [prepared] built, unless the wallet was closed while it
   /// was being built.
@@ -494,6 +580,37 @@ Future<void> _setRemoteProver(
   );
 }
 
+/// [send] as the native wallet calls it. A failure becomes its message:
+/// thrown across the bridge, it would carry the Dart stack trace with it, and
+/// the wallet's callback cannot fail.
+NativeTransport _nativeTransport(ZolanaTransport send) => (request) async {
+  try {
+    return native.TransportOutcome(response: await send(request));
+  } catch (error) {
+    return native.TransportOutcome(failure: _message(error));
+  }
+};
+
+String _message(Object error) {
+  try {
+    return '$error';
+  } catch (_) {
+    return 'transport error';
+  }
+}
+
+/// The default transport's policy: `https`, or `http` to this device.
+void _refusePlaintext(native.WalletConfig config, bool allowInsecureHttp) {
+  if (allowInsecureHttp) return;
+  for (final (url, code) in [
+    (config.rpcUrl, 'rpc_url_insecure'),
+    (config.indexerUrl, 'indexer_url_insecure'),
+    (config.provingKeyUrl, 'proving_key_url_insecure'),
+  ]) {
+    if (url != null && !isSecureUrl(url)) throw ZolanaWalletException(code);
+  }
+}
+
 Future<T> _native<T>(Future<T> Function() operation) async {
   try {
     return await operation();
@@ -514,10 +631,12 @@ class _NativeBackend implements WalletBackend {
     native.WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
-  ) => native.MobileWallet.open(
+    NativeTransport transport,
+  ) async => native.MobileWallet.open(
     config: config,
     solanaPubkey: solanaPubkey,
     derivationSignature: derivationSignature,
+    transport: await native.Transport.newInstance(send: transport),
   );
 
   @override
@@ -525,9 +644,12 @@ class _NativeBackend implements WalletBackend {
     native.WalletConfig config,
     String solanaPubkey,
     native.WalletKeys keys,
-  ) => native.MobileWallet.openWithKeys(
+    NativeTransport transport,
+  ) async => native.MobileWallet.openWithKeys(
     config: config,
     solanaPubkey: solanaPubkey,
     keys: keys,
+    // A native transport per wallet: opening a wallet consumes it.
+    transport: await native.Transport.newInstance(send: transport),
   );
 }

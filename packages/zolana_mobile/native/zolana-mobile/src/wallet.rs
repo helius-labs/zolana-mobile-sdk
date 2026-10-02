@@ -29,31 +29,23 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex, PoisonError},
     thread::sleep,
-    time::Duration,
 };
 
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use solana_commitment_config::CommitmentConfig;
+use flutter_rust_bridge::DartFnFuture;
 use solana_instruction::Instruction;
 use solana_message::VersionedMessage;
 use solana_pubkey::Pubkey;
-use solana_rpc_client::{
-    http_sender::HttpSender,
-    rpc_client::{RpcClient, RpcClientConfig},
-};
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 use zeroize::Zeroizing;
-use zolana_api::BlockingZolanaApi;
 use zolana_client::{
     compile_message,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, try_resolve_registered_address,
     },
-    AsyncProverClient, AsyncZolanaIndexer, ClientError, ComputeBudgetConfig, IndexerPollConfig,
-    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos, ZolanaClient,
-    ZolanaIndexer,
+    ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SignedPrivateTransaction, SolanaRpc,
+    SpendableUtxos, ZolanaClient,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -70,27 +62,14 @@ use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, token_account_amount, Asset},
     keys::KeyStore,
-    prover::{
-        proving_error, DartFnFuture, NativeProver, Proving, RemoteProver, SpendProver, WalletProver,
-    },
+    prover::{proving_error, NativeProver, Proving, RemoteProver, SpendProver, WalletProver},
+    transport::Transport,
 };
-
-/// The prover URL `ZolanaClient` requires at construction. `with_prover`
-/// replaces it before any request is made, so it is never contacted.
-const UNUSED_PROVER_URL: &str = "https://prover.invalid";
-
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Where the wallet reads chain state and stores proving keys.
 pub struct WalletConfig {
     pub rpc_url: String,
-    /// Extra HTTP headers on every Solana RPC request, such as an auth token.
-    /// Their values are kept out of logs.
-    pub rpc_headers: Option<HashMap<String, String>>,
     pub indexer_url: String,
-    /// Extra HTTP headers on every indexer request, such as an auth token for
-    /// the application's indexer proxy. Their values are kept out of logs.
-    pub indexer_headers: Option<HashMap<String, String>>,
     /// Directory for downloaded proving keys; keep it across launches.
     pub proving_key_dir: String,
     /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
@@ -99,10 +78,6 @@ pub struct WalletConfig {
     /// when `None`. [`Proving::Remote`] needs
     /// [`MobileWallet::set_remote_prover`].
     pub proving: Option<Proving>,
-    /// Allow a plaintext indexer off loopback (an emulator reaching its host).
-    /// The indexer sees the wallet's view tags, so never set this for funds
-    /// that matter.
-    pub allow_insecure_http: bool,
     /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
     /// and a mint named in any call is added for the rest of the session.
     /// Notes in other mints are left out, as the Zolana SDK leaves out assets
@@ -248,11 +223,13 @@ pub struct MobileWallet {
 
 impl MobileWallet {
     /// Open the wallet of `solana_pubkey` from its signature over
-    /// [`derivation_message`].
+    /// [`derivation_message`]. Every request of the wallet goes through
+    /// `transport`; it opens no connection itself.
     pub fn open(
         config: WalletConfig,
         solana_pubkey: String,
         derivation_signature: Vec<u8>,
+        transport: Transport,
     ) -> Result<MobileWallet, String> {
         let owner = parse_pubkey(&solana_pubkey)?;
         let seed: [u8; derivation::ED25519_SEED_LEN] = derivation_signature
@@ -266,16 +243,17 @@ impl MobileWallet {
         }
         let (nullifier_key, viewing_key) =
             derivation::expand_roles(&seed, Curve::Ed25519).map_err(derivation_invalid)?;
-        Self::from_keys(config, owner, nullifier_key, viewing_key)
+        Self::from_keys(config, owner, nullifier_key, viewing_key, transport)
     }
 
     /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
     /// returned. Fails with `wallet_keys_invalid` unless each private key
-    /// yields its public key.
+    /// yields its public key. `transport` works as in [`Self::open`].
     pub fn open_with_keys(
         config: WalletConfig,
         solana_pubkey: String,
         keys: WalletKeys,
+        transport: Transport,
     ) -> Result<MobileWallet, String> {
         let owner = parse_pubkey(&solana_pubkey)?;
         let viewing_secret = Zeroizing::new(keys.viewing_private_key);
@@ -294,7 +272,7 @@ impl MobileWallet {
         {
             return Err(keys_invalid(()));
         }
-        Self::from_keys(config, owner, nullifier_key, viewing_key)
+        Self::from_keys(config, owner, nullifier_key, viewing_key, transport)
     }
 
     fn from_keys(
@@ -302,6 +280,7 @@ impl MobileWallet {
         owner: Pubkey,
         nullifier_key: NullifierKey,
         viewing_key: ViewingKey,
+        transport: Transport,
     ) -> Result<MobileWallet, String> {
         let address = ShieldedAddress {
             signing_pubkey: PublicKey::from_ed25519(&owner.to_bytes()),
@@ -311,24 +290,15 @@ impl MobileWallet {
         let keys =
             LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())
                 .map_err(error)?;
-        let proving_keys = KeyStore::new(config.proving_key_dir, config.proving_key_url)?;
-        let rpc = solana_rpc(config.rpc_url, config.rpc_headers.unwrap_or_default())?;
-        if !config.allow_insecure_http {
-            // The SDK's transport check: https, or http on loopback only.
-            ZolanaClient::from_urls((), &config.indexer_url, UNUSED_PROVER_URL).map_err(error)?;
-        }
-        let indexer = indexer(
-            &config.indexer_url,
-            config.indexer_headers.unwrap_or_default(),
-        )?;
+        let proving_keys = KeyStore::new(
+            config.proving_key_dir,
+            config.proving_key_url,
+            transport.clone(),
+        );
         let spend_prover = SpendProver::default();
-        // Only the blocking indexer is used; the async clients are required.
-        let client = ZolanaClient::new(
-            rpc,
-            indexer,
-            ProverClient::new(UNUSED_PROVER_URL.to_string()),
-            AsyncZolanaIndexer::new(&config.indexer_url),
-            AsyncProverClient::new(UNUSED_PROVER_URL.to_string()),
+        let client = ZolanaClient::new_blocking(
+            transport.solana_rpc(config.rpc_url)?,
+            transport.indexer(&config.indexer_url),
         )
         .with_prover(WalletProver {
             native: NativeProver::new(proving_keys),
@@ -984,51 +954,6 @@ fn withdraw_to(
     ))
 }
 
-/// A Solana RPC client as `SolanaRpc::new` builds it, with `headers` added.
-fn solana_rpc(url: String, headers: HashMap<String, String>) -> Result<SolanaRpc, String> {
-    let mut header_map = HttpSender::default_headers();
-    add_headers(&mut header_map, headers, "rpc_header_invalid")?;
-    let client = reqwest::Client::builder()
-        .default_headers(header_map)
-        .timeout(REQUEST_TIMEOUT)
-        .pool_idle_timeout(REQUEST_TIMEOUT)
-        .build()
-        .map_err(|_| "rpc_client_unavailable".to_string())?;
-    Ok(SolanaRpc::with_client(RpcClient::new_sender(
-        HttpSender::new_with_client(url, client),
-        RpcClientConfig::with_commitment(CommitmentConfig::confirmed()),
-    )))
-}
-
-/// The indexer client, with `headers` on every request.
-fn indexer(url: &str, headers: HashMap<String, String>) -> Result<ZolanaIndexer, String> {
-    let mut header_map = HeaderMap::new();
-    add_headers(&mut header_map, headers, "indexer_header_invalid")?;
-    let client = reqwest::blocking::Client::builder()
-        .default_headers(header_map)
-        .timeout(REQUEST_TIMEOUT)
-        .build()
-        .map_err(|_| "indexer_client_unavailable".to_string())?;
-    Ok(ZolanaIndexer::with_api(BlockingZolanaApi::with_client(
-        url, client,
-    )))
-}
-
-/// Header values are marked sensitive, so they are not printed in logs.
-fn add_headers(
-    header_map: &mut HeaderMap,
-    headers: HashMap<String, String>,
-    invalid: &str,
-) -> Result<(), String> {
-    for (name, value) in headers {
-        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| invalid.to_string())?;
-        let mut value = HeaderValue::from_str(&value).map_err(|_| invalid.to_string())?;
-        value.set_sensitive(true);
-        header_map.insert(name, value);
-    }
-    Ok(())
-}
-
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
 fn wait_for_confirmation(rpc: &impl Rpc, signature: Signature) -> Result<(), String> {
     let poll = IndexerPollConfig::default();
@@ -1116,18 +1041,15 @@ mod tests {
     use zolana_client::{compile_message, ComputeBudgetConfig};
 
     use super::*;
+    use crate::transport::tests::unreachable;
 
     fn config() -> WalletConfig {
         WalletConfig {
-            // Unroutable: a test that reaches the network fails differently.
-            rpc_url: "http://127.0.0.1:1".to_string(),
-            rpc_headers: None,
-            indexer_url: "http://127.0.0.1:1".to_string(),
-            indexer_headers: None,
+            rpc_url: "https://rpc.example".to_string(),
+            indexer_url: "https://indexer.example/v1/zolana".to_string(),
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
-            allow_insecure_http: false,
             mints: Vec::new(),
         }
     }
@@ -1136,11 +1058,13 @@ mod tests {
         open_with(signer, config())
     }
 
+    /// A wallet whose transport reaches nothing: a request fails as a
+    /// refused connection does.
     fn open_with(signer: &Keypair, config: WalletConfig) -> Result<MobileWallet, String> {
         let pubkey = signer.pubkey().to_string();
         let message = derivation_message(pubkey.clone())?;
         let signature = signer.sign_message(&message);
-        MobileWallet::open(config, pubkey, signature.as_ref().to_vec())
+        MobileWallet::open(config, pubkey, signature.as_ref().to_vec(), unreachable())
     }
 
     #[test]
@@ -1164,7 +1088,7 @@ mod tests {
             vec![0; 63],
         ] {
             assert_eq!(
-                MobileWallet::open(config(), pubkey.clone(), signature)
+                MobileWallet::open(config(), pubkey.clone(), signature, unreachable())
                     .err()
                     .as_deref(),
                 Some("derivation_signature_invalid")
@@ -1268,7 +1192,7 @@ mod tests {
                 Some(expected)
             );
         }
-        // A valid signature gets as far as the unroutable RPC.
+        // A valid signature gets as far as the transport.
         let error = wallet
             .submit(&pending(), vec![valid.as_ref().to_vec()])
             .unwrap_err();
@@ -1287,7 +1211,7 @@ mod tests {
                 Some("signature_invalid")
             );
         }
-        // The fee payer's signature gets as far as the unroutable RPC.
+        // The fee payer's signature gets as far as the transport.
         let signature = signer.sign_message(&pending.message_bytes()).to_string();
         let error = wallet.confirm(&pending, signature).unwrap_err();
         assert_ne!(error, "signature_invalid");
@@ -1302,7 +1226,7 @@ mod tests {
                 .unwrap_err(),
             "signature_invalid"
         );
-        // A real signature gets as far as the unroutable RPC.
+        // A real signature gets as far as the transport.
         let error = wallet
             .wait_for_transaction(Signature::default().to_string())
             .unwrap_err();
@@ -1310,78 +1234,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_headers_that_are_not_http() {
-        let signer = Keypair::new();
-        let header = |name: &str, value: &str| Some(HashMap::from([(name.into(), value.into())]));
-        for (name, value) in [("bad name", "value"), ("x-token", "line\nbreak")] {
-            let rpc = WalletConfig {
-                rpc_headers: header(name, value),
-                ..config()
-            };
-            let indexer = WalletConfig {
-                indexer_headers: header(name, value),
-                ..config()
-            };
-            assert_eq!(
-                open_with(&signer, rpc).err().as_deref(),
-                Some("rpc_header_invalid")
-            );
-            assert_eq!(
-                open_with(&signer, indexer).err().as_deref(),
-                Some("indexer_header_invalid")
-            );
-        }
-        let both = WalletConfig {
-            rpc_headers: header("x-token", "secret"),
-            indexer_headers: header("x-token", "secret"),
-            ..config()
-        };
-        assert!(open_with(&signer, both).is_ok());
-    }
-
-    #[test]
-    fn sends_the_indexer_headers() {
-        use std::io::{Read, Write};
-
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let indexer_url = format!("http://{}", listener.local_addr().unwrap());
-        let request = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut request = vec![0; 8192];
-            let read = stream.read(&mut request).unwrap();
-            stream
-                .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\n\r\n")
-                .unwrap();
-            String::from_utf8_lossy(&request[..read]).to_lowercase()
-        });
-        let config = WalletConfig {
-            indexer_url,
-            indexer_headers: Some(HashMap::from([("x-token".into(), "secret".into())])),
-            ..config()
-        };
-        let mut wallet = open_with(&Keypair::new(), config).unwrap();
-        let error = wallet.private_balance(None).unwrap_err();
-        assert!(!error.contains("secret"), "{error}");
-        assert!(request.join().unwrap().contains("x-token: secret"));
-    }
-
-    #[test]
-    fn refuses_a_plaintext_indexer_off_loopback() {
-        let plaintext = |allow_insecure_http| WalletConfig {
-            indexer_url: "http://indexer.example".to_string(),
-            allow_insecure_http,
-            ..config()
-        };
-        let error = open_with(&Keypair::new(), plaintext(false)).err().unwrap();
-        assert!(error.contains("indexer_url"), "{error}");
-        assert!(open_with(&Keypair::new(), plaintext(true)).is_ok());
-    }
-
-    #[test]
     fn errors_mask_api_keys_in_urls() {
         let config = WalletConfig {
-            rpc_url: "http://127.0.0.1:1/?api-key=secret".to_string(),
-            indexer_url: "http://127.0.0.1:1/v1/zolana?api-key=secret".to_string(),
+            rpc_url: "https://rpc.example/?api-key=secret".to_string(),
+            indexer_url: "https://indexer.example/v1/zolana?api-key=secret".to_string(),
             ..config()
         };
         let mut wallet = open_with(&Keypair::new(), config).unwrap();
@@ -1403,7 +1259,7 @@ mod tests {
         let signer = Keypair::new();
         let wallet = open(&signer).unwrap();
         let reopen = |solana_pubkey: String, keys| {
-            MobileWallet::open_with_keys(config(), solana_pubkey, keys)
+            MobileWallet::open_with_keys(config(), solana_pubkey, keys, unreachable())
         };
         let keys = wallet.export_keys();
         let lengths = [
@@ -1481,7 +1337,7 @@ mod tests {
 
         let mut local = open(&signer).unwrap();
         assert_eq!(missing(&mut local, Some(Proving::Remote)), [true; 2]);
-        // The others get as far as the unroutable RPC.
+        // The others get as far as the transport.
         assert_eq!(missing(&mut local, None), [false; 2]);
         let config = WalletConfig {
             proving: Some(Proving::Remote),

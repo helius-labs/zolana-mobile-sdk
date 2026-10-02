@@ -19,6 +19,8 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use zolana_client::prover::ExpectedProvingKey;
 
+use crate::transport::{Transport, TransportRequest};
+
 /// The upstream prover's default key host.
 pub const DEFAULT_PROVING_KEYS_URL: &str = "https://d3gbdb0egjwcw9.cloudfront.net";
 
@@ -45,22 +47,21 @@ fn lockfile() -> &'static Lockfile {
 pub struct KeyStore {
     dir: PathBuf,
     base_url: String,
+    transport: Transport,
     /// Keys whose digest was checked this process. Re-hashing a 240 MB merge
     /// key before every proof would cost more than the proof.
     verified: Mutex<HashSet<String>>,
 }
 
 impl KeyStore {
-    pub fn new(dir: impl Into<PathBuf>, base_url: Option<String>) -> Result<Self, String> {
+    pub fn new(dir: impl Into<PathBuf>, base_url: Option<String>, transport: Transport) -> Self {
         let base_url = base_url.unwrap_or_else(|| DEFAULT_PROVING_KEYS_URL.to_string());
-        if !is_allowed_url(&base_url) {
-            return Err("proving_key_url_insecure".to_string());
-        }
-        Ok(Self {
+        Self {
             dir: dir.into(),
             base_url: base_url.trim_end_matches('/').to_string(),
+            transport,
             verified: Mutex::new(HashSet::new()),
-        })
+        }
     }
 
     /// Path of `key` in the store, downloading it first if it is missing or
@@ -97,16 +98,11 @@ impl KeyStore {
 
     fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), String> {
         let url = format!("{}/{}/{name}", self.base_url, lockfile().prefix);
-        let mut response = reqwest::blocking::Client::builder()
-            .timeout(None)
-            .build()
-            .and_then(|client| client.get(url).send())
-            .and_then(reqwest::blocking::Response::error_for_status)
-            .map_err(|_| "proving_key_download_failed".to_string())?;
+        let body = self.fetch(url, entry.size)?;
         let partial = path.with_extension("key.partial");
         let result = (|| {
             let mut file = File::create(&partial).map_err(|_| "proving_key_dir_unwritable")?;
-            let digest = copy_bounded(&mut response, &mut file, entry.size)?;
+            let digest = copy_bounded(&mut body.as_slice(), &mut file, entry.size)?;
             file.sync_all().map_err(|_| "proving_key_dir_unwritable")?;
             if digest != entry.sha256 {
                 return Err("proving_key_checksum_mismatch".to_string());
@@ -118,6 +114,30 @@ impl KeyStore {
         }
         result
     }
+
+    /// The body of `url`, whole: it is checked before it is written. The
+    /// transport is asked to stop past `size` bytes.
+    fn fetch(&self, url: String, size: u64) -> Result<Vec<u8>, String> {
+        let response = self
+            .transport
+            .send_blocking(TransportRequest {
+                method: "GET".to_string(),
+                url,
+                headers: HashMap::new(),
+                body: Vec::new(),
+                max_response_bytes: u32::try_from(size).ok(),
+                timeout_ms: None,
+            })
+            .map_err(download_failed)?;
+        if !(200..300).contains(&response.status) {
+            return Err(download_failed(response.status));
+        }
+        Ok(response.body)
+    }
+}
+
+fn download_failed<E>(_: E) -> String {
+    "proving_key_download_failed".to_string()
 }
 
 /// Whether the file at `path` exists and hashes to `entry`.
@@ -166,22 +186,10 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// Keys are public setup parameters, but a tampered key yields proofs the
-/// program rejects, so the transport still has to be authenticated.
-fn is_allowed_url(url: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(url) else {
-        return false;
-    };
-    match url.scheme() {
-        "https" => true,
-        "http" => matches!(url.host_str(), Some("127.0.0.1" | "localhost")),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::tests::{fake, ok, unreachable};
 
     #[test]
     fn every_transfer_shape_has_a_pinned_key() {
@@ -206,7 +214,7 @@ mod tests {
 
     #[test]
     fn a_key_the_verifying_key_does_not_pin_is_refused() {
-        let store = KeyStore::new(std::env::temp_dir(), None).unwrap();
+        let store = KeyStore::new(std::env::temp_dir(), None, unreachable());
         let unknown = ExpectedProvingKey {
             name: "transfer_confidential_9_9.key".into(),
             sha256: [0; 32],
@@ -240,10 +248,49 @@ mod tests {
     }
 
     #[test]
-    fn plaintext_key_hosts_are_refused() {
-        assert!(KeyStore::new("/tmp", Some("http://keys.example.com".into())).is_err());
-        assert!(KeyStore::new("/tmp", Some("http://localhost.evil.com".into())).is_err());
-        assert!(KeyStore::new("/tmp", Some("http://127.0.0.1:9000".into())).is_ok());
-        assert!(KeyStore::new("/tmp", None).is_ok());
+    fn downloads_through_the_transport() {
+        let dir = std::env::temp_dir().join(format!("zolana-key-transport-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("k.key");
+        let entry = LockEntry {
+            // sha256("abc")
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+            size: 3,
+        };
+        let store = |transport| KeyStore::new(&dir, None, transport);
+
+        let (transport, requests) = fake(|_| ok("abc"));
+        store(transport).download("k.key", &entry, &path).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"abc");
+        let request = requests.lock().unwrap().pop().unwrap();
+        assert_eq!(request.method, "GET");
+        assert_eq!(
+            request.url,
+            format!("{DEFAULT_PROVING_KEYS_URL}/{}/k.key", lockfile().prefix)
+        );
+        assert!(request.headers.is_empty() && request.body.is_empty());
+        assert_eq!(request.max_response_bytes, Some(3));
+
+        fs::remove_file(&path).unwrap();
+        let (missing, _) = fake(|_| {
+            Ok(crate::TransportResponse {
+                status: 404,
+                body: b"abc".to_vec(),
+            })
+        });
+        let (tampered, _) = fake(|_| ok("abd"));
+        for (transport, expected) in [
+            (missing, "proving_key_download_failed"),
+            (tampered, "proving_key_checksum_mismatch"),
+        ] {
+            assert_eq!(
+                store(transport)
+                    .download("k.key", &entry, &path)
+                    .unwrap_err(),
+                expected
+            );
+            assert!(!path.exists());
+        }
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

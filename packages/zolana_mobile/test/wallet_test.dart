@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:zolana_mobile/src/http_transport.dart';
 import 'package:zolana_mobile/src/rust/third_party/zolana_mobile.dart'
-    show MobileWallet, PendingTransaction;
+    show MobileWallet, PendingTransaction, TransportOutcome;
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 const owner = 'Owner1111111111111111111111111111111111111';
@@ -11,7 +14,6 @@ const config = WalletConfig(
   rpcUrl: 'https://rpc.example',
   indexerUrl: 'https://indexer.example',
   provingKeyDir: '/keys',
-  allowInsecureHttp: false,
   mints: [],
 );
 
@@ -90,6 +92,8 @@ class FakeWallet implements MobileWallet {
   Completer<void>? holdTransfer;
   Completer<void>? holdRegistration;
   Object? transferError;
+  Object? remoteProverError;
+  Object? disposeError;
   bool disposed = false;
   List<String> transferSigners = const [owner];
   String? transferFeePayer;
@@ -99,7 +103,10 @@ class FakeWallet implements MobileWallet {
   @override
   Future<void> setRemoteProver({
     required FutureOr<Uint8List?> Function(Uint8List) prove,
-  }) async => remoteProver = prove;
+  }) async {
+    if (remoteProverError case final error?) throw error;
+    remoteProver = prove;
+  }
 
   @override
   Future<String> shieldedAddress() async => 'shielded';
@@ -222,6 +229,7 @@ class FakeWallet implements MobileWallet {
   void dispose() {
     events.add('dispose');
     disposed = true;
+    if (disposeError case final error?) throw error;
   }
 
   @override
@@ -234,6 +242,7 @@ class FakeBackend implements WalletBackend {
   final FakeWallet wallet;
   Uint8List? openedWith;
   WalletKeys? openedWithKeys;
+  NativeTransport? transport;
 
   @override
   Future<Uint8List> derivationMessage(String solanaPubkey) async =>
@@ -244,8 +253,10 @@ class FakeBackend implements WalletBackend {
     WalletConfig config,
     String solanaPubkey,
     Uint8List derivationSignature,
+    NativeTransport transport,
   ) async {
     openedWith = derivationSignature;
+    this.transport = transport;
     return wallet;
   }
 
@@ -254,8 +265,10 @@ class FakeBackend implements WalletBackend {
     WalletConfig config,
     String solanaPubkey,
     WalletKeys keys,
+    NativeTransport transport,
   ) async {
     openedWithKeys = keys;
+    this.transport = transport;
     return wallet;
   }
 }
@@ -288,6 +301,304 @@ void main() {
       backend.openedWith,
       Uint8List.fromList(owner.codeUnits.reversed.toList()),
     );
+  });
+
+  test('hands the application transport to the native wallet', () async {
+    final requests = <TransportRequest>[];
+    Future<TransportResponse> transport(TransportRequest request) async {
+      requests.add(request);
+      return TransportResponse(status: 200, body: Uint8List.fromList([7]));
+    }
+
+    final request = TransportRequest(
+      method: 'POST',
+      url: 'https://rpc.example',
+      headers: const {'x-token': 'token'},
+      body: Uint8List.fromList([1]),
+    );
+    final opened = FakeBackend(FakeWallet());
+    await ZolanaWallet.open(
+      config: config,
+      signer: RecordingSigner(),
+      transport: transport,
+      backend: opened,
+    );
+    final outcome = await opened.transport!(request);
+    expect(outcome.response!.status, 200);
+    expect(outcome.response!.body, [7]);
+    expect(outcome.failure, isNull);
+
+    final reopened = FakeBackend(FakeWallet());
+    await ZolanaWallet.openWithKeys(
+      config: config,
+      solanaPublicKey: owner,
+      keys: savedKeys,
+      transport: transport,
+      backend: reopened,
+    );
+    await reopened.transport!(request);
+    expect(requests, [request, request]);
+  });
+
+  test('hands the wallet a transport failure as its message only', () async {
+    final request = TransportRequest(
+      method: 'POST',
+      url: 'https://rpc.example/?api-key=secret',
+      headers: const {},
+      body: Uint8List(0),
+    );
+    Future<TransportOutcome> failing(Object error) async {
+      final backend = FakeBackend(FakeWallet());
+      await ZolanaWallet.open(
+        config: config,
+        signer: RecordingSigner(),
+        transport: (_) async => throw error,
+        backend: backend,
+      );
+      return backend.transport!(request);
+    }
+
+    final outcome = await failing(StateError('no network'));
+    expect(outcome.response, isNull);
+    // No stack trace: the message is all the wallet gets.
+    expect(outcome.failure, 'Bad state: no network');
+    expect((await failing(_Unprintable())).failure, 'transport error');
+  });
+
+  test(
+    'hands the default transport to the native wallet without one',
+    () async {
+      final (wallet, _, _, backend) = await openWallet();
+      final transport = backend.transport!;
+
+      // Closing the wallet closes its connection pool: the request fails
+      // before any connection, as a message.
+      await wallet.close();
+      final outcome = await transport(
+        TransportRequest(
+          method: 'POST',
+          url: 'https://rpc.example',
+          headers: const {},
+          body: Uint8List(0),
+        ),
+      );
+      expect(outcome.response, isNull);
+      expect(outcome.failure, contains('closed'));
+    },
+  );
+
+  test('refuses plaintext URLs at open with the default transport', () async {
+    Future<FakeBackend> open(
+      WalletConfig config, {
+      bool allowInsecureHttp = false,
+      ZolanaTransport? transport,
+      RecordingSigner? signer,
+    }) async {
+      final backend = FakeBackend(FakeWallet());
+      await ZolanaWallet.open(
+        config: config,
+        signer: signer ?? RecordingSigner(),
+        transport: transport,
+        allowInsecureHttp: allowInsecureHttp,
+        backend: backend,
+      );
+      return backend;
+    }
+
+    WalletConfig withUrls({String? rpc, String? indexer, String? keys}) =>
+        WalletConfig(
+          rpcUrl: rpc ?? config.rpcUrl,
+          indexerUrl: indexer ?? config.indexerUrl,
+          provingKeyDir: config.provingKeyDir,
+          provingKeyUrl: keys,
+          mints: const [],
+        );
+    const plaintext = 'http://10.0.2.2:8899/?api-key=secret';
+    for (final (insecure, code) in [
+      (withUrls(rpc: plaintext), 'rpc_url_insecure'),
+      (withUrls(indexer: plaintext), 'indexer_url_insecure'),
+      (withUrls(keys: plaintext), 'proving_key_url_insecure'),
+    ]) {
+      final signer = RecordingSigner();
+      await expectLater(
+        open(insecure, signer: signer),
+        throwsWalletError(code),
+      );
+      // Before the signer is asked or the native wallet opens.
+      expect(signer.requests, isEmpty);
+      await open(insecure, allowInsecureHttp: true);
+      // An application transport applies its own policy.
+      await open(
+        insecure,
+        transport: (_) async =>
+            TransportResponse(status: 200, body: Uint8List(0)),
+      );
+    }
+    await expectLater(
+      ZolanaWallet.openWithKeys(
+        config: withUrls(indexer: plaintext),
+        solanaPublicKey: owner,
+        keys: savedKeys,
+        backend: FakeBackend(FakeWallet()),
+      ),
+      throwsWalletError('indexer_url_insecure'),
+    );
+    await open(
+      withUrls(
+        rpc: 'http://localhost:8899',
+        indexer: 'http://127.0.0.1:8784/v1/zolana',
+        keys: 'http://[::1]:9000',
+      ),
+    );
+  });
+
+  test('a failed open releases the native wallet and its transport', () async {
+    final native = FakeWallet()..remoteProverError = StateError('bridge');
+    final backend = FakeBackend(native);
+    await expectLater(
+      ZolanaWallet.open(
+        config: config,
+        signer: RecordingSigner(),
+        remoteProver: (request) async => request,
+        backend: backend,
+      ),
+      throwsStateError,
+    );
+    expect(native.disposed, isTrue);
+    final outcome = await backend.transport!(
+      TransportRequest(
+        method: 'GET',
+        url: 'https://keys.example/k.key',
+        headers: const {},
+        body: Uint8List(0),
+      ),
+    );
+    expect(outcome.failure, contains('closed'));
+  });
+
+  test('close releases the default transport when dispose fails', () async {
+    final (wallet, native, _, backend) = await openWallet();
+    native.disposeError = StateError('dispose');
+    await expectLater(wallet.close(), throwsStateError);
+    final outcome = await backend.transport!(
+      TransportRequest(
+        method: 'GET',
+        url: 'https://keys.example/k.key',
+        headers: const {},
+        body: Uint8List(0),
+      ),
+    );
+    expect(outcome.failure, contains('closed'));
+  });
+
+  group('HttpTransport', () {
+    final request = TransportRequest(
+      method: 'POST',
+      url: 'https://rpc.example/?api-key=secret',
+      headers: const {'content-type': 'application/json'},
+      body: Uint8List.fromList([1, 2]),
+    );
+
+    test('sends the request as it is and returns any status', () async {
+      http.Request? sent;
+      final transport = HttpTransport(
+        client: MockClient((request) async {
+          sent = request;
+          return http.Response.bytes([9], 401);
+        }),
+      );
+      final response = await transport.send(request);
+      expect(response.status, 401);
+      expect(response.body, [9]);
+      expect(sent!.method, 'POST');
+      expect(sent!.url.toString(), request.url);
+      expect(sent!.headers, request.headers);
+      expect(sent!.bodyBytes, [1, 2]);
+      expect(sent!.followRedirects, isTrue);
+    });
+
+    test('stops reading a body past maxResponseBytes', () async {
+      TransportRequest key(int? max) => TransportRequest(
+        method: 'GET',
+        url: 'https://keys.example/k.key',
+        headers: const {},
+        body: Uint8List(0),
+        maxResponseBytes: max,
+      );
+      final declared = HttpTransport(
+        client: MockClient(
+          (_) async => http.Response.bytes([1, 2, 3, 4, 5], 200),
+        ),
+      );
+      // Without a content length, it counts what arrives.
+      final chunks = <List<int>>[];
+      final streamed = HttpTransport(
+        client: MockClient.streaming(
+          (_, _) async => http.StreamedResponse(
+            Stream.fromIterable([
+              [1, 2, 3],
+              [4, 5],
+            ]).map((chunk) {
+              chunks.add(chunk);
+              return chunk;
+            }),
+            200,
+          ),
+        ),
+      );
+      for (final transport in [declared, streamed]) {
+        expect((await transport.send(key(5))).body, [1, 2, 3, 4, 5]);
+        expect((await transport.send(key(null))).body, hasLength(5));
+        await expectLater(
+          transport.send(key(4)),
+          throwsA(
+            isA<Exception>().having(
+              (e) => '$e',
+              'message',
+              'response body exceeds 4 bytes',
+            ),
+          ),
+        );
+      }
+      expect(chunks, hasLength(6));
+    });
+
+    test('bounds a request by its timeoutMs', () async {
+      final slow = HttpTransport(
+        client: MockClient((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+          return http.Response('', 200);
+        }),
+      );
+      TransportRequest after(int timeoutMs) => TransportRequest(
+        method: 'POST',
+        url: 'https://prover.example/prove',
+        headers: const {},
+        body: Uint8List(0),
+        timeoutMs: timeoutMs,
+      );
+      await expectLater(slow.send(after(20)), throwsA(isA<TimeoutException>()));
+      expect((await slow.send(after(2000))).status, 200);
+    });
+
+    test('isSecureUrl allows https and http to this device only', () {
+      for (final url in [
+        'https://keys.example/k.key',
+        'http://localhost:8899/',
+        'http://127.0.0.1:8784/v1/zolana',
+        'http://[::1]:1/',
+      ]) {
+        expect(isSecureUrl(url), isTrue, reason: url);
+      }
+      for (final url in [
+        'http://10.0.2.2:8784/v1/zolana',
+        'http://localhost.evil.com/',
+        'ftp://keys.example/',
+        '::not a url',
+      ]) {
+        expect(isSecureUrl(url), isFalse, reason: url);
+      }
+    });
   });
 
   test('opens from saved keys without asking for a signature', () async {
@@ -632,4 +943,9 @@ void main() {
     expect(await deposit, 'signature');
     expect(native.events, ['balances start', 'balances end', 'transfer SOL']);
   });
+}
+
+class _Unprintable {
+  @override
+  String toString() => throw StateError('unprintable');
 }

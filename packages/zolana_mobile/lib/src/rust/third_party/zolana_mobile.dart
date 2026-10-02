@@ -74,28 +74,33 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<WalletKeys> exportKeys();
 
   /// Open the wallet of `solana_pubkey` from its signature over
-  /// [`derivation_message`].
+  /// [`derivation_message`]. Every request of the wallet goes through
+  /// `transport`; it opens no connection itself.
   static Future<MobileWallet> open({
     required WalletConfig config,
     required String solanaPubkey,
     required List<int> derivationSignature,
+    required Transport transport,
   }) => RustLib.instance.api.zolanaMobileMobileWalletOpen(
     config: config,
     solanaPubkey: solanaPubkey,
     derivationSignature: derivationSignature,
+    transport: transport,
   );
 
   /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
   /// returned. Fails with `wallet_keys_invalid` unless each private key
-  /// yields its public key.
+  /// yields its public key. `transport` works as in [`Self::open`].
   static Future<MobileWallet> openWithKeys({
     required WalletConfig config,
     required String solanaPubkey,
     required WalletKeys keys,
+    required Transport transport,
   }) => RustLib.instance.api.zolanaMobileMobileWalletOpenWithKeys(
     config: config,
     solanaPubkey: solanaPubkey,
     keys: keys,
+    transport: transport,
   );
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -229,6 +234,17 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 
   /// Human-readable description to show before asking for a signature.
   Future<String> summary();
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>
+abstract class Transport implements RustOpaqueInterface {
+  // HINT: Make it `#[frb(sync)]` to let it become the default constructor of Dart class.
+  /// `send` answers a request with the server's response, or with a failure
+  /// when there is none. The wallet waits for it, so it must not call the
+  /// wallet.
+  static Future<Transport> newInstance({
+    required FutureOr<TransportOutcome> Function(TransportRequest) send,
+  }) => RustLib.instance.api.zolanaMobileTransportNew(send: send);
 }
 
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit
@@ -415,18 +431,102 @@ class TokenBalance {
           amount == other.amount;
 }
 
+/// What the application's transport answered: the server's response, or the
+/// message of the failure that left none. The package's Dart side builds it
+/// and never throws, so no Dart stack trace reaches the wallet.
+class TransportOutcome {
+  final TransportResponse? response;
+  final String? failure;
+
+  const TransportOutcome({this.response, this.failure});
+
+  @override
+  int get hashCode => response.hashCode ^ failure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportOutcome &&
+          runtimeType == other.runtimeType &&
+          response == other.response &&
+          failure == other.failure;
+}
+
+/// One HTTP request of the wallet.
+class TransportRequest {
+  /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
+  final String method;
+  final String url;
+
+  /// The content type of a `POST`; nothing else.
+  final Map<String, String> headers;
+
+  /// Empty for a `GET`.
+  final Uint8List body;
+
+  /// The most bytes the response body may hold, for a proving-key download
+  /// (the key's size in the lockfile). A transport stops reading and fails
+  /// past it; the wallet refuses a longer body either way.
+  final int? maxResponseBytes;
+
+  /// The caller's bound on the request, in milliseconds, when it has one;
+  /// otherwise the transport's own applies.
+  final int? timeoutMs;
+
+  const TransportRequest({
+    required this.method,
+    required this.url,
+    required this.headers,
+    required this.body,
+    this.maxResponseBytes,
+    this.timeoutMs,
+  });
+
+  @override
+  int get hashCode =>
+      method.hashCode ^
+      url.hashCode ^
+      headers.hashCode ^
+      body.hashCode ^
+      maxResponseBytes.hashCode ^
+      timeoutMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportRequest &&
+          runtimeType == other.runtimeType &&
+          method == other.method &&
+          url == other.url &&
+          headers == other.headers &&
+          body == other.body &&
+          maxResponseBytes == other.maxResponseBytes &&
+          timeoutMs == other.timeoutMs;
+}
+
+/// The server's response, whatever its status.
+class TransportResponse {
+  final int status;
+  final Uint8List body;
+
+  const TransportResponse({required this.status, required this.body});
+
+  @override
+  int get hashCode => status.hashCode ^ body.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportResponse &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          body == other.body;
+}
+
 /// Where the wallet reads chain state and stores proving keys.
 class WalletConfig {
   final String rpcUrl;
-
-  /// Extra HTTP headers on every Solana RPC request, such as an auth token.
-  /// Their values are kept out of logs.
-  final Map<String, String>? rpcHeaders;
   final String indexerUrl;
-
-  /// Extra HTTP headers on every indexer request, such as an auth token for
-  /// the application's indexer proxy. Their values are kept out of logs.
-  final Map<String, String>? indexerHeaders;
 
   /// Directory for downloaded proving keys; keep it across launches.
   final String provingKeyDir;
@@ -439,11 +539,6 @@ class WalletConfig {
   /// [`MobileWallet::set_remote_prover`].
   final Proving? proving;
 
-  /// Allow a plaintext indexer off loopback (an emulator reaching its host).
-  /// The indexer sees the wallet's view tags, so never set this for funds
-  /// that matter.
-  final bool allowInsecureHttp;
-
   /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
   /// and a mint named in any call is added for the rest of the session.
   /// Notes in other mints are left out, as the Zolana SDK leaves out assets
@@ -452,26 +547,20 @@ class WalletConfig {
 
   const WalletConfig({
     required this.rpcUrl,
-    this.rpcHeaders,
     required this.indexerUrl,
-    this.indexerHeaders,
     required this.provingKeyDir,
     this.provingKeyUrl,
     this.proving,
-    required this.allowInsecureHttp,
     required this.mints,
   });
 
   @override
   int get hashCode =>
       rpcUrl.hashCode ^
-      rpcHeaders.hashCode ^
       indexerUrl.hashCode ^
-      indexerHeaders.hashCode ^
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
       proving.hashCode ^
-      allowInsecureHttp.hashCode ^
       mints.hashCode;
 
   @override
@@ -480,13 +569,10 @@ class WalletConfig {
       other is WalletConfig &&
           runtimeType == other.runtimeType &&
           rpcUrl == other.rpcUrl &&
-          rpcHeaders == other.rpcHeaders &&
           indexerUrl == other.indexerUrl &&
-          indexerHeaders == other.indexerHeaders &&
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
-          allowInsecureHttp == other.allowInsecureHttp &&
           mints == other.mints;
 }
 
