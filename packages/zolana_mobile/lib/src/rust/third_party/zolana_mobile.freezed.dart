@@ -56,7 +56,7 @@ extension WalletErrorPatterns on WalletError {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( WalletError_InsufficientPrivateBalance value)?  insufficientPrivateBalance,TResult Function( WalletError_MergeRequired value)?  mergeRequired,TResult Function( WalletError_TooManyInputTrees value)?  tooManyInputTrees,TResult Function( WalletError_AmountZero value)?  amountZero,TResult Function( WalletError_NotesReserved value)?  notesReserved,TResult Function( WalletError_RecipientNotRegistered value)?  recipientNotRegistered,TResult Function( WalletError_RecipientTokenAccountMissing value)?  recipientTokenAccountMissing,TResult Function( WalletError_RegistrationConflict value)?  registrationConflict,TResult Function( WalletError_AssetNotSupported value)?  assetNotSupported,TResult Function( WalletError_MintNotFound value)?  mintNotFound,TResult Function( WalletError_InvalidMint value)?  invalidMint,TResult Function( WalletError_InvalidPubkey value)?  invalidPubkey,TResult Function( WalletError_InvalidTokenAccount value)?  invalidTokenAccount,TResult Function( WalletError_InvalidDerivationSignature value)?  invalidDerivationSignature,TResult Function( WalletError_InvalidWalletKeys value)?  invalidWalletKeys,TResult Function( WalletError_TransportFailed value)?  transportFailed,TResult Function( WalletError_SignatureInvalid value)?  signatureInvalid,TResult Function( WalletError_SignatureCountMismatch value)?  signatureCountMismatch,TResult Function( WalletError_TransactionNotConfirmed value)?  transactionNotConfirmed,TResult Function( WalletError_RemoteProverMissing value)?  remoteProverMissing,TResult Function( WalletError_RemoteProverFailed value)?  remoteProverFailed,TResult Function( WalletError_ProofMalformed value)?  proofMalformed,TResult Function( WalletError_ProofInvalid value)?  proofInvalid,TResult Function( WalletError_ProofFailed value)?  proofFailed,TResult Function( WalletError_ProverBusy value)?  proverBusy,TResult Function( WalletError_ProverClosed value)?  proverClosed,TResult Function( WalletError_ProverUnavailable value)?  proverUnavailable,TResult Function( WalletError_ProverInitFailed value)?  proverInitFailed,TResult Function( WalletError_ProverLoadFailed value)?  proverLoadFailed,TResult Function( WalletError_UnsupportedCircuit value)?  unsupportedCircuit,TResult Function( WalletError_RpcUrlInsecure value)?  rpcUrlInsecure,TResult Function( WalletError_IndexerUrlInsecure value)?  indexerUrlInsecure,TResult Function( WalletError_ProvingKeyUrlInsecure value)?  provingKeyUrlInsecure,TResult Function( WalletError_ProvingKeyUnknown value)?  provingKeyUnknown,TResult Function( WalletError_ProvingKeyMismatch value)?  provingKeyMismatch,TResult Function( WalletError_ProvingKeyDownloadFailed value)?  provingKeyDownloadFailed,TResult Function( WalletError_ProvingKeyCorrupt value)?  provingKeyCorrupt,TResult Function( WalletError_ProvingKeyStoreFailed value)?  provingKeyStoreFailed,TResult Function( WalletError_PoseidonInputCountInvalid value)?  poseidonInputCountInvalid,TResult Function( WalletError_PoseidonInputLengthInvalid value)?  poseidonInputLengthInvalid,TResult Function( WalletError_SignerMissing value)?  signerMissing,TResult Function( WalletError_SignerMismatch value)?  signerMismatch,TResult Function( WalletError_UnexpectedSigners value)?  unexpectedSigners,TResult Function( WalletError_WalletClosed value)?  walletClosed,TResult Function( WalletError_Client value)?  client,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( WalletError_InsufficientPrivateBalance value)?  insufficientPrivateBalance,TResult Function( WalletError_MergeRequired value)?  mergeRequired,TResult Function( WalletError_TooManyInputTrees value)?  tooManyInputTrees,TResult Function( WalletError_AmountZero value)?  amountZero,TResult Function( WalletError_NotesReserved value)?  notesReserved,TResult Function( WalletError_RecipientNotRegistered value)?  recipientNotRegistered,TResult Function( WalletError_RecipientTokenAccountMissing value)?  recipientTokenAccountMissing,TResult Function( WalletError_RegistrationConflict value)?  registrationConflict,TResult Function( WalletError_AssetNotSupported value)?  assetNotSupported,TResult Function( WalletError_MintNotConfigured value)?  mintNotConfigured,TResult Function( WalletError_InvalidMint value)?  invalidMint,TResult Function( WalletError_InvalidTokenProgram value)?  invalidTokenProgram,TResult Function( WalletError_InvalidPubkey value)?  invalidPubkey,TResult Function( WalletError_InvalidTokenAccount value)?  invalidTokenAccount,TResult Function( WalletError_InvalidDerivationSignature value)?  invalidDerivationSignature,TResult Function( WalletError_InvalidWalletKeys value)?  invalidWalletKeys,TResult Function( WalletError_TransportFailed value)?  transportFailed,TResult Function( WalletError_SignatureInvalid value)?  signatureInvalid,TResult Function( WalletError_SignatureCountMismatch value)?  signatureCountMismatch,TResult Function( WalletError_TransactionNotConfirmed value)?  transactionNotConfirmed,TResult Function( WalletError_RemoteProverMissing value)?  remoteProverMissing,TResult Function( WalletError_RemoteProverFailed value)?  remoteProverFailed,TResult Function( WalletError_ProofMalformed value)?  proofMalformed,TResult Function( WalletError_ProofInvalid value)?  proofInvalid,TResult Function( WalletError_ProofFailed value)?  proofFailed,TResult Function( WalletError_ProverBusy value)?  proverBusy,TResult Function( WalletError_ProverClosed value)?  proverClosed,TResult Function( WalletError_ProverUnavailable value)?  proverUnavailable,TResult Function( WalletError_ProverInitFailed value)?  proverInitFailed,TResult Function( WalletError_ProverLoadFailed value)?  proverLoadFailed,TResult Function( WalletError_UnsupportedCircuit value)?  unsupportedCircuit,TResult Function( WalletError_RpcUrlInsecure value)?  rpcUrlInsecure,TResult Function( WalletError_IndexerUrlInsecure value)?  indexerUrlInsecure,TResult Function( WalletError_ProvingKeyUrlInsecure value)?  provingKeyUrlInsecure,TResult Function( WalletError_ProvingKeyUnknown value)?  provingKeyUnknown,TResult Function( WalletError_ProvingKeyMismatch value)?  provingKeyMismatch,TResult Function( WalletError_ProvingKeyDownloadFailed value)?  provingKeyDownloadFailed,TResult Function( WalletError_ProvingKeyCorrupt value)?  provingKeyCorrupt,TResult Function( WalletError_ProvingKeyStoreFailed value)?  provingKeyStoreFailed,TResult Function( WalletError_PoseidonInputCountInvalid value)?  poseidonInputCountInvalid,TResult Function( WalletError_PoseidonInputLengthInvalid value)?  poseidonInputLengthInvalid,TResult Function( WalletError_SignerMissing value)?  signerMissing,TResult Function( WalletError_SignerMismatch value)?  signerMismatch,TResult Function( WalletError_UnexpectedSigners value)?  unexpectedSigners,TResult Function( WalletError_WalletClosed value)?  walletClosed,TResult Function( WalletError_Client value)?  client,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case WalletError_InsufficientPrivateBalance() when insufficientPrivateBalance != null:
@@ -68,9 +68,10 @@ return notesReserved(_that);case WalletError_RecipientNotRegistered() when recip
 return recipientNotRegistered(_that);case WalletError_RecipientTokenAccountMissing() when recipientTokenAccountMissing != null:
 return recipientTokenAccountMissing(_that);case WalletError_RegistrationConflict() when registrationConflict != null:
 return registrationConflict(_that);case WalletError_AssetNotSupported() when assetNotSupported != null:
-return assetNotSupported(_that);case WalletError_MintNotFound() when mintNotFound != null:
-return mintNotFound(_that);case WalletError_InvalidMint() when invalidMint != null:
-return invalidMint(_that);case WalletError_InvalidPubkey() when invalidPubkey != null:
+return assetNotSupported(_that);case WalletError_MintNotConfigured() when mintNotConfigured != null:
+return mintNotConfigured(_that);case WalletError_InvalidMint() when invalidMint != null:
+return invalidMint(_that);case WalletError_InvalidTokenProgram() when invalidTokenProgram != null:
+return invalidTokenProgram(_that);case WalletError_InvalidPubkey() when invalidPubkey != null:
 return invalidPubkey(_that);case WalletError_InvalidTokenAccount() when invalidTokenAccount != null:
 return invalidTokenAccount(_that);case WalletError_InvalidDerivationSignature() when invalidDerivationSignature != null:
 return invalidDerivationSignature(_that);case WalletError_InvalidWalletKeys() when invalidWalletKeys != null:
@@ -122,7 +123,7 @@ return client(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( WalletError_InsufficientPrivateBalance value)  insufficientPrivateBalance,required TResult Function( WalletError_MergeRequired value)  mergeRequired,required TResult Function( WalletError_TooManyInputTrees value)  tooManyInputTrees,required TResult Function( WalletError_AmountZero value)  amountZero,required TResult Function( WalletError_NotesReserved value)  notesReserved,required TResult Function( WalletError_RecipientNotRegistered value)  recipientNotRegistered,required TResult Function( WalletError_RecipientTokenAccountMissing value)  recipientTokenAccountMissing,required TResult Function( WalletError_RegistrationConflict value)  registrationConflict,required TResult Function( WalletError_AssetNotSupported value)  assetNotSupported,required TResult Function( WalletError_MintNotFound value)  mintNotFound,required TResult Function( WalletError_InvalidMint value)  invalidMint,required TResult Function( WalletError_InvalidPubkey value)  invalidPubkey,required TResult Function( WalletError_InvalidTokenAccount value)  invalidTokenAccount,required TResult Function( WalletError_InvalidDerivationSignature value)  invalidDerivationSignature,required TResult Function( WalletError_InvalidWalletKeys value)  invalidWalletKeys,required TResult Function( WalletError_TransportFailed value)  transportFailed,required TResult Function( WalletError_SignatureInvalid value)  signatureInvalid,required TResult Function( WalletError_SignatureCountMismatch value)  signatureCountMismatch,required TResult Function( WalletError_TransactionNotConfirmed value)  transactionNotConfirmed,required TResult Function( WalletError_RemoteProverMissing value)  remoteProverMissing,required TResult Function( WalletError_RemoteProverFailed value)  remoteProverFailed,required TResult Function( WalletError_ProofMalformed value)  proofMalformed,required TResult Function( WalletError_ProofInvalid value)  proofInvalid,required TResult Function( WalletError_ProofFailed value)  proofFailed,required TResult Function( WalletError_ProverBusy value)  proverBusy,required TResult Function( WalletError_ProverClosed value)  proverClosed,required TResult Function( WalletError_ProverUnavailable value)  proverUnavailable,required TResult Function( WalletError_ProverInitFailed value)  proverInitFailed,required TResult Function( WalletError_ProverLoadFailed value)  proverLoadFailed,required TResult Function( WalletError_UnsupportedCircuit value)  unsupportedCircuit,required TResult Function( WalletError_RpcUrlInsecure value)  rpcUrlInsecure,required TResult Function( WalletError_IndexerUrlInsecure value)  indexerUrlInsecure,required TResult Function( WalletError_ProvingKeyUrlInsecure value)  provingKeyUrlInsecure,required TResult Function( WalletError_ProvingKeyUnknown value)  provingKeyUnknown,required TResult Function( WalletError_ProvingKeyMismatch value)  provingKeyMismatch,required TResult Function( WalletError_ProvingKeyDownloadFailed value)  provingKeyDownloadFailed,required TResult Function( WalletError_ProvingKeyCorrupt value)  provingKeyCorrupt,required TResult Function( WalletError_ProvingKeyStoreFailed value)  provingKeyStoreFailed,required TResult Function( WalletError_PoseidonInputCountInvalid value)  poseidonInputCountInvalid,required TResult Function( WalletError_PoseidonInputLengthInvalid value)  poseidonInputLengthInvalid,required TResult Function( WalletError_SignerMissing value)  signerMissing,required TResult Function( WalletError_SignerMismatch value)  signerMismatch,required TResult Function( WalletError_UnexpectedSigners value)  unexpectedSigners,required TResult Function( WalletError_WalletClosed value)  walletClosed,required TResult Function( WalletError_Client value)  client,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( WalletError_InsufficientPrivateBalance value)  insufficientPrivateBalance,required TResult Function( WalletError_MergeRequired value)  mergeRequired,required TResult Function( WalletError_TooManyInputTrees value)  tooManyInputTrees,required TResult Function( WalletError_AmountZero value)  amountZero,required TResult Function( WalletError_NotesReserved value)  notesReserved,required TResult Function( WalletError_RecipientNotRegistered value)  recipientNotRegistered,required TResult Function( WalletError_RecipientTokenAccountMissing value)  recipientTokenAccountMissing,required TResult Function( WalletError_RegistrationConflict value)  registrationConflict,required TResult Function( WalletError_AssetNotSupported value)  assetNotSupported,required TResult Function( WalletError_MintNotConfigured value)  mintNotConfigured,required TResult Function( WalletError_InvalidMint value)  invalidMint,required TResult Function( WalletError_InvalidTokenProgram value)  invalidTokenProgram,required TResult Function( WalletError_InvalidPubkey value)  invalidPubkey,required TResult Function( WalletError_InvalidTokenAccount value)  invalidTokenAccount,required TResult Function( WalletError_InvalidDerivationSignature value)  invalidDerivationSignature,required TResult Function( WalletError_InvalidWalletKeys value)  invalidWalletKeys,required TResult Function( WalletError_TransportFailed value)  transportFailed,required TResult Function( WalletError_SignatureInvalid value)  signatureInvalid,required TResult Function( WalletError_SignatureCountMismatch value)  signatureCountMismatch,required TResult Function( WalletError_TransactionNotConfirmed value)  transactionNotConfirmed,required TResult Function( WalletError_RemoteProverMissing value)  remoteProverMissing,required TResult Function( WalletError_RemoteProverFailed value)  remoteProverFailed,required TResult Function( WalletError_ProofMalformed value)  proofMalformed,required TResult Function( WalletError_ProofInvalid value)  proofInvalid,required TResult Function( WalletError_ProofFailed value)  proofFailed,required TResult Function( WalletError_ProverBusy value)  proverBusy,required TResult Function( WalletError_ProverClosed value)  proverClosed,required TResult Function( WalletError_ProverUnavailable value)  proverUnavailable,required TResult Function( WalletError_ProverInitFailed value)  proverInitFailed,required TResult Function( WalletError_ProverLoadFailed value)  proverLoadFailed,required TResult Function( WalletError_UnsupportedCircuit value)  unsupportedCircuit,required TResult Function( WalletError_RpcUrlInsecure value)  rpcUrlInsecure,required TResult Function( WalletError_IndexerUrlInsecure value)  indexerUrlInsecure,required TResult Function( WalletError_ProvingKeyUrlInsecure value)  provingKeyUrlInsecure,required TResult Function( WalletError_ProvingKeyUnknown value)  provingKeyUnknown,required TResult Function( WalletError_ProvingKeyMismatch value)  provingKeyMismatch,required TResult Function( WalletError_ProvingKeyDownloadFailed value)  provingKeyDownloadFailed,required TResult Function( WalletError_ProvingKeyCorrupt value)  provingKeyCorrupt,required TResult Function( WalletError_ProvingKeyStoreFailed value)  provingKeyStoreFailed,required TResult Function( WalletError_PoseidonInputCountInvalid value)  poseidonInputCountInvalid,required TResult Function( WalletError_PoseidonInputLengthInvalid value)  poseidonInputLengthInvalid,required TResult Function( WalletError_SignerMissing value)  signerMissing,required TResult Function( WalletError_SignerMismatch value)  signerMismatch,required TResult Function( WalletError_UnexpectedSigners value)  unexpectedSigners,required TResult Function( WalletError_WalletClosed value)  walletClosed,required TResult Function( WalletError_Client value)  client,}){
 final _that = this;
 switch (_that) {
 case WalletError_InsufficientPrivateBalance():
@@ -134,9 +135,10 @@ return notesReserved(_that);case WalletError_RecipientNotRegistered():
 return recipientNotRegistered(_that);case WalletError_RecipientTokenAccountMissing():
 return recipientTokenAccountMissing(_that);case WalletError_RegistrationConflict():
 return registrationConflict(_that);case WalletError_AssetNotSupported():
-return assetNotSupported(_that);case WalletError_MintNotFound():
-return mintNotFound(_that);case WalletError_InvalidMint():
-return invalidMint(_that);case WalletError_InvalidPubkey():
+return assetNotSupported(_that);case WalletError_MintNotConfigured():
+return mintNotConfigured(_that);case WalletError_InvalidMint():
+return invalidMint(_that);case WalletError_InvalidTokenProgram():
+return invalidTokenProgram(_that);case WalletError_InvalidPubkey():
 return invalidPubkey(_that);case WalletError_InvalidTokenAccount():
 return invalidTokenAccount(_that);case WalletError_InvalidDerivationSignature():
 return invalidDerivationSignature(_that);case WalletError_InvalidWalletKeys():
@@ -184,7 +186,7 @@ return client(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( WalletError_InsufficientPrivateBalance value)?  insufficientPrivateBalance,TResult? Function( WalletError_MergeRequired value)?  mergeRequired,TResult? Function( WalletError_TooManyInputTrees value)?  tooManyInputTrees,TResult? Function( WalletError_AmountZero value)?  amountZero,TResult? Function( WalletError_NotesReserved value)?  notesReserved,TResult? Function( WalletError_RecipientNotRegistered value)?  recipientNotRegistered,TResult? Function( WalletError_RecipientTokenAccountMissing value)?  recipientTokenAccountMissing,TResult? Function( WalletError_RegistrationConflict value)?  registrationConflict,TResult? Function( WalletError_AssetNotSupported value)?  assetNotSupported,TResult? Function( WalletError_MintNotFound value)?  mintNotFound,TResult? Function( WalletError_InvalidMint value)?  invalidMint,TResult? Function( WalletError_InvalidPubkey value)?  invalidPubkey,TResult? Function( WalletError_InvalidTokenAccount value)?  invalidTokenAccount,TResult? Function( WalletError_InvalidDerivationSignature value)?  invalidDerivationSignature,TResult? Function( WalletError_InvalidWalletKeys value)?  invalidWalletKeys,TResult? Function( WalletError_TransportFailed value)?  transportFailed,TResult? Function( WalletError_SignatureInvalid value)?  signatureInvalid,TResult? Function( WalletError_SignatureCountMismatch value)?  signatureCountMismatch,TResult? Function( WalletError_TransactionNotConfirmed value)?  transactionNotConfirmed,TResult? Function( WalletError_RemoteProverMissing value)?  remoteProverMissing,TResult? Function( WalletError_RemoteProverFailed value)?  remoteProverFailed,TResult? Function( WalletError_ProofMalformed value)?  proofMalformed,TResult? Function( WalletError_ProofInvalid value)?  proofInvalid,TResult? Function( WalletError_ProofFailed value)?  proofFailed,TResult? Function( WalletError_ProverBusy value)?  proverBusy,TResult? Function( WalletError_ProverClosed value)?  proverClosed,TResult? Function( WalletError_ProverUnavailable value)?  proverUnavailable,TResult? Function( WalletError_ProverInitFailed value)?  proverInitFailed,TResult? Function( WalletError_ProverLoadFailed value)?  proverLoadFailed,TResult? Function( WalletError_UnsupportedCircuit value)?  unsupportedCircuit,TResult? Function( WalletError_RpcUrlInsecure value)?  rpcUrlInsecure,TResult? Function( WalletError_IndexerUrlInsecure value)?  indexerUrlInsecure,TResult? Function( WalletError_ProvingKeyUrlInsecure value)?  provingKeyUrlInsecure,TResult? Function( WalletError_ProvingKeyUnknown value)?  provingKeyUnknown,TResult? Function( WalletError_ProvingKeyMismatch value)?  provingKeyMismatch,TResult? Function( WalletError_ProvingKeyDownloadFailed value)?  provingKeyDownloadFailed,TResult? Function( WalletError_ProvingKeyCorrupt value)?  provingKeyCorrupt,TResult? Function( WalletError_ProvingKeyStoreFailed value)?  provingKeyStoreFailed,TResult? Function( WalletError_PoseidonInputCountInvalid value)?  poseidonInputCountInvalid,TResult? Function( WalletError_PoseidonInputLengthInvalid value)?  poseidonInputLengthInvalid,TResult? Function( WalletError_SignerMissing value)?  signerMissing,TResult? Function( WalletError_SignerMismatch value)?  signerMismatch,TResult? Function( WalletError_UnexpectedSigners value)?  unexpectedSigners,TResult? Function( WalletError_WalletClosed value)?  walletClosed,TResult? Function( WalletError_Client value)?  client,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( WalletError_InsufficientPrivateBalance value)?  insufficientPrivateBalance,TResult? Function( WalletError_MergeRequired value)?  mergeRequired,TResult? Function( WalletError_TooManyInputTrees value)?  tooManyInputTrees,TResult? Function( WalletError_AmountZero value)?  amountZero,TResult? Function( WalletError_NotesReserved value)?  notesReserved,TResult? Function( WalletError_RecipientNotRegistered value)?  recipientNotRegistered,TResult? Function( WalletError_RecipientTokenAccountMissing value)?  recipientTokenAccountMissing,TResult? Function( WalletError_RegistrationConflict value)?  registrationConflict,TResult? Function( WalletError_AssetNotSupported value)?  assetNotSupported,TResult? Function( WalletError_MintNotConfigured value)?  mintNotConfigured,TResult? Function( WalletError_InvalidMint value)?  invalidMint,TResult? Function( WalletError_InvalidTokenProgram value)?  invalidTokenProgram,TResult? Function( WalletError_InvalidPubkey value)?  invalidPubkey,TResult? Function( WalletError_InvalidTokenAccount value)?  invalidTokenAccount,TResult? Function( WalletError_InvalidDerivationSignature value)?  invalidDerivationSignature,TResult? Function( WalletError_InvalidWalletKeys value)?  invalidWalletKeys,TResult? Function( WalletError_TransportFailed value)?  transportFailed,TResult? Function( WalletError_SignatureInvalid value)?  signatureInvalid,TResult? Function( WalletError_SignatureCountMismatch value)?  signatureCountMismatch,TResult? Function( WalletError_TransactionNotConfirmed value)?  transactionNotConfirmed,TResult? Function( WalletError_RemoteProverMissing value)?  remoteProverMissing,TResult? Function( WalletError_RemoteProverFailed value)?  remoteProverFailed,TResult? Function( WalletError_ProofMalformed value)?  proofMalformed,TResult? Function( WalletError_ProofInvalid value)?  proofInvalid,TResult? Function( WalletError_ProofFailed value)?  proofFailed,TResult? Function( WalletError_ProverBusy value)?  proverBusy,TResult? Function( WalletError_ProverClosed value)?  proverClosed,TResult? Function( WalletError_ProverUnavailable value)?  proverUnavailable,TResult? Function( WalletError_ProverInitFailed value)?  proverInitFailed,TResult? Function( WalletError_ProverLoadFailed value)?  proverLoadFailed,TResult? Function( WalletError_UnsupportedCircuit value)?  unsupportedCircuit,TResult? Function( WalletError_RpcUrlInsecure value)?  rpcUrlInsecure,TResult? Function( WalletError_IndexerUrlInsecure value)?  indexerUrlInsecure,TResult? Function( WalletError_ProvingKeyUrlInsecure value)?  provingKeyUrlInsecure,TResult? Function( WalletError_ProvingKeyUnknown value)?  provingKeyUnknown,TResult? Function( WalletError_ProvingKeyMismatch value)?  provingKeyMismatch,TResult? Function( WalletError_ProvingKeyDownloadFailed value)?  provingKeyDownloadFailed,TResult? Function( WalletError_ProvingKeyCorrupt value)?  provingKeyCorrupt,TResult? Function( WalletError_ProvingKeyStoreFailed value)?  provingKeyStoreFailed,TResult? Function( WalletError_PoseidonInputCountInvalid value)?  poseidonInputCountInvalid,TResult? Function( WalletError_PoseidonInputLengthInvalid value)?  poseidonInputLengthInvalid,TResult? Function( WalletError_SignerMissing value)?  signerMissing,TResult? Function( WalletError_SignerMismatch value)?  signerMismatch,TResult? Function( WalletError_UnexpectedSigners value)?  unexpectedSigners,TResult? Function( WalletError_WalletClosed value)?  walletClosed,TResult? Function( WalletError_Client value)?  client,}){
 final _that = this;
 switch (_that) {
 case WalletError_InsufficientPrivateBalance() when insufficientPrivateBalance != null:
@@ -196,9 +198,10 @@ return notesReserved(_that);case WalletError_RecipientNotRegistered() when recip
 return recipientNotRegistered(_that);case WalletError_RecipientTokenAccountMissing() when recipientTokenAccountMissing != null:
 return recipientTokenAccountMissing(_that);case WalletError_RegistrationConflict() when registrationConflict != null:
 return registrationConflict(_that);case WalletError_AssetNotSupported() when assetNotSupported != null:
-return assetNotSupported(_that);case WalletError_MintNotFound() when mintNotFound != null:
-return mintNotFound(_that);case WalletError_InvalidMint() when invalidMint != null:
-return invalidMint(_that);case WalletError_InvalidPubkey() when invalidPubkey != null:
+return assetNotSupported(_that);case WalletError_MintNotConfigured() when mintNotConfigured != null:
+return mintNotConfigured(_that);case WalletError_InvalidMint() when invalidMint != null:
+return invalidMint(_that);case WalletError_InvalidTokenProgram() when invalidTokenProgram != null:
+return invalidTokenProgram(_that);case WalletError_InvalidPubkey() when invalidPubkey != null:
 return invalidPubkey(_that);case WalletError_InvalidTokenAccount() when invalidTokenAccount != null:
 return invalidTokenAccount(_that);case WalletError_InvalidDerivationSignature() when invalidDerivationSignature != null:
 return invalidDerivationSignature(_that);case WalletError_InvalidWalletKeys() when invalidWalletKeys != null:
@@ -249,7 +252,7 @@ return client(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( BigInt requested,  BigInt available)?  insufficientPrivateBalance,TResult Function( BigInt amount,  BigInt maxInputs)?  mergeRequired,TResult Function( BigInt trees,  BigInt maxTrees)?  tooManyInputTrees,TResult Function()?  amountZero,TResult Function( BigInt amount)?  notesReserved,TResult Function( String recipient)?  recipientNotRegistered,TResult Function( String recipient,  String mint)?  recipientTokenAccountMissing,TResult Function( String owner)?  registrationConflict,TResult Function( String mint)?  assetNotSupported,TResult Function( String mint)?  mintNotFound,TResult Function( String mint)?  invalidMint,TResult Function( String value)?  invalidPubkey,TResult Function( String account)?  invalidTokenAccount,TResult Function()?  invalidDerivationSignature,TResult Function()?  invalidWalletKeys,TResult Function( String message)?  transportFailed,TResult Function()?  signatureInvalid,TResult Function( BigInt expected,  BigInt got)?  signatureCountMismatch,TResult Function( String signature)?  transactionNotConfirmed,TResult Function()?  remoteProverMissing,TResult Function()?  remoteProverFailed,TResult Function()?  proofMalformed,TResult Function()?  proofInvalid,TResult Function()?  proofFailed,TResult Function()?  proverBusy,TResult Function()?  proverClosed,TResult Function()?  proverUnavailable,TResult Function()?  proverInitFailed,TResult Function()?  proverLoadFailed,TResult Function()?  unsupportedCircuit,TResult Function( String url)?  rpcUrlInsecure,TResult Function( String url)?  indexerUrlInsecure,TResult Function( String url)?  provingKeyUrlInsecure,TResult Function( String name)?  provingKeyUnknown,TResult Function( String name)?  provingKeyMismatch,TResult Function( String name)?  provingKeyDownloadFailed,TResult Function( String name)?  provingKeyCorrupt,TResult Function( String path)?  provingKeyStoreFailed,TResult Function( BigInt count)?  poseidonInputCountInvalid,TResult Function( BigInt index,  BigInt length)?  poseidonInputLengthInvalid,TResult Function()?  signerMissing,TResult Function( String wallet,  String signer)?  signerMismatch,TResult Function( List<String> signers)?  unexpectedSigners,TResult Function()?  walletClosed,TResult Function( String message)?  client,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( BigInt requested,  BigInt available)?  insufficientPrivateBalance,TResult Function( BigInt amount,  BigInt maxInputs)?  mergeRequired,TResult Function( BigInt trees,  BigInt maxTrees)?  tooManyInputTrees,TResult Function()?  amountZero,TResult Function( BigInt amount)?  notesReserved,TResult Function( String recipient)?  recipientNotRegistered,TResult Function( String recipient,  String mint)?  recipientTokenAccountMissing,TResult Function( String owner)?  registrationConflict,TResult Function( String mint)?  assetNotSupported,TResult Function( String mint)?  mintNotConfigured,TResult Function( String mint)?  invalidMint,TResult Function( String mint,  String tokenProgram)?  invalidTokenProgram,TResult Function( String value)?  invalidPubkey,TResult Function( String account)?  invalidTokenAccount,TResult Function()?  invalidDerivationSignature,TResult Function()?  invalidWalletKeys,TResult Function( String message)?  transportFailed,TResult Function()?  signatureInvalid,TResult Function( BigInt expected,  BigInt got)?  signatureCountMismatch,TResult Function( String signature)?  transactionNotConfirmed,TResult Function()?  remoteProverMissing,TResult Function()?  remoteProverFailed,TResult Function()?  proofMalformed,TResult Function()?  proofInvalid,TResult Function()?  proofFailed,TResult Function()?  proverBusy,TResult Function()?  proverClosed,TResult Function()?  proverUnavailable,TResult Function()?  proverInitFailed,TResult Function()?  proverLoadFailed,TResult Function()?  unsupportedCircuit,TResult Function( String url)?  rpcUrlInsecure,TResult Function( String url)?  indexerUrlInsecure,TResult Function( String url)?  provingKeyUrlInsecure,TResult Function( String name)?  provingKeyUnknown,TResult Function( String name)?  provingKeyMismatch,TResult Function( String name)?  provingKeyDownloadFailed,TResult Function( String name)?  provingKeyCorrupt,TResult Function( String path)?  provingKeyStoreFailed,TResult Function( BigInt count)?  poseidonInputCountInvalid,TResult Function( BigInt index,  BigInt length)?  poseidonInputLengthInvalid,TResult Function()?  signerMissing,TResult Function( String wallet,  String signer)?  signerMismatch,TResult Function( List<String> signers)?  unexpectedSigners,TResult Function()?  walletClosed,TResult Function( String message)?  client,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case WalletError_InsufficientPrivateBalance() when insufficientPrivateBalance != null:
 return insufficientPrivateBalance(_that.requested,_that.available);case WalletError_MergeRequired() when mergeRequired != null:
@@ -260,9 +263,10 @@ return notesReserved(_that.amount);case WalletError_RecipientNotRegistered() whe
 return recipientNotRegistered(_that.recipient);case WalletError_RecipientTokenAccountMissing() when recipientTokenAccountMissing != null:
 return recipientTokenAccountMissing(_that.recipient,_that.mint);case WalletError_RegistrationConflict() when registrationConflict != null:
 return registrationConflict(_that.owner);case WalletError_AssetNotSupported() when assetNotSupported != null:
-return assetNotSupported(_that.mint);case WalletError_MintNotFound() when mintNotFound != null:
-return mintNotFound(_that.mint);case WalletError_InvalidMint() when invalidMint != null:
-return invalidMint(_that.mint);case WalletError_InvalidPubkey() when invalidPubkey != null:
+return assetNotSupported(_that.mint);case WalletError_MintNotConfigured() when mintNotConfigured != null:
+return mintNotConfigured(_that.mint);case WalletError_InvalidMint() when invalidMint != null:
+return invalidMint(_that.mint);case WalletError_InvalidTokenProgram() when invalidTokenProgram != null:
+return invalidTokenProgram(_that.mint,_that.tokenProgram);case WalletError_InvalidPubkey() when invalidPubkey != null:
 return invalidPubkey(_that.value);case WalletError_InvalidTokenAccount() when invalidTokenAccount != null:
 return invalidTokenAccount(_that.account);case WalletError_InvalidDerivationSignature() when invalidDerivationSignature != null:
 return invalidDerivationSignature();case WalletError_InvalidWalletKeys() when invalidWalletKeys != null:
@@ -314,7 +318,7 @@ return client(_that.message);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( BigInt requested,  BigInt available)  insufficientPrivateBalance,required TResult Function( BigInt amount,  BigInt maxInputs)  mergeRequired,required TResult Function( BigInt trees,  BigInt maxTrees)  tooManyInputTrees,required TResult Function()  amountZero,required TResult Function( BigInt amount)  notesReserved,required TResult Function( String recipient)  recipientNotRegistered,required TResult Function( String recipient,  String mint)  recipientTokenAccountMissing,required TResult Function( String owner)  registrationConflict,required TResult Function( String mint)  assetNotSupported,required TResult Function( String mint)  mintNotFound,required TResult Function( String mint)  invalidMint,required TResult Function( String value)  invalidPubkey,required TResult Function( String account)  invalidTokenAccount,required TResult Function()  invalidDerivationSignature,required TResult Function()  invalidWalletKeys,required TResult Function( String message)  transportFailed,required TResult Function()  signatureInvalid,required TResult Function( BigInt expected,  BigInt got)  signatureCountMismatch,required TResult Function( String signature)  transactionNotConfirmed,required TResult Function()  remoteProverMissing,required TResult Function()  remoteProverFailed,required TResult Function()  proofMalformed,required TResult Function()  proofInvalid,required TResult Function()  proofFailed,required TResult Function()  proverBusy,required TResult Function()  proverClosed,required TResult Function()  proverUnavailable,required TResult Function()  proverInitFailed,required TResult Function()  proverLoadFailed,required TResult Function()  unsupportedCircuit,required TResult Function( String url)  rpcUrlInsecure,required TResult Function( String url)  indexerUrlInsecure,required TResult Function( String url)  provingKeyUrlInsecure,required TResult Function( String name)  provingKeyUnknown,required TResult Function( String name)  provingKeyMismatch,required TResult Function( String name)  provingKeyDownloadFailed,required TResult Function( String name)  provingKeyCorrupt,required TResult Function( String path)  provingKeyStoreFailed,required TResult Function( BigInt count)  poseidonInputCountInvalid,required TResult Function( BigInt index,  BigInt length)  poseidonInputLengthInvalid,required TResult Function()  signerMissing,required TResult Function( String wallet,  String signer)  signerMismatch,required TResult Function( List<String> signers)  unexpectedSigners,required TResult Function()  walletClosed,required TResult Function( String message)  client,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( BigInt requested,  BigInt available)  insufficientPrivateBalance,required TResult Function( BigInt amount,  BigInt maxInputs)  mergeRequired,required TResult Function( BigInt trees,  BigInt maxTrees)  tooManyInputTrees,required TResult Function()  amountZero,required TResult Function( BigInt amount)  notesReserved,required TResult Function( String recipient)  recipientNotRegistered,required TResult Function( String recipient,  String mint)  recipientTokenAccountMissing,required TResult Function( String owner)  registrationConflict,required TResult Function( String mint)  assetNotSupported,required TResult Function( String mint)  mintNotConfigured,required TResult Function( String mint)  invalidMint,required TResult Function( String mint,  String tokenProgram)  invalidTokenProgram,required TResult Function( String value)  invalidPubkey,required TResult Function( String account)  invalidTokenAccount,required TResult Function()  invalidDerivationSignature,required TResult Function()  invalidWalletKeys,required TResult Function( String message)  transportFailed,required TResult Function()  signatureInvalid,required TResult Function( BigInt expected,  BigInt got)  signatureCountMismatch,required TResult Function( String signature)  transactionNotConfirmed,required TResult Function()  remoteProverMissing,required TResult Function()  remoteProverFailed,required TResult Function()  proofMalformed,required TResult Function()  proofInvalid,required TResult Function()  proofFailed,required TResult Function()  proverBusy,required TResult Function()  proverClosed,required TResult Function()  proverUnavailable,required TResult Function()  proverInitFailed,required TResult Function()  proverLoadFailed,required TResult Function()  unsupportedCircuit,required TResult Function( String url)  rpcUrlInsecure,required TResult Function( String url)  indexerUrlInsecure,required TResult Function( String url)  provingKeyUrlInsecure,required TResult Function( String name)  provingKeyUnknown,required TResult Function( String name)  provingKeyMismatch,required TResult Function( String name)  provingKeyDownloadFailed,required TResult Function( String name)  provingKeyCorrupt,required TResult Function( String path)  provingKeyStoreFailed,required TResult Function( BigInt count)  poseidonInputCountInvalid,required TResult Function( BigInt index,  BigInt length)  poseidonInputLengthInvalid,required TResult Function()  signerMissing,required TResult Function( String wallet,  String signer)  signerMismatch,required TResult Function( List<String> signers)  unexpectedSigners,required TResult Function()  walletClosed,required TResult Function( String message)  client,}) {final _that = this;
 switch (_that) {
 case WalletError_InsufficientPrivateBalance():
 return insufficientPrivateBalance(_that.requested,_that.available);case WalletError_MergeRequired():
@@ -325,9 +329,10 @@ return notesReserved(_that.amount);case WalletError_RecipientNotRegistered():
 return recipientNotRegistered(_that.recipient);case WalletError_RecipientTokenAccountMissing():
 return recipientTokenAccountMissing(_that.recipient,_that.mint);case WalletError_RegistrationConflict():
 return registrationConflict(_that.owner);case WalletError_AssetNotSupported():
-return assetNotSupported(_that.mint);case WalletError_MintNotFound():
-return mintNotFound(_that.mint);case WalletError_InvalidMint():
-return invalidMint(_that.mint);case WalletError_InvalidPubkey():
+return assetNotSupported(_that.mint);case WalletError_MintNotConfigured():
+return mintNotConfigured(_that.mint);case WalletError_InvalidMint():
+return invalidMint(_that.mint);case WalletError_InvalidTokenProgram():
+return invalidTokenProgram(_that.mint,_that.tokenProgram);case WalletError_InvalidPubkey():
 return invalidPubkey(_that.value);case WalletError_InvalidTokenAccount():
 return invalidTokenAccount(_that.account);case WalletError_InvalidDerivationSignature():
 return invalidDerivationSignature();case WalletError_InvalidWalletKeys():
@@ -375,7 +380,7 @@ return client(_that.message);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( BigInt requested,  BigInt available)?  insufficientPrivateBalance,TResult? Function( BigInt amount,  BigInt maxInputs)?  mergeRequired,TResult? Function( BigInt trees,  BigInt maxTrees)?  tooManyInputTrees,TResult? Function()?  amountZero,TResult? Function( BigInt amount)?  notesReserved,TResult? Function( String recipient)?  recipientNotRegistered,TResult? Function( String recipient,  String mint)?  recipientTokenAccountMissing,TResult? Function( String owner)?  registrationConflict,TResult? Function( String mint)?  assetNotSupported,TResult? Function( String mint)?  mintNotFound,TResult? Function( String mint)?  invalidMint,TResult? Function( String value)?  invalidPubkey,TResult? Function( String account)?  invalidTokenAccount,TResult? Function()?  invalidDerivationSignature,TResult? Function()?  invalidWalletKeys,TResult? Function( String message)?  transportFailed,TResult? Function()?  signatureInvalid,TResult? Function( BigInt expected,  BigInt got)?  signatureCountMismatch,TResult? Function( String signature)?  transactionNotConfirmed,TResult? Function()?  remoteProverMissing,TResult? Function()?  remoteProverFailed,TResult? Function()?  proofMalformed,TResult? Function()?  proofInvalid,TResult? Function()?  proofFailed,TResult? Function()?  proverBusy,TResult? Function()?  proverClosed,TResult? Function()?  proverUnavailable,TResult? Function()?  proverInitFailed,TResult? Function()?  proverLoadFailed,TResult? Function()?  unsupportedCircuit,TResult? Function( String url)?  rpcUrlInsecure,TResult? Function( String url)?  indexerUrlInsecure,TResult? Function( String url)?  provingKeyUrlInsecure,TResult? Function( String name)?  provingKeyUnknown,TResult? Function( String name)?  provingKeyMismatch,TResult? Function( String name)?  provingKeyDownloadFailed,TResult? Function( String name)?  provingKeyCorrupt,TResult? Function( String path)?  provingKeyStoreFailed,TResult? Function( BigInt count)?  poseidonInputCountInvalid,TResult? Function( BigInt index,  BigInt length)?  poseidonInputLengthInvalid,TResult? Function()?  signerMissing,TResult? Function( String wallet,  String signer)?  signerMismatch,TResult? Function( List<String> signers)?  unexpectedSigners,TResult? Function()?  walletClosed,TResult? Function( String message)?  client,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( BigInt requested,  BigInt available)?  insufficientPrivateBalance,TResult? Function( BigInt amount,  BigInt maxInputs)?  mergeRequired,TResult? Function( BigInt trees,  BigInt maxTrees)?  tooManyInputTrees,TResult? Function()?  amountZero,TResult? Function( BigInt amount)?  notesReserved,TResult? Function( String recipient)?  recipientNotRegistered,TResult? Function( String recipient,  String mint)?  recipientTokenAccountMissing,TResult? Function( String owner)?  registrationConflict,TResult? Function( String mint)?  assetNotSupported,TResult? Function( String mint)?  mintNotConfigured,TResult? Function( String mint)?  invalidMint,TResult? Function( String mint,  String tokenProgram)?  invalidTokenProgram,TResult? Function( String value)?  invalidPubkey,TResult? Function( String account)?  invalidTokenAccount,TResult? Function()?  invalidDerivationSignature,TResult? Function()?  invalidWalletKeys,TResult? Function( String message)?  transportFailed,TResult? Function()?  signatureInvalid,TResult? Function( BigInt expected,  BigInt got)?  signatureCountMismatch,TResult? Function( String signature)?  transactionNotConfirmed,TResult? Function()?  remoteProverMissing,TResult? Function()?  remoteProverFailed,TResult? Function()?  proofMalformed,TResult? Function()?  proofInvalid,TResult? Function()?  proofFailed,TResult? Function()?  proverBusy,TResult? Function()?  proverClosed,TResult? Function()?  proverUnavailable,TResult? Function()?  proverInitFailed,TResult? Function()?  proverLoadFailed,TResult? Function()?  unsupportedCircuit,TResult? Function( String url)?  rpcUrlInsecure,TResult? Function( String url)?  indexerUrlInsecure,TResult? Function( String url)?  provingKeyUrlInsecure,TResult? Function( String name)?  provingKeyUnknown,TResult? Function( String name)?  provingKeyMismatch,TResult? Function( String name)?  provingKeyDownloadFailed,TResult? Function( String name)?  provingKeyCorrupt,TResult? Function( String path)?  provingKeyStoreFailed,TResult? Function( BigInt count)?  poseidonInputCountInvalid,TResult? Function( BigInt index,  BigInt length)?  poseidonInputLengthInvalid,TResult? Function()?  signerMissing,TResult? Function( String wallet,  String signer)?  signerMismatch,TResult? Function( List<String> signers)?  unexpectedSigners,TResult? Function()?  walletClosed,TResult? Function( String message)?  client,}) {final _that = this;
 switch (_that) {
 case WalletError_InsufficientPrivateBalance() when insufficientPrivateBalance != null:
 return insufficientPrivateBalance(_that.requested,_that.available);case WalletError_MergeRequired() when mergeRequired != null:
@@ -386,9 +391,10 @@ return notesReserved(_that.amount);case WalletError_RecipientNotRegistered() whe
 return recipientNotRegistered(_that.recipient);case WalletError_RecipientTokenAccountMissing() when recipientTokenAccountMissing != null:
 return recipientTokenAccountMissing(_that.recipient,_that.mint);case WalletError_RegistrationConflict() when registrationConflict != null:
 return registrationConflict(_that.owner);case WalletError_AssetNotSupported() when assetNotSupported != null:
-return assetNotSupported(_that.mint);case WalletError_MintNotFound() when mintNotFound != null:
-return mintNotFound(_that.mint);case WalletError_InvalidMint() when invalidMint != null:
-return invalidMint(_that.mint);case WalletError_InvalidPubkey() when invalidPubkey != null:
+return assetNotSupported(_that.mint);case WalletError_MintNotConfigured() when mintNotConfigured != null:
+return mintNotConfigured(_that.mint);case WalletError_InvalidMint() when invalidMint != null:
+return invalidMint(_that.mint);case WalletError_InvalidTokenProgram() when invalidTokenProgram != null:
+return invalidTokenProgram(_that.mint,_that.tokenProgram);case WalletError_InvalidPubkey() when invalidPubkey != null:
 return invalidPubkey(_that.value);case WalletError_InvalidTokenAccount() when invalidTokenAccount != null:
 return invalidTokenAccount(_that.account);case WalletError_InvalidDerivationSignature() when invalidDerivationSignature != null:
 return invalidDerivationSignature();case WalletError_InvalidWalletKeys() when invalidWalletKeys != null:
@@ -1017,8 +1023,8 @@ as String,
 /// @nodoc
 
 
-class WalletError_MintNotFound extends WalletError {
-  const WalletError_MintNotFound({required this.mint}): super._();
+class WalletError_MintNotConfigured extends WalletError {
+  const WalletError_MintNotConfigured({required this.mint}): super._();
   
 
  final  String mint;
@@ -1027,13 +1033,13 @@ class WalletError_MintNotFound extends WalletError {
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
 @pragma('vm:prefer-inline')
-$WalletError_MintNotFoundCopyWith<WalletError_MintNotFound> get copyWith => _$WalletError_MintNotFoundCopyWithImpl<WalletError_MintNotFound>(this, _$identity);
+$WalletError_MintNotConfiguredCopyWith<WalletError_MintNotConfigured> get copyWith => _$WalletError_MintNotConfiguredCopyWithImpl<WalletError_MintNotConfigured>(this, _$identity);
 
 
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is WalletError_MintNotFound&&(identical(other.mint, mint) || other.mint == mint));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is WalletError_MintNotConfigured&&(identical(other.mint, mint) || other.mint == mint));
 }
 
 
@@ -1044,15 +1050,15 @@ int get hashCode {
 
 @override
 String toString() {
-    return 'WalletError.mintNotFound(mint: $mint)';
+    return 'WalletError.mintNotConfigured(mint: $mint)';
 }
 
 
 }
 
 /// @nodoc
-abstract mixin class $WalletError_MintNotFoundCopyWith<$Res> implements $WalletErrorCopyWith<$Res> {
-  factory $WalletError_MintNotFoundCopyWith(WalletError_MintNotFound value, $Res Function(WalletError_MintNotFound) _then) = _$WalletError_MintNotFoundCopyWithImpl;
+abstract mixin class $WalletError_MintNotConfiguredCopyWith<$Res> implements $WalletErrorCopyWith<$Res> {
+  factory $WalletError_MintNotConfiguredCopyWith(WalletError_MintNotConfigured value, $Res Function(WalletError_MintNotConfigured) _then) = _$WalletError_MintNotConfiguredCopyWithImpl;
 @useResult
 $Res call({
  String mint
@@ -1063,17 +1069,17 @@ $Res call({
 
 }
 /// @nodoc
-class _$WalletError_MintNotFoundCopyWithImpl<$Res>
-    implements $WalletError_MintNotFoundCopyWith<$Res> {
-  _$WalletError_MintNotFoundCopyWithImpl(this._self, this._then);
+class _$WalletError_MintNotConfiguredCopyWithImpl<$Res>
+    implements $WalletError_MintNotConfiguredCopyWith<$Res> {
+  _$WalletError_MintNotConfiguredCopyWithImpl(this._self, this._then);
 
-  final WalletError_MintNotFound _self;
-  final $Res Function(WalletError_MintNotFound) _then;
+  final WalletError_MintNotConfigured _self;
+  final $Res Function(WalletError_MintNotConfigured) _then;
 
 /// Create a copy of WalletError
 /// with the given fields replaced by the non-null parameter values.
 @pragma('vm:prefer-inline') $Res call({Object? mint = null,}) {
-  return _then(WalletError_MintNotFound(
+  return _then(WalletError_MintNotConfigured(
 mint: null == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
 as String,
   ));
@@ -1143,6 +1149,76 @@ class _$WalletError_InvalidMintCopyWithImpl<$Res>
 @pragma('vm:prefer-inline') $Res call({Object? mint = null,}) {
   return _then(WalletError_InvalidMint(
 mint: null == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
+as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class WalletError_InvalidTokenProgram extends WalletError {
+  const WalletError_InvalidTokenProgram({required this.mint, required this.tokenProgram}): super._();
+  
+
+ final  String mint;
+ final  String tokenProgram;
+
+/// Create a copy of WalletError
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$WalletError_InvalidTokenProgramCopyWith<WalletError_InvalidTokenProgram> get copyWith => _$WalletError_InvalidTokenProgramCopyWithImpl<WalletError_InvalidTokenProgram>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is WalletError_InvalidTokenProgram&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.tokenProgram, tokenProgram) || other.tokenProgram == tokenProgram));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,mint,tokenProgram);
+}
+
+@override
+String toString() {
+    return 'WalletError.invalidTokenProgram(mint: $mint, tokenProgram: $tokenProgram)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $WalletError_InvalidTokenProgramCopyWith<$Res> implements $WalletErrorCopyWith<$Res> {
+  factory $WalletError_InvalidTokenProgramCopyWith(WalletError_InvalidTokenProgram value, $Res Function(WalletError_InvalidTokenProgram) _then) = _$WalletError_InvalidTokenProgramCopyWithImpl;
+@useResult
+$Res call({
+ String mint, String tokenProgram
+});
+
+
+
+
+}
+/// @nodoc
+class _$WalletError_InvalidTokenProgramCopyWithImpl<$Res>
+    implements $WalletError_InvalidTokenProgramCopyWith<$Res> {
+  _$WalletError_InvalidTokenProgramCopyWithImpl(this._self, this._then);
+
+  final WalletError_InvalidTokenProgram _self;
+  final $Res Function(WalletError_InvalidTokenProgram) _then;
+
+/// Create a copy of WalletError
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? mint = null,Object? tokenProgram = null,}) {
+  return _then(WalletError_InvalidTokenProgram(
+mint: null == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
+as String,tokenProgram: null == tokenProgram ? _self.tokenProgram : tokenProgram // ignore: cast_nullable_to_non_nullable
 as String,
   ));
 }

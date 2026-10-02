@@ -50,16 +50,16 @@ use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
 use zolana_program::instruction::{
     AssetDeposit, CreateAssociatedTokenAccount, Deposit, DepositAsset, DepositSplAccounts,
-    TransactInterfaceTransferAccounts, TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
+    TransactInterfaceTransferAccounts,
 };
 use zolana_transaction::{
-    instructions::transact::ConfidentialTransaction, select_spend_excluding, AssetRegistry,
-    LocalShieldedKeys, SpendableDecryptionResult, TransactionError, WalletUtxo,
+    instructions::transact::ConfidentialTransaction, select_spend_excluding, LocalShieldedKeys,
+    SpendableDecryptionResult, TransactionError, WalletUtxo,
 };
 
 use crate::{
     activity::{self, ActivityEntry},
-    asset::{mint_name, token_account_amount, Asset},
+    asset::{mint_name, token_account_amount, Asset, Assets, MintConfig},
     error::WalletError,
     keys::KeyStore,
     prover::{NativeProver, Proving, RemoteProver, SpendProver, WalletProver},
@@ -78,11 +78,12 @@ pub struct WalletConfig {
     /// when `None`. [`Proving::Remote`] needs
     /// [`MobileWallet::set_remote_prover`].
     pub proving: Option<Proving>,
-    /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
-    /// and a mint named in any call is added for the rest of the session.
-    /// Notes in other mints are left out, as the Zolana SDK leaves out assets
-    /// its registry does not hold.
-    pub mints: Vec<String>,
+    /// The SPL mints the wallet holds, each with its token program. A call
+    /// that names another mint fails with [`WalletError::MintNotConfigured`].
+    /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
+    /// are left out, as the Zolana SDK leaves out assets its registry does
+    /// not hold.
+    pub mints: Vec<MintConfig>,
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -237,10 +238,8 @@ pub struct MobileWallet {
     /// Completes the spent inputs' nullifiers when proving.
     nullifier_key: NullifierKey,
     viewing_key: ViewingKey,
-    /// SOL and the mints resolved so far.
-    assets: AssetRegistry,
-    /// Configured mints not resolved into `assets` yet.
-    mints: Vec<String>,
+    /// SOL and the configured mints.
+    assets: Assets,
     reservations: Mutex<Reservations>,
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
@@ -320,6 +319,7 @@ impl MobileWallet {
         };
         let keys =
             LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())?;
+        let assets = Assets::new(config.mints)?;
         let proving_keys = KeyStore::new(
             config.proving_key_dir,
             config.proving_key_url,
@@ -342,8 +342,7 @@ impl MobileWallet {
             keys,
             nullifier_key,
             viewing_key,
-            assets: AssetRegistry::default(),
-            mints: config.mints,
+            assets,
             reservations: Mutex::default(),
             proving: config.proving.unwrap_or(Proving::Local),
             remote_prover: None,
@@ -427,9 +426,11 @@ impl MobileWallet {
             None => DepositAsset::Sol,
             Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
                 mint: asset.mint,
-                user_token: asset
-                    .token_account(&self.owner)
-                    .ok_or_else(|| invalid_mint(asset))?,
+                user_token: pda::associated_token_address_with_program(
+                    &self.owner,
+                    &asset.mint,
+                    &token_program,
+                ),
                 token_program,
             }),
         };
@@ -468,7 +469,7 @@ impl MobileWallet {
     }
 
     /// Spendable private balances, read from the indexer now: one per asset
-    /// held in SOL, the configured mints and the mints named so far.
+    /// held in SOL and the configured mints.
     pub fn balances(&mut self) -> Result<Vec<TokenBalance>, WalletError> {
         Ok(self
             .spendable()?
@@ -501,8 +502,8 @@ impl MobileWallet {
     /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
     pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, WalletError> {
-        self.resolve_mints()?;
-        Ok(activity::fetch(&self.keys, &self.assets, &self.client)?)
+        let assets = self.assets.registry(&self.client)?;
+        Ok(activity::fetch(&self.keys, assets, &self.client)?)
     }
 
     /// Build and prove a private transfer to a registered wallet.
@@ -577,7 +578,8 @@ impl MobileWallet {
         let inputs = self.select_notes(asset, amount)?;
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
-        let settlement = withdraw_to(&mut transaction, recipient, asset, amount)?;
+        let settlement =
+            transaction.withdraw_to(asset.mint, amount, recipient, asset.token_program)?;
         let pending = self.pending(
             PendingTransactionKind::Withdrawal,
             self.prove(transaction, vec![settlement], payer, remote)?,
@@ -594,8 +596,10 @@ impl MobileWallet {
         mint: String,
     ) -> Result<Option<PendingTransaction>, WalletError> {
         let owner = parse_pubkey(&owner)?;
-        let asset = self.asset(Some(mint))?;
-        let token_program = asset.token_program.ok_or_else(|| invalid_mint(asset))?;
+        let asset = self.asset(Some(mint.clone()))?;
+        let token_program = asset
+            .token_program
+            .ok_or(WalletError::InvalidMint { mint })?;
         let create = CreateAssociatedTokenAccount {
             payer: self.owner,
             owner,
@@ -740,27 +744,16 @@ impl MobileWallet {
         })
     }
 
-    /// SOL for `None`; a mint is added to the wallet's registry the first
-    /// time it is used.
+    /// SOL for `None`, otherwise a configured mint.
     fn asset(&mut self, mint: Option<String>) -> Result<Asset, WalletError> {
-        Asset::resolve(&self.client, &mut self.assets, mint.as_deref())
+        self.assets.resolve(&self.client, mint.as_deref())
     }
 
     /// The wallet's spendable notes as the indexer has them now, in SOL and
-    /// every mint in the registry.
+    /// every configured mint.
     fn spendable(&mut self) -> Result<SpendableDecryptionResult, WalletError> {
-        self.resolve_mints()?;
-        Ok(SpendableUtxos::new(&self.keys, &self.assets).fetch(&self.client)?)
-    }
-
-    /// Resolve the configured mints once each; one that fails stays for the
-    /// next call.
-    fn resolve_mints(&mut self) -> Result<(), WalletError> {
-        while let Some(mint) = self.mints.last().cloned() {
-            self.asset(Some(mint))?;
-            self.mints.pop();
-        }
-        Ok(())
+        let assets = self.assets.registry(&self.client)?;
+        Ok(SpendableUtxos::new(&self.keys, assets).fetch(&self.client)?)
     }
 
     /// Encrypt and prove `transaction`, on the device or by `remote`, and build
@@ -902,41 +895,8 @@ fn moved(asset: Asset, amount: u64, recipient: Option<Pubkey>) -> Moved {
     }
 }
 
-fn invalid_mint(asset: Asset) -> WalletError {
-    WalletError::InvalidMint {
-        mint: asset.mint.to_string(),
-    }
-}
-
 fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
     notes.iter().map(|note| note.nullifier).collect()
-}
-
-/// Where a withdrawal settles: the recipient itself for SOL, its associated
-/// token account for SPL, as the Zolana CLI builds it.
-fn withdraw_to(
-    transaction: &mut ConfidentialTransaction,
-    recipient: Pubkey,
-    asset: Asset,
-    amount: u64,
-) -> Result<TransactInterfaceTransferAccounts, WalletError> {
-    let (Some(token_program), Some(user_token_account)) =
-        (asset.token_program, asset.token_account(&recipient))
-    else {
-        transaction.withdraw_sol(amount, recipient)?;
-        return Ok(TransactInterfaceTransferAccounts::Sol(
-            TransactSolTransferAccounts { recipient },
-        ));
-    };
-    transaction.withdraw(asset.mint, amount, user_token_account)?;
-    Ok(TransactInterfaceTransferAccounts::SplWithdrawal(
-        TransactSplWithdrawalAccounts {
-            mint: asset.mint,
-            spl_interface: pda::spl_interface(&asset.mint),
-            user_token_account,
-            token_program,
-        },
-    ))
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
