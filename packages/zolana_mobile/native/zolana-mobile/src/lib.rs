@@ -19,7 +19,9 @@ pub use asset::MintConfig;
 pub use error::WalletError;
 pub use keys::DEFAULT_PROVING_KEYS_URL;
 pub use prover::Proving;
-pub use transport::{Transport, TransportOutcome, TransportRequest, TransportResponse};
+pub use transport::{
+    Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
+};
 pub use wallet::{
     derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind,
     RegistrationStatus, TokenBalance, WalletConfig, WalletKeys,

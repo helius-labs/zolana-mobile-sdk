@@ -12,8 +12,10 @@ import 'rust/third_party/zolana_mobile.dart'
 /// It sends each request as it is and follows redirects. It fails a request
 /// whose response, or any part of its body, takes longer than
 /// [TransportRequest.timeoutMs], or 30 seconds without one, and stops
-/// reading a body past [TransportRequest.maxResponseBytes]. `ZolanaWallet.open` checks the URLs
-/// before the wallet uses it (see [isSecureUrl]).
+/// reading a body past [TransportRequest.maxResponseBytes]. A body that fails
+/// after the status arrived is a [TransportResponseLost].
+/// `ZolanaWallet.open` checks the URLs before the wallet uses it (see
+/// [isSecureUrl]).
 class HttpTransport {
   HttpTransport({http.Client? client}) : _client = client ?? http.Client();
 
@@ -36,17 +38,38 @@ class HttpTransport {
       throw _TooLarge(limit);
     }
     final body = BytesBuilder(copy: false);
-    await for (final chunk in response.stream.timeout(stall)) {
-      body.add(chunk);
-      if (limit != null && body.length > limit) throw _TooLarge(limit);
+    try {
+      await for (final chunk in response.stream.timeout(stall)) {
+        body.add(chunk);
+        if (limit != null && body.length > limit) throw _TooLarge(limit);
+      }
+    } on _TooLarge {
+      rethrow;
+    } catch (error) {
+      throw TransportResponseLost(response.statusCode, error);
     }
     return TransportResponse(
       status: response.statusCode,
+      headers: response.headers,
       body: body.takeBytes(),
     );
   }
 
   void close() => _client.close();
+}
+
+/// Thrown by a transport when the response's status arrived and its body
+/// could not be read. The server got the request and may have acted on it,
+/// so the wallet does not send it again: a prover would prove the spend
+/// twice. The wallet fails with [cause]'s message.
+class TransportResponseLost implements Exception {
+  const TransportResponseLost(this.status, this.cause);
+
+  final int status;
+  final Object cause;
+
+  @override
+  String toString() => 'response body lost after status $status: $cause';
 }
 
 /// `https`, or `http` to this device.

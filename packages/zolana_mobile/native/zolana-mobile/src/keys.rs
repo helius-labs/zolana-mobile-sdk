@@ -290,6 +290,7 @@ mod tests {
         let (missing, _) = fake(|_| {
             Ok(crate::TransportResponse {
                 status: 404,
+                headers: Default::default(),
                 body: b"abc".to_vec(),
             })
         });
@@ -297,9 +298,14 @@ mod tests {
         let download_failed = || WalletError::ProvingKeyDownloadFailed {
             name: "k.key".into(),
         };
-        // The default transport fails a body that stalls for its bound.
-        let (stalled, _) =
-            fake(|_| Err("TimeoutException after 0:00:30.000000: No stream event".to_string()));
+        // The default transport fails a body that stalls for its bound, after
+        // the status.
+        let (stalled, _) = fake(|_| {
+            Err(crate::TransportFailure {
+                message: "TimeoutException after 0:00:30.000000: No stream event".to_string(),
+                status: Some(200),
+            })
+        });
         for (transport, expected) in [
             (missing, download_failed()),
             (

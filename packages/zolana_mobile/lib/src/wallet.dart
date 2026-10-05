@@ -23,36 +23,29 @@ abstract interface class SolanaSigner {
   });
 }
 
-/// The application's backend prover, for spends proved with
-/// `Proving.remote`. It receives [request], the `/prove` request body the
-/// Zolana SDK's prover client sends, unchanged, and returns its prover's
-/// proof: the gnark proof JSON, alone or as the `proof` of the prover's
-/// response. When it throws, the spend fails with
-/// [WalletError.remoteProverFailed].
-///
-/// The wallet verifies the proof on the device against the pinned verifying
-/// key, before it builds the message. The request carries the transaction's
-/// witness, the wallet's nullifier secret included. The wallet, and
-/// [ZolanaWallet.close], wait for it: give it a timeout, and do not call the
-/// wallet from it.
-typedef RemoteProver = Future<Uint8List> Function(Uint8List request);
-
 /// Sends one HTTP request of the wallet. The wallet never opens a connection:
-/// Solana RPC and indexer calls (`POST`, JSON) and proving-key downloads
-/// (`GET`, files of several MB) all go through its transport, the package's
-/// own on `package:http` or the one the application passes to
+/// Solana RPC and indexer calls (`POST`, JSON), proving-key downloads (`GET`,
+/// files of several MB) and remote proofs (`POST` to `WalletConfig.proverUrl`,
+/// then `GET` of a queued proof's status) all go through its transport, the
+/// package's own on `package:http` or the one the application passes to
 /// [ZolanaWallet.open]. The request carries the method, the URL with its
-/// `api-key` and the content type of a `POST`, nothing else; send it as it
-/// is, following redirects (the key host may redirect).
+/// `api-key`, the content type of a `POST` and `x-sync` or `x-async` on a
+/// proof request, nothing else; send it as it is, following redirects (the
+/// key host may redirect). A proof request's body is the transaction's
+/// witness, the wallet's nullifier secret included: do not log it.
 ///
-/// Return the server's response whatever its status, and throw only when
+/// Return the server's response whatever its status, with its headers (a
+/// prover inside a TEE marks its encrypted body in them), and throw only when
 /// there is none; the wallet then fails with the exception's message, never
-/// its stack trace. Stop reading and throw when a body exceeds
-/// [native.TransportRequest.maxResponseBytes]; the wallet refuses a longer
-/// body either way. Bound each request by
-/// [native.TransportRequest.timeoutMs] when it is set, and by a timeout of
-/// your own otherwise: the wallet, and [ZolanaWallet.close], wait for each
-/// answer, so the transport must not call the wallet either.
+/// its stack trace. Throw a [TransportResponseLost] when the status arrived
+/// and the body could not be read: the wallet then does not send the request
+/// again, so a prover does not prove the spend twice. Stop reading and throw
+/// when a body exceeds [native.TransportRequest.maxResponseBytes]; the wallet
+/// refuses a longer body either way. Bound each request by
+/// [native.TransportRequest.timeoutMs] when it is set (600 seconds for a
+/// proof request), and by a timeout of your own otherwise: the wallet, and
+/// [ZolanaWallet.close], wait for each answer, so the transport must not call
+/// the wallet either.
 typedef ZolanaTransport = Future<native.TransportResponse> Function(
   native.TransportRequest request,
 );
@@ -208,21 +201,19 @@ class ZolanaWallet {
   /// Open the wallet [signer] controls. Asks the signer to sign the Zolana
   /// derivation message; the resulting keys stay in memory for this session.
   ///
-  /// [remoteProver] proves the spends that ask for `Proving.remote`.
-  ///
   /// Every request of the wallet goes through [transport], the application's
   /// own networking, which applies its own URL policy. Without one, the
   /// package sends with `package:http`: one connection pool per wallet,
   /// closed with it. It refuses a plaintext URL off loopback in [config]
   /// before anything else, with [WalletError.rpcUrlInsecure],
-  /// [WalletError.indexerUrlInsecure] or [WalletError.provingKeyUrlInsecure],
-  /// unless [allowInsecureHttp] is set: the indexer sees the wallet's view
-  /// tags, so set it only for a test cluster. The wallet opens no connection
-  /// itself either way.
+  /// [WalletError.indexerUrlInsecure], [WalletError.provingKeyUrlInsecure] or
+  /// [WalletError.proverUrlInsecure], unless [allowInsecureHttp] is set: the
+  /// indexer sees the wallet's view tags and a prover its witnesses, so set
+  /// it only for a test cluster. The wallet opens no connection itself either
+  /// way.
   static Future<ZolanaWallet> open({
     required native.WalletConfig config,
     required SolanaSigner signer,
-    RemoteProver? remoteProver,
     ZolanaTransport? transport,
     bool allowInsecureHttp = false,
     WalletBackend backend = const _NativeBackend(),
@@ -233,8 +224,6 @@ class ZolanaWallet {
     return _open(
       signer.publicKey,
       signer,
-      config,
-      remoteProver,
       transport,
       (transport) =>
           backend.open(config, signer.publicKey, signature, transport),
@@ -250,13 +239,12 @@ class ZolanaWallet {
   /// with [WalletError.signerMissing]; the `prepare` methods, [submit] and
   /// [confirm] work. A [signer] for another account fails with
   /// [WalletError.signerMismatch].
-  /// [remoteProver], [transport] and [allowInsecureHttp] work as in [open].
+  /// [transport] and [allowInsecureHttp] work as in [open].
   static Future<ZolanaWallet> openWithKeys({
     required native.WalletConfig config,
     required String solanaPublicKey,
     required native.WalletKeys keys,
     SolanaSigner? signer,
-    RemoteProver? remoteProver,
     ZolanaTransport? transport,
     bool allowInsecureHttp = false,
     WalletBackend backend = const _NativeBackend(),
@@ -273,8 +261,6 @@ class ZolanaWallet {
     return _open(
       solanaPublicKey,
       signer,
-      config,
-      remoteProver,
       transport,
       (transport) =>
           backend.openWithKeys(config, solanaPublicKey, keys, transport),
@@ -286,8 +272,6 @@ class ZolanaWallet {
   static Future<ZolanaWallet> _open(
     String solanaPublicKey,
     SolanaSigner? signer,
-    native.WalletConfig config,
-    RemoteProver? remoteProver,
     ZolanaTransport? transport,
     Future<native.MobileWallet> Function(NativeTransport transport) open,
   ) async {
@@ -295,7 +279,6 @@ class ZolanaWallet {
     native.MobileWallet? wallet;
     try {
       wallet = await open(_nativeTransport(transport ?? http!.send));
-      await _setRemoteProver(wallet, remoteProver);
       return ZolanaWallet._(
         solanaPublicKey,
         signer,
@@ -360,8 +343,13 @@ class ZolanaWallet {
   /// `[feePayer, solanaPublicKey]`.
   ///
   /// [proving] says where the spend is proved, `WalletConfig.proving` when
-  /// null. `Proving.remote` asks the [RemoteProver] given at open; without
-  /// one it fails with [WalletError.remoteProverMissing].
+  /// null. `Proving.remote` asks the prover at `WalletConfig.proverUrl`
+  /// through the transport; without one it fails with
+  /// [WalletError.remoteProverMissing]. The wallet verifies a remote proof
+  /// against the pinned verifying key before it builds the message: a
+  /// response that is not a proof of the pinned key fails with
+  /// [WalletError.proofMalformed], a proof that does not verify with
+  /// [WalletError.proofInvalid].
   Future<PreparedTransaction> prepareTransfer({
     required String recipient,
     required BigInt amount,
@@ -584,31 +572,23 @@ class ZolanaWallet {
   }
 }
 
-/// The native wallet takes a failed proof as `null`.
-Future<void> _setRemoteProver(
-  native.MobileWallet wallet,
-  RemoteProver? prove,
-) async {
-  if (prove == null) return;
-  await wallet.setRemoteProver(
-    prove: (request) async {
-      try {
-        return await prove(request);
-      } catch (_) {
-        return null;
-      }
-    },
-  );
-}
-
-/// [send] as the native wallet calls it. A failure becomes its message:
-/// thrown across the bridge, it would carry the Dart stack trace with it, and
-/// the wallet's callback cannot fail.
+/// [send] as the native wallet calls it. A failure becomes its message, and
+/// the status of a lost response: thrown across the bridge, it would carry
+/// the Dart stack trace with it, and the wallet's callback cannot fail.
 NativeTransport _nativeTransport(ZolanaTransport send) => (request) async {
   try {
     return native.TransportOutcome(response: await send(request));
+  } on TransportResponseLost catch (lost) {
+    return native.TransportOutcome(
+      failure: native.TransportFailure(
+        message: _message(lost.cause),
+        status: lost.status,
+      ),
+    );
   } catch (error) {
-    return native.TransportOutcome(failure: _message(error));
+    return native.TransportOutcome(
+      failure: native.TransportFailure(message: _message(error)),
+    );
   }
 };
 
@@ -633,6 +613,7 @@ void _refusePlaintext(native.WalletConfig config, bool allowInsecureHttp) {
       config.provingKeyUrl,
       (String url) => WalletError.provingKeyUrlInsecure(url: url),
     ),
+    (config.proverUrl, (String url) => WalletError.proverUrlInsecure(url: url)),
   ]) {
     if (url != null && !isSecureUrl(url)) {
       throw ZolanaWalletException(insecure(_redactApiKeys(url)));

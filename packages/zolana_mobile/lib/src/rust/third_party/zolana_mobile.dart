@@ -128,8 +128,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// first, before this account.
   ///
   /// `proving` says where it is proved, [`WalletConfig::proving`] when
-  /// `None`. Remote proving without [`Self::set_remote_prover`] fails with
-  /// [`WalletError::RemoteProverMissing`].
+  /// `None`. Remote proving without [`WalletConfig::prover_url`] fails with
+  /// [`WalletError::RemoteProverMissing`]. The client verifies a remote
+  /// proof against the pinned verifying key and the public input it computed
+  /// itself before the message is built: a response that is not a proof of
+  /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
+  /// does not verify with [`WalletError::ProofInvalid`].
   Future<PendingTransaction> prepareTransfer({
     required String recipient,
     String? mint,
@@ -178,20 +182,6 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// them: for a prepared spend that will not be sent, such as one the user
   /// declined. Submitting or confirming it does this too.
   Future<void> release({required PendingTransaction pending});
-
-  /// Prove the spends that ask for [`Proving::Remote`] with `prove`, the
-  /// application's backend. It receives the `/prove` request body the Zolana
-  /// SDK's prover client sends and returns its prover's proof: the gnark
-  /// proof JSON, alone or as the `proof` of the prover's response. `None`
-  /// fails the spend with [`WalletError::RemoteProverFailed`].
-  ///
-  /// The client verifies the proof against the pinned verifying key and the
-  /// public input it computed itself, before the message is built. A proof
-  /// that does not parse fails with [`WalletError::ProofMalformed`], one
-  /// that does not verify with [`WalletError::ProofInvalid`].
-  Future<void> setRemoteProver({
-    required FutureOr<Uint8List?> Function(Uint8List) prove,
-  });
 
   Future<String> shieldedAddress();
 
@@ -418,10 +408,9 @@ enum Proving {
   /// stays in this process.
   local,
 
-  /// By the application's backend, given with
-  /// [`MobileWallet::set_remote_prover`](crate::MobileWallet::set_remote_prover).
-  /// The backend receives the witness, the wallet's nullifier secret
-  /// included.
+  /// By the prover at [`WalletConfig::prover_url`](crate::WalletConfig::prover_url),
+  /// through the application's transport. The prover receives the witness,
+  /// the wallet's nullifier secret included.
   remote,
 }
 
@@ -458,12 +447,35 @@ class TokenBalance {
           amount == other.amount;
 }
 
+/// Why the application's transport has no response.
+class TransportFailure {
+  final String message;
+
+  /// The response's status, when it arrived and its body could not be read.
+  /// The server got the request and may have acted on it, so the wallet does
+  /// not send it again: a prover would prove the spend twice.
+  final int? status;
+
+  const TransportFailure({required this.message, this.status});
+
+  @override
+  int get hashCode => message.hashCode ^ status.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransportFailure &&
+          runtimeType == other.runtimeType &&
+          message == other.message &&
+          status == other.status;
+}
+
 /// What the application's transport answered: the server's response, or the
-/// message of the failure that left none. The package's Dart side builds it
-/// and never throws, so no Dart stack trace reaches the wallet.
+/// failure that left none. The package's Dart side builds it and never
+/// throws, so no Dart stack trace reaches the wallet.
 class TransportOutcome {
   final TransportResponse? response;
-  final String? failure;
+  final TransportFailure? failure;
 
   const TransportOutcome({this.response, this.failure});
 
@@ -481,14 +493,17 @@ class TransportOutcome {
 
 /// One HTTP request of the wallet.
 class TransportRequest {
-  /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
+  /// `POST` for Solana RPC and indexer calls and proof requests, `GET` for
+  /// proving keys and the status of a queued proof.
   final String method;
   final String url;
 
-  /// The content type of a `POST`; nothing else.
+  /// The content type of a `POST`, and `x-sync` or `x-async` on a proof
+  /// request; nothing else.
   final Map<String, String> headers;
 
-  /// Empty for a `GET`.
+  /// Empty for a `GET`. A proof request's body is the transaction's
+  /// witness, the wallet's nullifier secret included.
   final Uint8List body;
 
   /// The most bytes the response body may hold, for a proving-key download
@@ -496,8 +511,9 @@ class TransportRequest {
   /// past it; the wallet refuses a longer body either way.
   final int? maxResponseBytes;
 
-  /// The caller's bound on the request, in milliseconds, when it has one;
-  /// otherwise the transport's own applies.
+  /// The caller's bound on the request, in milliseconds, when it has one
+  /// (600 s for a proof request, 30 s for a status poll); otherwise the
+  /// transport's own applies.
   final int? timeoutMs;
 
   const TransportRequest({
@@ -534,12 +550,20 @@ class TransportRequest {
 /// The server's response, whatever its status.
 class TransportResponse {
   final int status;
+
+  /// The response's headers as they arrived. A prover inside a TEE says in
+  /// them that its body is encrypted; a TEE call fails without them.
+  final Map<String, String> headers;
   final Uint8List body;
 
-  const TransportResponse({required this.status, required this.body});
+  const TransportResponse({
+    required this.status,
+    required this.headers,
+    required this.body,
+  });
 
   @override
-  int get hashCode => status.hashCode ^ body.hashCode;
+  int get hashCode => status.hashCode ^ headers.hashCode ^ body.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -547,6 +571,7 @@ class TransportResponse {
       other is TransportResponse &&
           runtimeType == other.runtimeType &&
           status == other.status &&
+          headers == other.headers &&
           body == other.body;
 }
 
@@ -562,9 +587,14 @@ class WalletConfig {
   final String? provingKeyUrl;
 
   /// Where spends are proved unless a call says otherwise: on the device
-  /// when `None`. [`Proving::Remote`] needs
-  /// [`MobileWallet::set_remote_prover`].
+  /// when `None`. [`Proving::Remote`] needs [`Self::prover_url`].
   final Proving? proving;
+
+  /// The prover [`Proving::Remote`] asks, through the transport: the
+  /// application's backend as a proxy of the prover's `/prove/<key>` routes,
+  /// or a Zolana prover. It receives each spend's witness, the wallet's
+  /// nullifier secret included.
+  final String? proverUrl;
 
   /// The SPL mints the wallet holds, each with its token program. A call
   /// that names another mint fails with [`WalletError::MintNotConfigured`].
@@ -579,6 +609,7 @@ class WalletConfig {
     required this.provingKeyDir,
     this.provingKeyUrl,
     this.proving,
+    this.proverUrl,
     required this.mints,
   });
 
@@ -589,6 +620,7 @@ class WalletConfig {
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
       proving.hashCode ^
+      proverUrl.hashCode ^
       mints.hashCode;
 
   @override
@@ -601,6 +633,7 @@ class WalletConfig {
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
+          proverUrl == other.proverUrl &&
           mints == other.mints;
 }
 
@@ -705,15 +738,12 @@ sealed class WalletError with _$WalletError implements FrbException {
     required String signature,
   }) = WalletError_TransactionNotConfirmed;
 
-  /// The spend asked for remote proving and no remote prover is set.
+  /// The spend asked for remote proving and `WalletConfig.prover_url` is
+  /// not set.
   const factory WalletError.remoteProverMissing() =
       WalletError_RemoteProverMissing;
 
-  /// The remote prover returned no proof.
-  const factory WalletError.remoteProverFailed() =
-      WalletError_RemoteProverFailed;
-
-  /// The remote prover's response is not a gnark proof.
+  /// The remote prover's response is not a proof of the pinned proving key.
   const factory WalletError.proofMalformed() = WalletError_ProofMalformed;
 
   /// The proof does not verify against the pinned verifying key.
@@ -754,6 +784,10 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// As [`Self::RpcUrlInsecure`], for the proving key host.
   const factory WalletError.provingKeyUrlInsecure({required String url}) =
       WalletError_ProvingKeyUrlInsecure;
+
+  /// As [`Self::RpcUrlInsecure`], for the remote prover.
+  const factory WalletError.proverUrlInsecure({required String url}) =
+      WalletError_ProverUrlInsecure;
 
   /// The lockfile pins no key named `name`.
   const factory WalletError.provingKeyUnknown({required String name}) =
