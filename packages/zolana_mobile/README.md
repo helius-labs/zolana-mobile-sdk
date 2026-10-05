@@ -97,7 +97,8 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   `provingKeyDir`, and are used only after they match the proving-key lockfile of
   the pinned Zolana revision. The wallet picks the circuit shape, so the first
   transfer of a new shape downloads its key (8–240 MB); keep the directory
-  across launches.
+  across launches. A download that receives no data for 30 s fails with
+  `proving_key_download_failed`, and the next call downloads the key again.
 - **Tokens**: pass `mint` (base58) for an SPL Token or Token-2022 asset; no
   `mint` is SOL. Amounts are in base units. A mint works once the shielded pool
   has registered it, otherwise calls fail with `asset_not_supported`.
