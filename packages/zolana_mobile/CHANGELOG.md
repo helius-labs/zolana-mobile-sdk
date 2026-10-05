@@ -36,7 +36,8 @@ Unreleased.
   default; `proving` on `prepareTransfer`, `prepareWithdrawal`, `transfer` and
   `withdraw` chooses per call.
 * Proving keys download on first use, pinned by the Zolana proving-key
-  lockfile.
+  lockfile. A download that receives no data for 30 s fails with
+  `proving_key_download_failed`, and the next call downloads the key again.
 * Errors carry no key material, and `api-key` values in them are masked.
 * `LocalProver`: prepare a circuit once and prove structured Zolana requests
   repeatedly. `poseidonHash`.
