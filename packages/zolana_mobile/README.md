@@ -310,7 +310,7 @@ loader does not look in.
 
 The structured adapter supports `transfer-confidential`, `transfer-ring`,
 `transfer-ring-authority`, `merge`, and `merge-ring`, with a matching supported
-key shape. Other circuit types fail closed. The bundled demo stages only 2→3;
+key shape. Other circuit types fail closed. The bundled demo stages only 2→2;
 provide the matching trusted keys for other shapes.
 
 Only one prepared native prover is loaded at a time per process, and each

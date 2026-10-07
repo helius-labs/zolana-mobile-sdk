@@ -60,15 +60,15 @@ keys. Native asset loading uses validated ReadFrom exclusively.
 
 ## Regression fixtures
 
-- go/testdata/transfer-2x3.json is a `transfer-confidential` 2→3 `/prove`
-  request captured from the pinned revision's own Rust client
-  (`zolana-client`, `sdk-libs/client/tests/transaction_proving.rs` harness:
-  inputs of 100 and 50 lamports, a 60 lamport send, declared 2→3 shape) by
-  proving it with a `Prover` that records the request body. Keys and blindings are
-  random test values. fixtures/prove-request-2x3.json is the same bytes plus a
-  trailing newline.
-- go/testdata/witness-2x3.json is that request
-  assigned onto the staged `transfer_confidential_2_3` constraint system and
+- go/testdata/transfer-2x2.json is a deterministic, satisfying
+  `transfer-confidential` 2→2 `/prove` request built with the pinned revision's
+  own Go test helpers (`prover-test/spp`), the request zolana-web-sdk generates
+  as `wasm/prover-wasm/testdata/transfer-2x2.json`. Keys and blindings are test
+  values. fixtures/prove-request-2x2.json is the same bytes plus a trailing
+  newline, and fixtures/prove-response-2x2.json is the devnet Helius prover's
+  proof of it with the pinned `transfer_confidential_2_2.key`.
+- go/testdata/witness-2x2.json is that request
+  assigned onto the staged `transfer_confidential_2_2` constraint system and
   flattened to canonical decimal strings keyed by the key's variable names.
 - go/merge_fixture_test.go is the pinned
   prover/server/circuits/spp_merge/fixture_test.go with only its package

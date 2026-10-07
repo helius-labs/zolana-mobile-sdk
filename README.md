@@ -13,8 +13,8 @@ verified on the device. The Solana key stays with the application's signer.
 - `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
   prepared keys, `.key` loading, and the structured request adapter.
 - `packages/zolana_mobile`: the Flutter plugin, and an example devnet wallet.
-- `fixtures`: a 2→3 `/prove` request captured from the Zolana client, and the
-  Helius prover's response to it.
+- `fixtures`: a 2→2 `/prove` request built with the Zolana prover's test
+  helpers, and the Helius prover's response to it.
 - `scripts`: asset staging and the upstream drift check.
 
 The generated native library keeps Mopro's internal
@@ -32,7 +32,7 @@ app storage; later sends reuse it.
 Install Flutter and the platform toolchain. Then:
 
 ```sh
-./scripts/stage-demo-assets.sh   # the proof benchmark's 2→3 key
+./scripts/stage-demo-assets.sh   # the proof benchmark's 2→2 key
 cd packages/zolana_mobile/example
 flutter pub get
 flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
@@ -99,7 +99,7 @@ which must be on Zolana `main`.
 runs it on every push. To move to a newer Zolana revision, re-vendor
 `go/protocol` from `prover/server`, regenerate its `UPSTREAM_FILES.sha256`, bump
 the Cargo pins and the key checksums in `stage-demo-assets.sh`, and regenerate
-the 2→3 fixtures as described in the rust-gnark provenance file.
+the 2→2 fixtures as described in the rust-gnark provenance file.
 
 ## Precompiled binaries
 

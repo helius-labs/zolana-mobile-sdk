@@ -19,23 +19,23 @@ void main() {
       LocalProver? prover;
       try {
         for (final extension in ['pk', 'vk', 'r1cs']) {
-          final name = 'transfer_confidential_2_3.$extension';
+          final name = 'transfer_confidential_2_2.$extension';
           final data = await rootBundle.load('assets/proving/$name');
           await File('${directory.path}/$name')
               .writeAsBytes(data.buffer.asUint8List());
         }
-        final basename = '${directory.path}/transfer_confidential_2_3';
+        final basename = '${directory.path}/transfer_confidential_2_2';
         prover = await LocalProver.load(
           r1csPath: '$basename.r1cs',
           provingKeyPath: '$basename.pk',
           verifyingKeyPath: '$basename.vk',
         );
         final request = await rootBundle.loadString(
-          'assets/proving/prove-request-2x3.json',
+          'assets/proving/prove-request-2x2.json',
         );
         final result = await prover.proveRequest(request).result;
         expect(result.verified, isTrue);
-        expect((result.inputs, result.outputs), (2, 3));
+        expect((result.inputs, result.outputs), (2, 2));
         expect(
           jsonDecode(result.proofJson),
           containsPair('ar', isA<List<dynamic>>()),

@@ -71,11 +71,11 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
       final directory = await Directory.systemTemp.createTemp('zolana-demo-');
       _assetDirectory = directory;
       final r1cs = await _copyAsset(
-        'transfer_confidential_2_3.r1cs',
+        'transfer_confidential_2_2.r1cs',
         directory,
       );
-      final vk = await _copyAsset('transfer_confidential_2_3.vk', directory);
-      final pk = await _copyAsset('transfer_confidential_2_3.pk', directory);
+      final vk = await _copyAsset('transfer_confidential_2_2.vk', directory);
+      final pk = await _copyAsset('transfer_confidential_2_2.pk', directory);
       final prover = await LocalProver.load(
         r1csPath: r1cs,
         provingKeyPath: pk,
@@ -169,7 +169,7 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
     });
     try {
       final request = await rootBundle.loadString(
-        'assets/proving/prove-request-2x3.json',
+        'assets/proving/prove-request-2x2.json',
       );
       if (!mounted || epoch != _epoch || _locked) return;
       final proof = await prover.proveRequest(request).result;
@@ -219,7 +219,7 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
         children: [
           _DemoCard(
             title: 'Local Groth16 proof',
-            subtitle: 'Prove a public 2→3 request fixture with Mopro/gnark. Locking discards results; native work drains before keys are released.',
+            subtitle: 'Prove a public 2→2 request fixture with Mopro/gnark. Locking discards results; native work drains before keys are released.',
             buttonLabel: 'Generate proof locally',
             busy: _proving,
             onPressed: _locked || _prover == null ? null : _prove,

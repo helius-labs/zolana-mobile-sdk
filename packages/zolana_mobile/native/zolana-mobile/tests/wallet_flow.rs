@@ -319,7 +319,7 @@ fn register_deposit_transfer_and_receive() {
 
     // A backend proof the pinned verifying key rejects fails the spend before
     // a message is built: here a real proof of another transaction.
-    let replayed = include_bytes!("../../../../../fixtures/prove-response-2x3.json");
+    let replayed = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
     for (response, code) in [
         (&replayed[..], "proof_invalid"),
         (b"garbage", "proof_malformed"),

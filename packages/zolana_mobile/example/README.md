@@ -1,7 +1,7 @@
 # Zolana mobile demo
 
 This app generates and verifies a Groth16 proof locally through Mopro's native
-gnark adapter using a public structured Zolana 2→3 request fixture. It prepares
+gnark adapter using a public structured Zolana 2→2 request fixture. It prepares
 the circuit and keys once per session and shows key loading, witness preparation,
 proving, and verification timings separately.
 

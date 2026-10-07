@@ -36,8 +36,8 @@ flutter:
     - assets/proving/
 YAML
 mkdir -p "$consumer/assets/proving" "$consumer/integration_test"
-cp "$repo_root/packages/zolana_mobile/example/assets/proving/transfer_confidential_2_3."{pk,vk,r1cs} "$consumer/assets/proving/"
-cp "$repo_root/fixtures/prove-request-2x3.json" "$consumer/assets/proving/"
+cp "$repo_root/packages/zolana_mobile/example/assets/proving/transfer_confidential_2_2."{pk,vk,r1cs} "$consumer/assets/proving/"
+cp "$repo_root/fixtures/prove-request-2x2.json" "$consumer/assets/proving/"
 cp "$repo_root/scripts/consumer_fixture/prover_test.dart" "$consumer/integration_test/"
 cd "$consumer"
 flutter pub get

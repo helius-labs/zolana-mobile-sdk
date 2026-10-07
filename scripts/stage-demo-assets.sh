@@ -3,13 +3,13 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 asset_dir="$repo_root/packages/zolana_mobile/example/assets/proving"
-key_name="transfer_confidential_2_3.key"
+key_name="transfer_confidential_2_2.key"
 key="$repo_root/.cache/proving/$key_name"
-key_checksum="dc40be6315c921ff9c69651e51d891ca3cef936630d98873bb0a767c039ab0dd"
-pk_checksum="1f12fee2a0e6e3be36715065b8db086f9bab30d7ed04165bb4895ed711b681ca"
-vk_checksum="28a736d094b3cfc8e47aa1defea4cb43f26bb8090e98503f06c7d237b8f483cc"
-r1cs_checksum="46e11bd66557ff189246cf80addd4aa9bf3bcbb9396b626473a26daadc695901"
-request_checksum="32632ad9047783faada219a5de476f9eeae018c11305404d2a2dfd3fabdce13c"
+key_checksum="e810d52962f4558b0bd50b768a89490759e15a0623d4c2c43318f541b8cc61ff"
+pk_checksum="4eb03bbf45b0893075ed7093e5d10fe7c67867f0daeedeba7cc04dcee850a304"
+vk_checksum="40b57a4bc6b638c0849248e97e997b74ec814444e7ca76a3cef082d33e65b26a"
+r1cs_checksum="a357f10d2eb280be11181699d139864147463da495cc1a5add8761a9cb718c59"
+request_checksum="d67272212c4b3d110f40d6a6daef0529e361312862822a895d9d8710d639b90d"
 
 sha256() {
   if command -v shasum >/dev/null 2>&1; then
@@ -44,7 +44,7 @@ if [[ ! -f "$key" ]] || [[ "$(sha256 "$key")" != "$key_checksum" ]]; then
   temporary_key="$(mktemp)"
   trap 'rm -f "$temporary_key"' EXIT
   echo "downloading $key_name"
-  curl -fsSL "$base_url/proving-keys/11b65848058386ad/$key_name" -o "$temporary_key"
+  curl -fsSL "$base_url/proving-keys/3a1c88f90f609eb1/$key_name" -o "$temporary_key"
   if [[ "$(sha256 "$temporary_key")" != "$key_checksum" ]]; then
     echo "downloaded proving key checksum does not match the lockfile" >&2
     exit 1
@@ -55,18 +55,18 @@ if [[ ! -f "$key" ]] || [[ "$(sha256 "$key")" != "$key_checksum" ]]; then
 fi
 
 verify "$key" "$key_checksum"
-verify "$repo_root/fixtures/prove-request-2x3.json" "$request_checksum"
+verify "$repo_root/fixtures/prove-request-2x2.json" "$request_checksum"
 
 temporary_assets="$(mktemp -d)"
 trap 'rm -rf "$temporary_assets"' EXIT
-slice "$key" 12 10346681 "$temporary_assets/transfer_confidential_2_3.pk"
-slice "$key" 10346693 364 "$temporary_assets/transfer_confidential_2_3.vk"
-slice "$key" 10347057 6581743 "$temporary_assets/transfer_confidential_2_3.r1cs"
-verify "$temporary_assets/transfer_confidential_2_3.pk" "$pk_checksum"
-verify "$temporary_assets/transfer_confidential_2_3.vk" "$vk_checksum"
-verify "$temporary_assets/transfer_confidential_2_3.r1cs" "$r1cs_checksum"
+slice "$key" 12 10092361 "$temporary_assets/transfer_confidential_2_2.pk"
+slice "$key" 10092373 364 "$temporary_assets/transfer_confidential_2_2.vk"
+slice "$key" 10092737 6314558 "$temporary_assets/transfer_confidential_2_2.r1cs"
+verify "$temporary_assets/transfer_confidential_2_2.pk" "$pk_checksum"
+verify "$temporary_assets/transfer_confidential_2_2.vk" "$vk_checksum"
+verify "$temporary_assets/transfer_confidential_2_2.r1cs" "$r1cs_checksum"
 
 mkdir -p "$asset_dir"
 cp "$temporary_assets"/* "$asset_dir/"
-cp "$repo_root/fixtures/prove-request-2x3.json" "$asset_dir/prove-request-2x3.json"
+cp "$repo_root/fixtures/prove-request-2x2.json" "$asset_dir/prove-request-2x2.json"
 echo "staged demo proving assets in $asset_dir"

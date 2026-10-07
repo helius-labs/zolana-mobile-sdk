@@ -1,0 +1,21 @@
+{
+  "ar": [
+    "0x232dbb1188e0924a1179ab0bd4ae7bcef350adfe03bcd64bca3c6bcb7dda3da4",
+    "0x0f9e256b1df5ac3c3a980ec7033cfe2fbd6168c3660672cb8128ba62c8c796d7"
+  ],
+  "bs": [
+    [
+      "0x0df1985921bc97a3a617b2bdb0b80bc672426b2cfc0eeca039f907f21a23dcf0",
+      "0x26ddec6c77896ecd849855c1ce8685e4b5ffd9f4f2f47f6ce9a4e209afdb1edf"
+    ],
+    [
+      "0x03d2ec3f661ba0d39ca1e819ec0158bd8692e0336bfbbce48608ace35ea43f72",
+      "0x18952b6e5fa2971d51a28b5b7a499d39ead2f4e8ec2b2987055ebfd9ec058239"
+    ]
+  ],
+  "krs": [
+    "0x117cd931547fdfd6556943dd30da45aed8c02e69bec4d630e10e179562f548a7",
+    "0x0af0c944186a8cc18ace4c4919938e019ecb81fc672bc2accef4ed1eda74544b"
+  ],
+  "provingKeySha256": "e810d52962f4558b0bd50b768a89490759e15a0623d4c2c43318f541b8cc61ff"
+}
