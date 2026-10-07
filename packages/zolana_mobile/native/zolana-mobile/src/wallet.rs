@@ -52,8 +52,8 @@ use zolana_client::{
         resolved_address_from_record, try_resolve_registered_address,
     },
     AsyncProverClient, AsyncZolanaIndexer, ClientError, ComputeBudgetConfig, IndexerPollConfig,
-    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos, ZolanaClient,
-    ZolanaIndexer,
+    ProofDataSource, ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos,
+    ZolanaClient, ZolanaIndexer,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -330,6 +330,9 @@ impl MobileWallet {
             AsyncZolanaIndexer::new(&config.indexer_url),
             AsyncProverClient::new(UNUSED_PROVER_URL.to_string()),
         )
+        // The wallet's provers prove only complete witnesses, so the client
+        // fetches every Merkle proof from the indexer itself.
+        .with_proof_data_source(ProofDataSource::Client)
         .with_prover(WalletProver {
             native: NativeProver::new(proving_keys),
             remote: Arc::clone(&spend_prover),
