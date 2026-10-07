@@ -137,6 +137,7 @@ accounts avoid devnet airdrop limits once funded:
 ```sh
 ZOLANA_E2E_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
 ZOLANA_E2E_INDEXER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
+ZOLANA_E2E_PROVER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
 ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
 ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
 cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture

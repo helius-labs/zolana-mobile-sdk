@@ -55,7 +55,7 @@ pub(crate) fn fetch<K: ShieldedKeys + ?Sized, I: Rpc + ?Sized>(
     indexer: &I,
 ) -> Result<Vec<ActivityEntry>, ClientError> {
     let (transactions, notes) = transactions_and_notes(keys, assets, indexer)?;
-    Ok(entries(effects(&transactions, &notes)))
+    Ok(entries(effects(&transactions, &notes, &own_tags(keys)?)))
 }
 
 /// Every transaction that created or spent a note of `keys`, and those notes,
@@ -201,9 +201,20 @@ struct Effect {
     spent: BTreeMap<Pubkey, u64>,
 }
 
+/// The view tags the wallet's own outputs carry: its signing key's
+/// confidential tag and each viewing key's.
+fn own_tags<K: ShieldedKeys + ?Sized>(keys: &K) -> Result<HashSet<[u8; 32]>, ClientError> {
+    let mut tags = HashSet::from([keys.address()?.signing_pubkey.confidential_view_tag()?]);
+    tags.extend(keys.viewing_public_keys().iter().map(P256Pubkey::x));
+    Ok(tags)
+}
+
+/// An output the wallet cannot read pays another wallet only when it carries
+/// another wallet's tag; padding outputs carry the sender's own.
 fn effects(
     transactions: &[ShieldedTransaction],
     notes: &[WalletUtxo],
+    own_tags: &HashSet<[u8; 32]>,
 ) -> BTreeMap<Signature, Effect> {
     let by_nullifier: HashMap<_, _> = notes.iter().map(|note| (note.nullifier, note)).collect();
     let by_hash: HashMap<_, _> = notes.iter().map(|note| (note.utxo_hash, note)).collect();
@@ -215,7 +226,8 @@ fn effects(
         for slot in &tx.output_slots {
             match by_hash.get(&slot.output_context.hash) {
                 Some(note) => add(&mut effect.received, note),
-                None => effect.pays_another = true,
+                None if !own_tags.contains(&slot.view_tag) => effect.pays_another = true,
+                None => {}
             }
         }
         for note in tx.nullifiers.iter().filter_map(|n| by_nullifier.get(n)) {
