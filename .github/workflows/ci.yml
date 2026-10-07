@@ -37,8 +37,19 @@ jobs:
       - run: flutter pub get && flutter analyze
         working-directory: packages/zolana_mobile/example
 
+  # A pull request that changes the Rust crate has no precompiled binaries, so
+  # every consumer and example build compiles it from source. sccache keeps the
+  # compiler outputs between steps and, with the Go build cache, between runs.
+  # Its keys include the build paths, so the consumer builds run at a fixed path
+  # (ZOLANA_CONSUMER_DIR). The example builds run in jobs of their own, in
+  # parallel: what sccache cannot cache, such as the vendored OpenSSL build and
+  # the final link, still takes minutes per build.
   android:
     runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2500M
+      SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -46,6 +57,7 @@ jobs:
           go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
+        id: rust
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
@@ -54,9 +66,25 @@ jobs:
         with:
           flutter-version: 3.47.4
           cache: true
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - run: |
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+          echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        id: native-cache
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
+      - run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
       - run: cargo test --workspace
-      - run: go test ./...
+      # -count=1: the restored Go build cache must not replay a test result.
+      - run: go test -count=1 ./...
         working-directory: packages/zolana_mobile/native/rust-gnark/go
         env:
           ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
@@ -97,16 +125,20 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
-      - run: flutter pub get && flutter analyze && flutter build apk --release
-        working-directory: packages/zolana_mobile/example
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
-      - name: Check 16 KB page alignment
-        run: bash scripts/check-android-page-size.sh packages/zolana_mobile/example/build/app/outputs/flutter-apk/app-release.apk
+      - if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
-  ios:
-    runs-on: macos-latest
+  android-example:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 1G
+      SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -114,13 +146,102 @@ jobs:
           go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
+        id: rust
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.4
           cache: true
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - run: echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        id: native-cache
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: native-android-example-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-android-example-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
+      - run: sccache --start-server
+      - run: ./scripts/stage-demo-assets.sh
+      - run: flutter pub get && flutter analyze && flutter build apk --release
+        working-directory: packages/zolana_mobile/example
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Check 16 KB page alignment
+        run: bash scripts/check-android-page-size.sh packages/zolana_mobile/example/build/app/outputs/flutter-apk/app-release.apk
+      - if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+
+  # When the release for the crate hash has the iOS binaries, cargokit builds
+  # nothing: the macOS jobs then skip the compiler cache, which they would not
+  # use, and the consumer builds in a fresh temporary directory as before.
+  ios:
+    runs-on: macos-latest
+    env:
+      SCCACHE_CACHE_SIZE: 1G
+      SCCACHE_IDLE_TIMEOUT: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Look for precompiled iOS binaries
+        id: precompiled
+        run: |
+          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios-sim x86_64-apple-ios; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - if: steps.precompiled.outputs.found != 'true'
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+          echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: actions/cache/restore@v6
+        id: native-cache
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/Library/Caches/go-build
+          key: native-ios-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-ios-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+      - if: steps.precompiled.outputs.found != 'true'
+        run: sccache --start-server
       - run: bash scripts/patch-flutter-tool.sh
       - run: ./scripts/stage-demo-assets.sh
       - run: bash scripts/test-consumer.sh ios
+      # Saved before the simulator test, which builds nothing new and is the
+      # step most likely to fail on a hosted runner.
+      - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/Library/Caches/go-build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Run clean consumer on an iOS simulator
         timeout-minutes: 85
         run: bash scripts/test-ios-simulator.sh
@@ -130,10 +251,61 @@ jobs:
           name: ios-simulator-diagnostics
           path: ${{ runner.temp }}/ios-simulator-diagnostics
           if-no-files-found: ignore
+
+  ios-example:
+    runs-on: macos-latest
+    env:
+      SCCACHE_CACHE_SIZE: 1G
+      SCCACHE_IDLE_TIMEOUT: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Look for precompiled iOS binaries
+        id: precompiled
+        run: |
+          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios-sim x86_64-apple-ios; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - if: steps.precompiled.outputs.found != 'true'
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: actions/cache/restore@v6
+        id: native-cache
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/Library/Caches/go-build
+          key: native-ios-example-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-ios-example-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+      - if: steps.precompiled.outputs.found != 'true'
+        run: sccache --start-server
+      - run: ./scripts/stage-demo-assets.sh
       - run: flutter pub get && flutter build ios --simulator
         working-directory: packages/zolana_mobile/example
       - name: Check that the native library runs on iOS 16
         run: bash scripts/check-ios-minimum.sh "$(find packages/zolana_mobile/example/build/ios -name libmopro_flutter_bindings.a | head -1)" 16.0
+      - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/Library/Caches/go-build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
   upstream:
     runs-on: ubuntu-latest
