@@ -188,7 +188,7 @@ mod tests {
         let assets = repository.join("packages/zolana_mobile/example/assets/proving");
         let asset = |extension: &str| {
             assets
-                .join(format!("transfer_confidential_2_3.{extension}"))
+                .join(format!("transfer_confidential_2_2.{extension}"))
                 .display()
                 .to_string()
         };
@@ -196,10 +196,10 @@ mod tests {
         let prepared = load().unwrap();
         assert_eq!(load().unwrap_err(), "prover_busy");
 
-        let request = std::fs::read_to_string(assets.join("prove-request-2x3.json")).unwrap();
+        let request = std::fs::read_to_string(assets.join("prove-request-2x2.json")).unwrap();
         let proof = prove_prepared(prepared.id, request).unwrap();
         assert!(proof.verified);
-        assert_eq!((proof.inputs, proof.outputs), (2, 3));
+        assert_eq!((proof.inputs, proof.outputs), (2, 2));
         let json: serde_json::Value = serde_json::from_str(&proof.proof_json).unwrap();
         assert!(json["ar"].is_array());
         assert!(json["bs"].is_array());

@@ -13,8 +13,8 @@ verified on the device. The Solana key stays with the application's signer.
 - `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
   prepared keys, `.key` loading, and the structured request adapter.
 - `packages/zolana_mobile`: the Flutter plugin, and an example devnet wallet.
-- `fixtures`: a 2→3 `/prove` request captured from the Zolana client, and the
-  Helius prover's response to it.
+- `fixtures`: a 2→2 `/prove` request built with the Zolana prover's test
+  helpers, and the Helius prover's response to it.
 - `scripts`: asset staging and the upstream drift check.
 
 The generated native library keeps Mopro's internal
@@ -32,7 +32,7 @@ app storage; later sends reuse it.
 Install Flutter and the platform toolchain. Then:
 
 ```sh
-./scripts/stage-demo-assets.sh   # the proof benchmark's 2→3 key
+./scripts/stage-demo-assets.sh   # the proof benchmark's 2→2 key
 cd packages/zolana_mobile/example
 flutter pub get
 flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
@@ -99,7 +99,7 @@ which must be on Zolana `main`.
 runs it on every push. To move to a newer Zolana revision, re-vendor
 `go/protocol` from `prover/server`, regenerate its `UPSTREAM_FILES.sha256`, bump
 the Cargo pins and the key checksums in `stage-demo-assets.sh`, and regenerate
-the 2→3 fixtures as described in the rust-gnark provenance file.
+the 2→2 fixtures as described in the rust-gnark provenance file.
 
 ## Precompiled binaries
 
@@ -137,6 +137,7 @@ accounts avoid devnet airdrop limits once funded:
 ```sh
 ZOLANA_E2E_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
 ZOLANA_E2E_INDEXER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
+ZOLANA_E2E_PROVER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
 ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
 ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
 cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture

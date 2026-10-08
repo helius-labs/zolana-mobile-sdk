@@ -277,7 +277,7 @@ mod tests {
         };
         assert_eq!(store.ensure(&unknown).unwrap_err(), "proving_key_unknown");
         let foreign = ExpectedProvingKey {
-            name: "transfer_confidential_2_3.key".into(),
+            name: "transfer_confidential_2_2.key".into(),
             sha256: [0; 32],
         };
         assert_eq!(store.ensure(&foreign).unwrap_err(), "proving_key_mismatch");

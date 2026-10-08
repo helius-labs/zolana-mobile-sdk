@@ -103,9 +103,9 @@ cargo package --allow-dirty --offline
 ```
 
 To exercise deployed transfer keys, set `ZOLANA_TEST_KEYS` to a directory
-containing `transfer_confidential_2_3.{r1cs,pk,vk}`. The staged-key test
+containing `transfer_confidential_2_2.{r1cs,pk,vk}`. The staged-key test
 checks the witness built from the pinned request against the canonical
-flattened vector in `go/testdata/witness-2x3.json`, proves twice using the
+flattened vector in `go/testdata/witness-2x2.json`, proves twice using the
 retained handle, and verifies native/web JSON interoperability.
 
 On the supplied macOS host, set SDKROOT to Xcode's MacOSX.sdk and CC/AR to

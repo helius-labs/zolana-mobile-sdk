@@ -6,6 +6,6 @@ From the repository root, run:
 ./scripts/stage-demo-assets.sh
 ```
 
-The script downloads and verifies `transfer_confidential_2_3.key`, splits its
+The script downloads and verifies `transfer_confidential_2_2.key`, splits its
 `.pk`, `.vk`, and `.r1cs` sections at locked byte offsets, and copies the
 committed proof request. All staged assets are ignored by Git.

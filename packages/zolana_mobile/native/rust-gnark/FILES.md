@@ -84,7 +84,7 @@ local build outputs and must not be synchronized or shipped as source.
 - `go/protocol/prover/transfer_eddsa_only/variant.go`
 - `go/protocol/prover/transfer_eddsa_only/witness.go`
 - `go/request.go`
-- `go/testdata/transfer-2x3.json`
-- `go/testdata/witness-2x3.json`
+- `go/testdata/transfer-2x2.json`
+- `go/testdata/witness-2x2.json`
 - `go/witness.go`
 - `go/wrapper.go`

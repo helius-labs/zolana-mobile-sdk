@@ -201,9 +201,9 @@ mod tests {
 
     use super::*;
 
-    const REQUEST: &str = include_str!("../../../../../fixtures/prove-request-2x3.json");
+    const REQUEST: &str = include_str!("../../../../../fixtures/prove-request-2x2.json");
     /// The Helius prover's proof of [`REQUEST`].
-    const RESPONSE: &[u8] = include_bytes!("../../../../../fixtures/prove-response-2x3.json");
+    const RESPONSE: &[u8] = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
 
     /// A backend that answers every request with `response`, and the last
     /// request it received.
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn a_backend_receives_the_client_request_and_fails_by_name() {
-        let request = Captured(transfer_2_3_key());
+        let request = Captured(transfer_2_2_key());
         let (prover, received) = backend(Some(RESPONSE));
         let proof = prover.prove(&request).expect("the prover's proof");
         assert_eq!(*received.lock().unwrap(), REQUEST.as_bytes());
@@ -231,7 +231,7 @@ mod tests {
             .step_by(2)
             .map(|i| u8::from_str_radix(&public_input[i..i + 2], 16).unwrap())
             .collect();
-        let circuit = CircuitId::ConfidentialEddsa(2, 3, N_PUBLIC_SLOTS as u8);
+        let circuit = CircuitId::ConfidentialEddsa(2, 2, N_PUBLIC_SLOTS as u8);
         verify_proof_statement(
             &proof,
             public_input.try_into().unwrap(),
@@ -239,7 +239,7 @@ mod tests {
         )
         .expect("the fixture proof verifies");
 
-        let request = Captured(transfer_2_3_key());
+        let request = Captured(transfer_2_2_key());
         for (response, code) in [
             (None, "remote_prover_failed"),
             (Some(&b"not json"[..]), "proof_malformed"),
@@ -262,7 +262,7 @@ mod tests {
             assembled.prover_inputs.inputs.len(),
             assembled.prover_inputs.outputs.len(),
         );
-        assert_eq!(shape, (2, 3), "the shape of the fixture proof");
+        assert_eq!(shape, (2, 2), "the shape of the fixture proof");
         let sent = prover_client_body(&mut assembled, &sender);
 
         for (response, code) in [
@@ -324,7 +324,7 @@ mod tests {
             .transfer_sol(&recipient.shielded_address().unwrap(), 4)
             .unwrap();
         transaction
-            .pad_utxos(Shape::IN2_OUT3, &sender.shielded_address().unwrap())
+            .pad_utxos(Shape::IN2_OUT2, &sender.shielded_address().unwrap())
             .unwrap();
         let proof_inputs = transaction.encrypt(sender).unwrap();
 
@@ -394,7 +394,7 @@ mod tests {
         server.join().unwrap()
     }
 
-    /// The captured 2→3 client body, with the key it asks for.
+    /// The captured 2→2 client body, with the key it asks for.
     struct Captured(ExpectedProvingKey);
 
     impl ProveRequest for Captured {
@@ -407,7 +407,7 @@ mod tests {
         }
     }
 
-    /// Downloads `transfer_confidential_2_3.key` into `ZOLANA_TEST_KEY_DIR`
+    /// Downloads `transfer_confidential_2_2.key` into `ZOLANA_TEST_KEY_DIR`
     /// (or a temp directory) unless it is already there and pinned.
     #[test]
     #[ignore = "downloads a proving key"]
@@ -420,22 +420,22 @@ mod tests {
         });
         let prover = NativeProver::new(keys::KeyStore::new(dir, None).unwrap());
         let proof = prover
-            .prove(&Captured(transfer_2_3_key()))
+            .prove(&Captured(transfer_2_2_key()))
             .expect("prove the captured client request");
         assert!(
             proof.commitment.is_none(),
             "the eddsa rail has no BSB22 commitment"
         );
         // The same key serves the next proof without reloading.
-        prover.prove(&Captured(transfer_2_3_key())).unwrap();
+        prover.prove(&Captured(transfer_2_2_key())).unwrap();
     }
 
-    fn transfer_2_3_key() -> ExpectedProvingKey {
-        let name = "transfer_confidential_2_3.key";
+    fn transfer_2_2_key() -> ExpectedProvingKey {
+        let name = "transfer_confidential_2_2.key";
         let (_, sha256) = zolana_interface::verifying_keys::PROVING_KEY_SHA256S
             .iter()
             .find(|(file, _)| *file == name)
-            .expect("pinned 2x3 key");
+            .expect("pinned 2x2 key");
         ExpectedProvingKey {
             name: name.to_string(),
             sha256: *sha256,
