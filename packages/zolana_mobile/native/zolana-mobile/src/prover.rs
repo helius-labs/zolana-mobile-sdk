@@ -225,7 +225,7 @@ mod tests {
         // A synchronous proof is not cut at the transport's 30 s.
         assert_eq!(
             (request.max_response_bytes, request.timeout_ms),
-            (None, Some(600_000))
+            (None, Some(599_000))
         );
         assert!(requests.lock().unwrap().is_empty());
     }
@@ -260,8 +260,33 @@ mod tests {
         );
         for poll in &requests.lock().unwrap()[1..] {
             assert!(poll.headers.is_empty() && poll.body.is_empty());
-            assert_eq!(poll.timeout_ms, Some(30_000));
+            assert_eq!(poll.timeout_ms, Some(29_000));
         }
+    }
+
+    /// A proof response whose body is still arriving at the SDK's deadline:
+    /// the transport gives up a second earlier, with the status, so the SDK
+    /// does not send the request again.
+    #[test]
+    fn a_slow_body_at_the_deadline_is_not_sent_again() {
+        let (transport, requests) = fake(|request| {
+            // The status arrived; the body drips until the transport's own
+            // deadline, as the default transport counts it.
+            let deadline = request.timeout_ms.expect("a proof request has a deadline");
+            std::thread::sleep(std::time::Duration::from_millis(deadline.into()));
+            Err(TransportFailure {
+                message: "TimeoutException: body".to_string(),
+                status: Some(200),
+            })
+        });
+        let prover = transport
+            .prover(PROVER_URL.to_string())
+            .with_proof_timeout(std::time::Duration::from_secs(2));
+        assert!(prover.prove(&Captured(transfer_2_2_key())).is_err());
+        assert_eq!(
+            sent(&requests),
+            [("POST".to_string(), PROVE_URL.to_string())]
+        );
     }
 
     #[test]
@@ -329,7 +354,7 @@ mod tests {
             let request = requests.lock().unwrap().pop().unwrap();
             assert_eq!(request.url, PROVE_URL);
             assert_eq!(request.headers["x-sync"], "true");
-            assert_eq!(request.timeout_ms, Some(600_000));
+            assert_eq!(request.timeout_ms, Some(599_000));
         }
     }
 

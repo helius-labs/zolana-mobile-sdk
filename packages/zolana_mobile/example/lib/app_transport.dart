@@ -14,6 +14,7 @@ class AppTransport {
   static const _timeout = Duration(seconds: 30);
 
   Future<TransportResponse> send(TransportRequest request) async {
+    final clock = Stopwatch()..start();
     final url = Uri.parse(request.url);
     sent.add('${request.method} ${url.path}');
     // The wallet's own bound when it sets one, such as for a proof.
@@ -29,14 +30,19 @@ class AppTransport {
         )
         .timeout(timeout);
     try {
+      final body = http.ByteStream(response.stream.timeout(timeout)).toBytes();
       return TransportResponse(
         status: response.statusCode,
         headers: response.headers,
-        // A proving key is several MB: bound each wait, not the whole body.
-        body: await http.ByteStream(response.stream.timeout(timeout)).toBytes(),
+        // The wallet's bound covers the whole request, body included. A
+        // proving key is several MB and has none: bound each wait instead.
+        body: await (request.timeoutMs == null
+            ? body
+            : body.timeout(timeout - clock.elapsed)),
       );
     } catch (error) {
-      // The server has the request: the wallet must not send a proof twice.
+      // The server has the request, and a proof request must not be sent
+      // twice: the wallet does not send it again after this.
       throw TransportResponseLost(response.statusCode, error);
     }
   }

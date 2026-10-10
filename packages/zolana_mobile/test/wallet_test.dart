@@ -444,7 +444,7 @@ void main() {
       ),
       (
         withUrls(prover: plaintext),
-        WalletError.proverUrlInsecure(url: plaintext),
+        WalletError.proverUrlInsecure(url: reported),
       ),
     ]) {
       final signer = RecordingSigner();
@@ -458,8 +458,11 @@ void main() {
       // An application transport applies its own policy.
       await open(
         insecure,
-        transport: (_) async =>
-            TransportResponse(status: 200, headers: const {}, body: Uint8List(0)),
+        transport: (_) async => TransportResponse(
+          status: 200,
+          headers: const {},
+          body: Uint8List(0),
+        ),
       );
     }
     await expectLater(
@@ -662,6 +665,21 @@ void main() {
       },
     );
 
+    Stream<List<int>> slowly() async* {
+      for (final byte in [1, 2, 3]) {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        yield [byte];
+      }
+    }
+
+    TransportRequest within(int? timeoutMs) => TransportRequest(
+      method: 'POST',
+      url: 'https://prover.example/prove/k',
+      headers: const {},
+      body: Uint8List(0),
+      timeoutMs: timeoutMs,
+    );
+
     test('bounds a request by its timeoutMs', () async {
       final slow = HttpTransport(
         client: MockClient((_) async {
@@ -669,66 +687,71 @@ void main() {
           return http.Response('', 200);
         }),
       );
-      TransportRequest after(int timeoutMs) => TransportRequest(
-        method: 'POST',
-        url: 'https://prover.example/prove',
-        headers: const {},
-        body: Uint8List(0),
-        timeoutMs: timeoutMs,
+      await expectLater(
+        slow.send(within(20)),
+        throwsA(isA<TimeoutException>()),
       );
-      await expectLater(slow.send(after(20)), throwsA(isA<TimeoutException>()));
-      expect((await slow.send(after(2000))).status, 200);
+      expect((await slow.send(within(2000))).status, 200);
     });
 
-    // A proving-key download takes the same bound, 30 s without timeoutMs.
-    test('fails a body that stalls, not one that keeps moving', () async {
-      TransportRequest key(int timeoutMs) => TransportRequest(
-        method: 'GET',
-        url: 'https://keys.example/k.key',
-        headers: const {},
-        body: Uint8List(0),
-        timeoutMs: timeoutMs,
-      );
-      final stalled = HttpTransport(
+    // The SDK gives up at its own deadline and would send the proof request
+    // again; the transport reports first that the status arrived.
+    test('timeoutMs bounds the whole body, keeping its status', () async {
+      final dripping = HttpTransport(
         client: MockClient.streaming(
-          (_, _) async => http.StreamedResponse(
-            // One byte, then nothing: the body never ends.
-            (StreamController<List<int>>()..add([1])).stream,
-            200,
-            contentLength: 3,
-          ),
+          (_, _) async => http.StreamedResponse(slowly(), 200),
         ),
       );
       final started = DateTime.now();
       await expectLater(
-        stalled.send(key(100)),
+        dripping.send(within(100)),
         throwsA(
           isA<TransportResponseLost>()
               .having((e) => e.status, 'status', 200)
               .having((e) => e.cause, 'cause', isA<TimeoutException>()),
         ),
       );
-      expect(DateTime.now().difference(started).inSeconds, lessThan(5));
-
-      Stream<List<int>> slowly() async* {
-        for (final byte in [1, 2, 3]) {
-          await Future<void>.delayed(const Duration(milliseconds: 60));
-          yield [byte];
-        }
-      }
-
-      final slow = HttpTransport(
-        client: MockClient.streaming(
-          (_, _) async => http.StreamedResponse(slowly(), 200),
-        ),
-      );
-      final moving = DateTime.now();
-      expect((await slow.send(key(100))).body, [1, 2, 3]);
-      expect(
-        DateTime.now().difference(moving).inMilliseconds,
-        greaterThan(100),
-      );
+      expect(DateTime.now().difference(started).inMilliseconds, lessThan(170));
+      expect((await dripping.send(within(1000))).body, [1, 2, 3]);
     });
+
+    // A proving-key download has no timeoutMs: each wait is bounded.
+    test(
+      'without timeoutMs, fails a body that stalls, not one that keeps moving',
+      () async {
+        final stalled = HttpTransport(
+          stall: const Duration(milliseconds: 100),
+          client: MockClient.streaming(
+            (_, _) async => http.StreamedResponse(
+              // One byte, then nothing: the body never ends.
+              (StreamController<List<int>>()..add([1])).stream,
+              200,
+              contentLength: 3,
+            ),
+          ),
+        );
+        await expectLater(
+          stalled.send(within(null)),
+          throwsA(
+            isA<TransportResponseLost>()
+                .having((e) => e.status, 'status', 200)
+                .having((e) => e.cause, 'cause', isA<TimeoutException>()),
+          ),
+        );
+        final moving = HttpTransport(
+          stall: const Duration(milliseconds: 100),
+          client: MockClient.streaming(
+            (_, _) async => http.StreamedResponse(slowly(), 200),
+          ),
+        );
+        final started = DateTime.now();
+        expect((await moving.send(within(null))).body, [1, 2, 3]);
+        expect(
+          DateTime.now().difference(started).inMilliseconds,
+          greaterThan(100),
+        );
+      },
+    );
 
     test('isSecureUrl allows https and http to this device only', () {
       for (final url in [

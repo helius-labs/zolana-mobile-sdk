@@ -171,6 +171,15 @@ fn millis(timeout: Duration) -> u32 {
     u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX)
 }
 
+/// How long a transport waits for an SDK request in all. The SDK gives up at
+/// `timeout` and counts the request as unanswered, which it sends again; the
+/// transport stops a second earlier, so it can still say whether the status
+/// arrived ([`ApiError::ResponseLost`], which the SDK does not resend).
+fn transport_deadline(timeout: Duration) -> Duration {
+    const MARGIN: Duration = Duration::from_secs(1);
+    timeout.saturating_sub(MARGIN).max(timeout / 2)
+}
+
 impl fmt::Debug for Sender {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("Sender")
@@ -234,7 +243,7 @@ impl BlockingHttpClient for Sender {
             // Moved, not copied: the bridge hands it to the application.
             body: std::mem::take(&mut *body),
             max_response_bytes: body_limit.map(|limit| u32::try_from(limit).unwrap_or(u32::MAX)),
-            timeout_ms: timeout.map(millis),
+            timeout_ms: timeout.map(|timeout| millis(transport_deadline(timeout))),
         };
         let response = self.0.send_blocking(request).map_err(|error| {
             if error.0.status.is_some() {
@@ -418,9 +427,18 @@ pub(crate) mod tests {
         headers.insert("x-request".into(), "1".into());
         assert_eq!(sent.headers, headers);
         assert_eq!(sent.body, b"{}");
+        // A second inside the SDK's bound, so the transport reports first.
         assert_eq!(
             (sent.max_response_bytes, sent.timeout_ms),
-            (None, Some(2500))
+            (None, Some(1500))
+        );
+        assert_eq!(
+            transport_deadline(Duration::from_secs(600)),
+            Duration::from_secs(599)
+        );
+        assert_eq!(
+            transport_deadline(Duration::from_millis(1200)),
+            Duration::from_millis(600)
         );
     }
 

@@ -408,6 +408,7 @@ returned whole and checked against the lockfile) and remote proofs (see
 final client = http.Client();
 
 Future<TransportResponse> send(TransportRequest request) async {
+  final clock = Stopwatch()..start();
   final timeout = Duration(milliseconds: request.timeoutMs ?? 30000);
   final response = await client
       .send(
@@ -417,10 +418,14 @@ Future<TransportResponse> send(TransportRequest request) async {
       )
       .timeout(timeout);
   try {
+    final body = http.ByteStream(response.stream.timeout(timeout)).toBytes();
     return TransportResponse(
       status: response.statusCode,
       headers: response.headers,
-      body: await http.ByteStream(response.stream.timeout(timeout)).toBytes(),
+      // `timeoutMs` bounds the whole request; a proving key only each wait.
+      body: await (request.timeoutMs == null
+          ? body
+          : body.timeout(timeout - clock.elapsed)),
     );
   } catch (error) {
     throw TransportResponseLost(response.statusCode, error);
@@ -452,12 +457,15 @@ final wallet = await ZolanaWallet.open(
   The server has the request and may be acting on it, so the wallet does not
   send it again: a prover would otherwise prove the same spend twice. Any
   other exception counts as no response, and a proof request is sent again.
-- A request with `timeoutMs` set carries the SDK's bound for it, in
-  milliseconds: 600 000 for a proof request, which the prover may answer only
-  when the proof is done, and 30 000 for a status poll. Use it in place of
-  your own. Time out every other request too: the wallet and `close()` wait
-  for each answer. For the same reason the transport must not call the
-  wallet.
+- A request with `timeoutMs` set carries the bound for the whole request,
+  body included, in milliseconds: just under 600 000 for a proof request,
+  which the prover may answer only when the proof is done, and under 30 000
+  for a status poll. Use it in place of your own, and when it passes after
+  the status arrived, throw `TransportResponseLost`. The SDK gives up a
+  second later and counts a request that failed any other way as unanswered,
+  which it sends again: a prover would prove the spend twice. Time out every
+  other request too: the wallet and `close()` wait for each answer. For the
+  same reason the transport must not call the wallet.
 - `example/lib/app_transport.dart` is the transport above with a log of what
   it sent; the example's devnet test sends through it.
 

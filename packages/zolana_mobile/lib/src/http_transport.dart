@@ -9,43 +9,62 @@ import 'rust/third_party/zolana_mobile.dart'
 /// The wallet's transport when the application passes none: `package:http`,
 /// one connection pool per wallet, closed with it.
 ///
-/// It sends each request as it is and follows redirects. It fails a request
-/// whose response, or any part of its body, takes longer than
-/// [TransportRequest.timeoutMs], or 30 seconds without one, and stops
-/// reading a body past [TransportRequest.maxResponseBytes]. A body that fails
-/// after the status arrived is a [TransportResponseLost].
+/// It sends each request as it is and follows redirects. A request with
+/// [TransportRequest.timeoutMs] fails when the whole of it, body included,
+/// takes longer; one without fails when the response, or the next part of its
+/// body, takes longer than [stall] (a proving key is several MB, so its
+/// download is bounded by progress, not in all). It stops reading a body past
+/// [TransportRequest.maxResponseBytes]. A body that fails after the status
+/// arrived, its deadline included, is a [TransportResponseLost]: the SDK
+/// gives up at its own deadline and would otherwise send a proof request
+/// again.
 /// `ZolanaWallet.open` checks the URLs before the wallet uses it (see
 /// [isSecureUrl]).
 class HttpTransport {
-  HttpTransport({http.Client? client}) : _client = client ?? http.Client();
+  HttpTransport({http.Client? client, this.stall = const Duration(seconds: 30)})
+    : _client = client ?? http.Client();
 
   final http.Client _client;
 
-  static const _stall = Duration(seconds: 30);
+  /// The longest wait for the response, or the next part of its body, of a
+  /// request without [TransportRequest.timeoutMs].
+  final Duration stall;
 
   Future<TransportResponse> send(TransportRequest request) async {
     final outgoing = http.Request(request.method, Uri.parse(request.url))
       ..headers.addAll(request.headers)
       ..bodyBytes = request.body;
     final timeoutMs = request.timeoutMs;
-    final stall = timeoutMs == null
-        ? _stall
+    final deadline = timeoutMs == null
+        ? null
         : Duration(milliseconds: timeoutMs);
-    final response = await _client.send(outgoing).timeout(stall);
+    final clock = Stopwatch()..start();
+    // How long the next event may take: the stall bound, or what is left of
+    // the request's deadline.
+    Duration wait() {
+      if (deadline == null) return stall;
+      final left = deadline - clock.elapsed;
+      return left.isNegative ? Duration.zero : left;
+    }
+
+    final response = await _client.send(outgoing).timeout(wait());
     final limit = request.maxResponseBytes;
     if (limit != null && (response.contentLength ?? 0) > limit) {
       unawaited(response.stream.listen(null).cancel());
       throw _TooLarge(limit);
     }
     final body = BytesBuilder(copy: false);
+    final chunks = StreamIterator(response.stream);
     try {
-      await for (final chunk in response.stream.timeout(stall)) {
-        body.add(chunk);
+      while (await chunks.moveNext().timeout(wait())) {
+        body.add(chunks.current);
         if (limit != null && body.length > limit) throw _TooLarge(limit);
       }
     } on _TooLarge {
+      unawaited(chunks.cancel());
       rethrow;
     } catch (error) {
+      unawaited(chunks.cancel());
       throw TransportResponseLost(response.statusCode, error);
     }
     return TransportResponse(
