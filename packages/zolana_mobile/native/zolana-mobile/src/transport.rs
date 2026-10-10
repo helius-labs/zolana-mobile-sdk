@@ -23,25 +23,25 @@ pub struct TransportRequest {
     /// proving keys and the status of a queued proof.
     pub method: String,
     pub url: String,
-    /// The content type of a `POST`, and `x-sync` or `x-async` on a proof
-    /// request; nothing else.
+    /// The content type of a `POST`, `x-sync` or `x-async` on a proof
+    /// request, and `range` on a proving-key download; nothing else.
     pub headers: HashMap<String, String>,
     /// Empty for a `GET`. A proof request's body is the transaction's
     /// witness, the wallet's nullifier secret included.
     pub body: Vec<u8>,
     /// The most bytes the response body may hold, for a proving-key download
-    /// (the key's size in the lockfile). A transport stops reading and fails
-    /// past it; the wallet refuses a longer body either way.
+    /// (the size of the part it asks for). A transport stops reading and
+    /// fails past it; the wallet refuses a longer body either way.
     pub max_response_bytes: Option<u32>,
     /// The caller's bound on the request, in milliseconds, when it has one
     /// (600 s for a proof request, 30 s for a status poll); otherwise the
     /// transport's own applies.
     pub timeout_ms: Option<u32>,
-    /// For a proving-key download: the file to write the body to, chunk by
-    /// chunk, so a key of hundreds of MB never sits in memory. The response
-    /// then carries no body. The wallet checks the file and removes it when
-    /// it is wrong. A transport that returns the body instead still works,
-    /// holding the key in memory.
+    /// For a proving-key download: the file to write the body, a part of the
+    /// key, to as it arrives. The response then carries no body. The wallet
+    /// appends the part to the key and checks the key once it is complete. A
+    /// transport that returns the body instead still works, holding the part
+    /// in memory.
     pub download_path: Option<String>,
 }
 

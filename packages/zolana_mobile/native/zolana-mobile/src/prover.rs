@@ -31,7 +31,7 @@ pub enum Proving {
 pub(crate) struct NativeProver(Arc<Native>);
 
 struct Native {
-    keys: keys::KeyStore,
+    keys: Arc<keys::KeyStore>,
     /// Id of the prepared system this prover loaded last; 0 before the first.
     loaded: AtomicU64,
     /// Why the last proof failed, which the `ClientError` the client sees
@@ -40,7 +40,7 @@ struct Native {
 }
 
 impl NativeProver {
-    pub(crate) fn new(keys: keys::KeyStore) -> Self {
+    pub(crate) fn new(keys: Arc<keys::KeyStore>) -> Self {
         Self(Arc::new(Native {
             keys,
             loaded: AtomicU64::new(0),
@@ -464,11 +464,11 @@ mod tests {
                 .display()
                 .to_string()
         });
-        let prover = NativeProver::new(keys::KeyStore::new(
+        let prover = NativeProver::new(Arc::new(keys::KeyStore::new(
             dir,
             None,
             crate::transport::tests::unreachable(),
-        ));
+        )));
         let proof = prover
             .prove(&Captured(transfer_2_2_key()))
             .expect("prove the captured client request");

@@ -95,15 +95,30 @@ await wallet.deposit(BigInt.from(500000000));
 await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(100000000));
 ```
 
-- **Proving keys** download on first use from the Zolana key host into
-  `provingKeyDir` (through the transport, see [Networking](#networking)), and
-  are used only after they match the proving-key lockfile of the pinned
-  Zolana revision. The wallet picks the circuit shape, so the first
-  transfer of a new shape downloads its key (8–240 MB); keep the directory
-  across launches. With the default transport, a download that receives no
-  data for 30 s fails with `WalletError.provingKeyDownloadFailed`, and the
-  next call downloads the key again; an application's transport applies its
-  own timeout.
+- **Proving keys** download from the Zolana key host into `provingKeyDir`
+  (through the transport, see [Networking](#networking)), and are used only
+  after they match the proving-key lockfile of the pinned Zolana revision.
+  The wallet picks the circuit shape, so the first spend of a new shape
+  downloads its key, 9 MB for one note and up to 380 MB for the widest spends
+  and merges, unless it is already on the device:
+
+  ```dart
+  // On Wi-Fi after onboarding: spends of up to four notes, about 80 MB.
+  wallet.prefetchProvingKeys(maxInputs: 4).listen(
+    (update) => showProgress(update.downloaded, update.total),
+  );
+  ```
+
+  `prefetchProvingKeys` runs beside the wallet's other calls; a spend that
+  needs a key it is downloading waits for it. Cancel its subscription to stop
+  it. `provingKeys()` lists each key and how much of it is on the device,
+  and `clearProvingKeys()` removes them. Keys download in parts of 8 MB: an
+  interrupted download resumes where it stopped, and with the default
+  transport a part that receives no data for 30 s fails with
+  `WalletError.provingKeyDownloadFailed`. Keep the directory across launches:
+  the keys of one lockfile live in a directory of their own there, and the
+  wallet removes the directories of other lockfiles when it opens. A key
+  that was checked once is not hashed again unless its file changed.
 - **Tokens**: list each SPL Token or Token-2022 mint the wallet holds in
   `WalletConfig.mints`, with the token program that owns it, as your Solana
   SDK reads it:
@@ -449,7 +464,7 @@ final signature = await wallet.merge(proving: Proving.remote);
 
 The wallet never opens a connection. Every request, Solana RPC and indexer
 calls (`POST`, JSON), proving-key downloads (`GET`, the key files above,
-returned whole and checked against the lockfile) and remote proofs (see
+in ranged parts, checked against the lockfile) and remote proofs (see
 [Backend proving](#backend-proving)), goes through one transport in Dart:
 
 - By default, the package's own transport on `package:http`: one connection
@@ -503,18 +518,21 @@ final wallet = await ZolanaWallet.open(
 ```
 
 - The request carries the method, the URL with its `api-key` parameter, the
-  content type of a `POST`, and `X-Sync` or `X-Async` on a proof request;
-  nothing else. Send it as it is, and follow redirects: the proving-key host
+  content type of a `POST`, `X-Sync` or `X-Async` on a proof request, and
+  `Range` on a key download; nothing else. Send it as it is, and follow redirects: the proving-key host
   may redirect. A proof request's body is the transaction's witness, the
   nullifier secret included: do not log it.
-- A key download sets `maxResponseBytes`, the key's size in the lockfile.
-  Stop reading and throw when the body exceeds it; the wallet refuses a longer
-  body either way, but only after the whole of it arrived.
+- A key download asks for one part of the key with `Range` and sets
+  `maxResponseBytes` to that part's size (the whole key for the first part,
+  in case the host ignores ranges). Stop reading and throw when the body
+  exceeds it; the wallet refuses a longer body either way, but only after the
+  whole of it arrived. Return the `206` with its `Content-Range` header: the
+  wallet appends a part only to the range it asked for.
 - A key download also sets `downloadPath`: write the body to that file as it
-  arrives and return the response with an empty body. Keys reach hundreds of
-  MB, so holding one in memory can get the app killed. The wallet checks the
-  file against the lockfile and removes it when it is wrong. A transport that
-  returns the body instead still works, at that memory cost.
+  arrives and return the response with an empty body. The wallet appends it
+  to the key and checks the key against the lockfile once it is complete. A
+  transport that returns the body instead still works, holding a part in
+  memory.
 - Return the response whatever its status, with its headers: a prover
   inside a TEE marks its encrypted body in them. Throw only when there is no
   response (no network, DNS, TLS, a timeout). The wallet then fails with a

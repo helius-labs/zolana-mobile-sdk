@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1388509053;
+  int get rustContentHash => 1619530324;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -162,6 +162,10 @@ abstract class RustLibApi extends BaseApi {
     String? mint,
   });
 
+  Future<ProvingKeys> zolanaMobileMobileWalletProvingKeys({
+    required MobileWallet that,
+  });
+
   Future<PendingTransaction> zolanaMobileMobileWalletRefresh({
     required MobileWallet that,
     required PendingTransaction pending,
@@ -223,6 +227,25 @@ abstract class RustLibApi extends BaseApi {
     required PendingTransaction that,
   });
 
+  Future<void> zolanaMobileProvingKeysClear({required ProvingKeys that});
+
+  Future<List<String>> zolanaMobileProvingKeysNeeded({
+    required ProvingKeys that,
+    required int maxInputs,
+    required List<int> outputs,
+    required int maxMergeInputs,
+  });
+
+  Future<bool> zolanaMobileProvingKeysPrefetch({
+    required ProvingKeys that,
+    required List<String> names,
+    required FutureOr<bool> Function(ProvingKeyProgress) progress,
+  });
+
+  Future<List<ProvingKeyStatus>> zolanaMobileProvingKeysStatus({
+    required ProvingKeys that,
+  });
+
   Future<Transport> zolanaMobileTransportNew({
     required FutureOr<TransportOutcome> Function(TransportRequest) send,
   });
@@ -266,6 +289,14 @@ abstract class RustLibApi extends BaseApi {
 
   CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_PendingTransactionPtr;
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ProvingKeys;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ProvingKeys;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_ProvingKeysPtr;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_Transport;
@@ -871,6 +902,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<ProvingKeys> zolanaMobileMobileWalletProvingKeys({
+    required MobileWallet that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileMobileWalletProvingKeysConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletProvingKeysConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_proving_keys",
+        argNames: ["that"],
+      );
+
+  @override
   Future<PendingTransaction> zolanaMobileMobileWalletRefresh({
     required MobileWallet that,
     required PendingTransaction pending,
@@ -890,7 +958,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 16,
             port: port_,
           );
         },
@@ -927,7 +995,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 17,
             port: port_,
           );
         },
@@ -968,7 +1036,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1004,7 +1072,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1047,7 +1115,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1085,7 +1153,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1121,7 +1189,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1157,7 +1225,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1193,7 +1261,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1229,7 +1297,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1266,7 +1334,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1302,7 +1370,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1338,7 +1406,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1374,7 +1442,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1396,6 +1464,155 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> zolanaMobileProvingKeysClear({required ProvingKeys that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileProvingKeysClearConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileProvingKeysClearConstMeta =>
+      const TaskConstMeta(debugName: "ProvingKeys_clear", argNames: ["that"]);
+
+  @override
+  Future<List<String>> zolanaMobileProvingKeysNeeded({
+    required ProvingKeys that,
+    required int maxInputs,
+    required List<int> outputs,
+    required int maxMergeInputs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+            that,
+            serializer,
+          );
+          sse_encode_u_32(maxInputs, serializer);
+          sse_encode_list_prim_u_32_loose(outputs, serializer);
+          sse_encode_u_32(maxMergeInputs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileProvingKeysNeededConstMeta,
+        argValues: [that, maxInputs, outputs, maxMergeInputs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileProvingKeysNeededConstMeta =>
+      const TaskConstMeta(
+        debugName: "ProvingKeys_needed",
+        argNames: ["that", "maxInputs", "outputs", "maxMergeInputs"],
+      );
+
+  @override
+  Future<bool> zolanaMobileProvingKeysPrefetch({
+    required ProvingKeys that,
+    required List<String> names,
+    required FutureOr<bool> Function(ProvingKeyProgress) progress,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+            that,
+            serializer,
+          );
+          sse_encode_list_String(names, serializer);
+          sse_encode_DartFn_Inputs_proving_key_progress_Output_bool_AnyhowException(
+            progress,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 32,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileProvingKeysPrefetchConstMeta,
+        argValues: [that, names, progress],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileProvingKeysPrefetchConstMeta =>
+      const TaskConstMeta(
+        debugName: "ProvingKeys_prefetch",
+        argNames: ["that", "names", "progress"],
+      );
+
+  @override
+  Future<List<ProvingKeyStatus>> zolanaMobileProvingKeysStatus({
+    required ProvingKeys that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 33,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_proving_key_status,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileProvingKeysStatusConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileProvingKeysStatusConstMeta =>
+      const TaskConstMeta(debugName: "ProvingKeys_status", argNames: ["that"]);
+
+  @override
   Future<Transport> zolanaMobileTransportNew({
     required FutureOr<TransportOutcome> Function(TransportRequest) send,
   }) {
@@ -1410,7 +1627,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1441,7 +1658,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1471,7 +1688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1505,7 +1722,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1537,7 +1754,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1569,7 +1786,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1599,7 +1816,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1626,7 +1843,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1643,6 +1860,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kZolanaMobileSdkVersionConstMeta =>
       const TaskConstMeta(debugName: "sdk_version", argNames: []);
+
+  Future<void> Function(int, dynamic)
+  encode_DartFn_Inputs_proving_key_progress_Output_bool_AnyhowException(
+    FutureOr<bool> Function(ProvingKeyProgress) raw,
+  ) {
+    return (callId, rawArg0) async {
+      final arg0 = dco_decode_proving_key_progress(rawArg0);
+
+      Box<bool>? rawOutput;
+      Box<AnyhowException>? rawError;
+      try {
+        rawOutput = Box(await raw(arg0));
+      } catch (e, s) {
+        rawError = Box(AnyhowException("$e\n\n$s"));
+      }
+
+      final serializer = SseSerializer(generalizedFrbRustBinding);
+      assert((rawOutput != null) ^ (rawError != null));
+      if (rawOutput != null) {
+        serializer.buffer.putUint8(0);
+        sse_encode_bool(rawOutput.value, serializer);
+      } else {
+        serializer.buffer.putUint8(1);
+        sse_encode_AnyhowException(rawError!.value, serializer);
+      }
+      final output = serializer.intoRaw();
+
+      generalizedFrbRustBinding.dartFnDeliverOutput(
+        callId: callId,
+        ptr: output.ptr,
+        rustVecLen: output.rustVecLen,
+        dataLen: output.dataLen,
+      );
+    };
+  }
 
   Future<void> Function(int, dynamic)
   encode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
@@ -1696,6 +1948,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_ProvingKeys => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_ProvingKeys => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_Transport => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport;
 
@@ -1725,6 +1985,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ProvingKeys
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ProvingKeysImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1761,6 +2030,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ProvingKeys
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ProvingKeysImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  FutureOr<bool> Function(ProvingKeyProgress)
+  dco_decode_DartFn_Inputs_proving_key_progress_Output_bool_AnyhowException(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError('');
   }
 
   @protected
@@ -1803,6 +2090,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  ProvingKeys
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ProvingKeysImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1943,6 +2239,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
+  }
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint32List;
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -1952,6 +2260,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  List<ProvingKeyStatus> dco_decode_list_proving_key_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_proving_key_status).toList();
   }
 
   @protected
@@ -2075,6 +2389,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Proving dco_decode_proving(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return Proving.values[raw as int];
+  }
+
+  @protected
+  ProvingKeyProgress dco_decode_proving_key_progress(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return ProvingKeyProgress(
+      name: dco_decode_String(arr[0]),
+      keyDownloaded: dco_decode_u_64(arr[1]),
+      keySize: dco_decode_u_64(arr[2]),
+      keysDone: dco_decode_u_32(arr[3]),
+      keysTotal: dco_decode_u_32(arr[4]),
+      downloaded: dco_decode_u_64(arr[5]),
+      total: dco_decode_u_64(arr[6]),
+    );
+  }
+
+  @protected
+  ProvingKeyStatus dco_decode_proving_key_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ProvingKeyStatus(
+      name: dco_decode_String(arr[0]),
+      size: dco_decode_u_64(arr[1]),
+      downloaded: dco_decode_u_64(arr[2]),
+    );
   }
 
   @protected
@@ -2408,6 +2752,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ProvingKeys
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ProvingKeysImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   Transport
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport(
     SseDeserializer deserializer,
@@ -2456,6 +2812,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ProvingKeys
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ProvingKeysImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   Object sse_decode_DartOpaque(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_isize(deserializer);
@@ -2490,6 +2858,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return PendingTransactionImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
+  ProvingKeys
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return ProvingKeysImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -2674,6 +3054,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint32List(len_);
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -2685,6 +3079,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  List<ProvingKeyStatus> sse_decode_list_proving_key_status(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ProvingKeyStatus>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_proving_key_status(deserializer));
+    }
+    return ans_;
   }
 
   @protected
@@ -2867,6 +3275,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return Proving.values[inner];
+  }
+
+  @protected
+  ProvingKeyProgress sse_decode_proving_key_progress(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_keyDownloaded = sse_decode_u_64(deserializer);
+    var var_keySize = sse_decode_u_64(deserializer);
+    var var_keysDone = sse_decode_u_32(deserializer);
+    var var_keysTotal = sse_decode_u_32(deserializer);
+    var var_downloaded = sse_decode_u_64(deserializer);
+    var var_total = sse_decode_u_64(deserializer);
+    return ProvingKeyProgress(
+      name: var_name,
+      keyDownloaded: var_keyDownloaded,
+      keySize: var_keySize,
+      keysDone: var_keysDone,
+      keysTotal: var_keysTotal,
+      downloaded: var_downloaded,
+      total: var_total,
+    );
+  }
+
+  @protected
+  ProvingKeyStatus sse_decode_proving_key_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_size = sse_decode_u_64(deserializer);
+    var var_downloaded = sse_decode_u_64(deserializer);
+    return ProvingKeyStatus(
+      name: var_name,
+      size: var_size,
+      downloaded: var_downloaded,
+    );
   }
 
   @protected
@@ -3236,6 +3680,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    ProvingKeys self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ProvingKeysImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport(
     Transport self,
     SseSerializer serializer,
@@ -3282,6 +3739,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as PendingTransactionImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    ProvingKeys self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ProvingKeysImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_DartFn_Inputs_proving_key_progress_Output_bool_AnyhowException(
+    FutureOr<bool> Function(ProvingKeyProgress) self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_DartOpaque(
+      encode_DartFn_Inputs_proving_key_progress_Output_bool_AnyhowException(
+        self,
+      ),
       serializer,
     );
   }
@@ -3350,6 +3835,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as PendingTransactionImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+    ProvingKeys self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as ProvingKeysImpl).frbInternalSseEncode(move: null),
       serializer,
     );
   }
@@ -3526,6 +4024,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(
+      self is Uint32List ? self : Uint32List.fromList(self),
+    );
+  }
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint32List(self);
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_loose(
     List<int> self,
     SseSerializer serializer,
@@ -3545,6 +4065,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_list_proving_key_status(
+    List<ProvingKeyStatus> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_proving_key_status(item, serializer);
+    }
   }
 
   @protected
@@ -3713,6 +4245,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_proving(Proving self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_proving_key_progress(
+    ProvingKeyProgress self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_u_64(self.keyDownloaded, serializer);
+    sse_encode_u_64(self.keySize, serializer);
+    sse_encode_u_32(self.keysDone, serializer);
+    sse_encode_u_32(self.keysTotal, serializer);
+    sse_encode_u_64(self.downloaded, serializer);
+    sse_encode_u_64(self.total, serializer);
+  }
+
+  @protected
+  void sse_encode_proving_key_status(
+    ProvingKeyStatus self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_u_64(self.size, serializer);
+    sse_encode_u_64(self.downloaded, serializer);
   }
 
   @protected
@@ -4187,6 +4745,11 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<BigInt> privateBalance({String? mint}) => RustLib.instance.api
       .zolanaMobileMobileWalletPrivateBalance(that: this, mint: mint);
 
+  /// The proving keys this wallet proves with on the device. Their calls
+  /// run beside the wallet's own and outlive it.
+  Future<ProvingKeys> provingKeys() =>
+      RustLib.instance.api.zolanaMobileMobileWalletProvingKeys(that: this);
+
   /// `pending` with a new blockhash and the same proof, for an approval that
   /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
   /// over the old message do not apply to the new one.
@@ -4302,6 +4865,64 @@ class PendingTransactionImpl extends RustOpaque implements PendingTransaction {
   /// Base58 public keys that must sign, in signature order.
   Future<List<String>> signers() =>
       RustLib.instance.api.zolanaMobilePendingTransactionSigners(that: this);
+}
+
+@sealed
+class ProvingKeysImpl extends RustOpaque implements ProvingKeys {
+  // Not to be used by end users
+  ProvingKeysImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  ProvingKeysImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_ProvingKeys,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ProvingKeys,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_ProvingKeysPtr,
+  );
+
+  /// Remove the keys and partial downloads from the device. A prefetch or
+  /// proof that is downloading a key finishes its part first.
+  Future<void> clear() =>
+      RustLib.instance.api.zolanaMobileProvingKeysClear(that: this);
+
+  /// The keys spends of up to `max_inputs` notes with `outputs` outputs,
+  /// and merges of up to `max_merge_inputs` notes, prove with, smallest
+  /// first. A transfer has two outputs, the payment and the change; a
+  /// withdrawal pads its change to two.
+  Future<List<String>> needed({
+    required int maxInputs,
+    required List<int> outputs,
+    required int maxMergeInputs,
+  }) => RustLib.instance.api.zolanaMobileProvingKeysNeeded(
+    that: this,
+    maxInputs: maxInputs,
+    outputs: outputs,
+    maxMergeInputs: maxMergeInputs,
+  );
+
+  /// Download `names` (see [`Self::needed`]) that are not on the device,
+  /// each checked against the lockfile. `progress` hears of every part, and
+  /// stops the prefetch by answering `false`; what it downloaded stays, and
+  /// the next download of that key resumes from it. Returns whether every
+  /// key is on the device.
+  Future<bool> prefetch({
+    required List<String> names,
+    required FutureOr<bool> Function(ProvingKeyProgress) progress,
+  }) => RustLib.instance.api.zolanaMobileProvingKeysPrefetch(
+    that: this,
+    names: names,
+    progress: progress,
+  );
+
+  /// Every key the wallet can prove with on the device, smallest first.
+  Future<List<ProvingKeyStatus>> status() =>
+      RustLib.instance.api.zolanaMobileProvingKeysStatus(that: this);
 }
 
 @sealed
