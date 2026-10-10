@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -784671820;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1051892991;
 
 // Section: executor
 
@@ -285,6 +285,7 @@ fn wire__zolana_mobile__MobileWallet_open_impl(
             let api_config = <zolana_mobile::WalletConfig>::sse_decode(&mut deserializer);
             let api_solana_pubkey = <String>::sse_decode(&mut deserializer);
             let api_derivation_signature = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_transport = <Transport>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -292,6 +293,7 @@ fn wire__zolana_mobile__MobileWallet_open_impl(
                         api_config,
                         api_solana_pubkey,
                         api_derivation_signature,
+                        api_transport,
                     )?;
                     Ok(output_ok)
                 })())
@@ -324,6 +326,7 @@ fn wire__zolana_mobile__MobileWallet_open_with_keys_impl(
             let api_config = <zolana_mobile::WalletConfig>::sse_decode(&mut deserializer);
             let api_solana_pubkey = <String>::sse_decode(&mut deserializer);
             let api_keys = <zolana_mobile::WalletKeys>::sse_decode(&mut deserializer);
+            let api_transport = <Transport>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -331,6 +334,7 @@ fn wire__zolana_mobile__MobileWallet_open_with_keys_impl(
                         api_config,
                         api_solana_pubkey,
                         api_keys,
+                        api_transport,
                     )?;
                     Ok(output_ok)
                 })())
@@ -1352,6 +1356,42 @@ fn wire__zolana_mobile__PendingTransaction_summary_impl(
         },
     )
 }
+fn wire__zolana_mobile__Transport_new_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "Transport_new",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_send =
+                decode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
+                    <flutter_rust_bridge::DartOpaque>::sse_decode(&mut deserializer),
+                );
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Result::<_, ()>::Ok(zolana_mobile::Transport::new(api_send))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__zolana_mobile__derivation_message_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1625,15 +1665,31 @@ const _: fn() = || {
         let _: u64 = TokenBalance.amount;
     }
     {
+        let TransportOutcome = None::<zolana_mobile::TransportOutcome>.unwrap();
+        let _: Option<zolana_mobile::TransportResponse> = TransportOutcome.response;
+        let _: Option<String> = TransportOutcome.failure;
+    }
+    {
+        let TransportRequest = None::<zolana_mobile::TransportRequest>.unwrap();
+        let _: String = TransportRequest.method;
+        let _: String = TransportRequest.url;
+        let _: std::collections::HashMap<String, String> = TransportRequest.headers;
+        let _: Vec<u8> = TransportRequest.body;
+        let _: Option<u32> = TransportRequest.max_response_bytes;
+        let _: Option<u32> = TransportRequest.timeout_ms;
+    }
+    {
+        let TransportResponse = None::<zolana_mobile::TransportResponse>.unwrap();
+        let _: u16 = TransportResponse.status;
+        let _: Vec<u8> = TransportResponse.body;
+    }
+    {
         let WalletConfig = None::<zolana_mobile::WalletConfig>.unwrap();
         let _: String = WalletConfig.rpc_url;
-        let _: Option<std::collections::HashMap<String, String>> = WalletConfig.rpc_headers;
         let _: String = WalletConfig.indexer_url;
-        let _: Option<std::collections::HashMap<String, String>> = WalletConfig.indexer_headers;
         let _: String = WalletConfig.proving_key_dir;
         let _: Option<String> = WalletConfig.proving_key_url;
         let _: Option<zolana_mobile::Proving> = WalletConfig.proving;
-        let _: bool = WalletConfig.allow_insecure_http;
         let _: Vec<String> = WalletConfig.mints;
     }
     {
@@ -1679,11 +1735,53 @@ fn decode_DartFn_Inputs_list_prim_u_8_strict_Output_opt_list_prim_u_8_strict_Any
         ))
     }
 }
+fn decode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
+    dart_opaque: flutter_rust_bridge::DartOpaque,
+) -> impl Fn(
+    zolana_mobile::TransportRequest,
+) -> flutter_rust_bridge::DartFnFuture<zolana_mobile::TransportOutcome> {
+    use flutter_rust_bridge::IntoDart;
+
+    async fn body(
+        dart_opaque: flutter_rust_bridge::DartOpaque,
+        arg0: zolana_mobile::TransportRequest,
+    ) -> zolana_mobile::TransportOutcome {
+        let args = vec![arg0.into_into_dart().into_dart()];
+        let message = FLUTTER_RUST_BRIDGE_HANDLER
+            .dart_fn_invoke(dart_opaque, args)
+            .await;
+
+        let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+        let action = deserializer.cursor.read_u8().unwrap();
+        let ans = match action {
+            0 => std::result::Result::Ok(<zolana_mobile::TransportOutcome>::sse_decode(
+                &mut deserializer,
+            )),
+            1 => std::result::Result::Err(
+                <flutter_rust_bridge::for_generated::anyhow::Error>::sse_decode(&mut deserializer),
+            ),
+            _ => unreachable!(),
+        };
+        deserializer.end();
+        let ans = ans.expect("Dart throws exception but Rust side assume it is not failable");
+        ans
+    }
+
+    move |arg0: zolana_mobile::TransportRequest| {
+        flutter_rust_bridge::for_generated::convert_into_dart_fn_future(body(
+            dart_opaque.clone(),
+            arg0,
+        ))
+    }
+}
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>
 );
 flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
     flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>
+);
+flutter_rust_bridge::frb_generated_moi_arc_impl_value!(
+    flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>
 );
 
 // Section: dart2rust
@@ -1711,6 +1809,16 @@ impl SseDecode for PendingTransaction {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <RustOpaqueMoi<
             flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>,
+        >>::sse_decode(deserializer);
+        return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
+    }
+}
+
+impl SseDecode for Transport {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <RustOpaqueMoi<
+            flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>,
         >>::sse_decode(deserializer);
         return flutter_rust_bridge::for_generated::rust_auto_opaque_decode_owned(inner);
     }
@@ -1744,6 +1852,16 @@ impl SseDecode
 
 impl SseDecode
     for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <usize>::sse_decode(deserializer);
+        return decode_rust_opaque_moi(inner);
+    }
+}
+
+impl SseDecode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1910,19 +2028,6 @@ impl SseDecode for zolana_mobile::LocalProofResult {
     }
 }
 
-impl SseDecode for Option<std::collections::HashMap<String, String>> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        if (<bool>::sse_decode(deserializer)) {
-            return Some(<std::collections::HashMap<String, String>>::sse_decode(
-                deserializer,
-            ));
-        } else {
-            return None;
-        }
-    }
-}
-
 impl SseDecode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1950,6 +2055,28 @@ impl SseDecode for Option<zolana_mobile::Proving> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<zolana_mobile::Proving>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<zolana_mobile::TransportResponse> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<zolana_mobile::TransportResponse>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u32>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -2040,6 +2167,57 @@ impl SseDecode for zolana_mobile::TokenBalance {
     }
 }
 
+impl SseDecode for zolana_mobile::TransportOutcome {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_response = <Option<zolana_mobile::TransportResponse>>::sse_decode(deserializer);
+        let mut var_failure = <Option<String>>::sse_decode(deserializer);
+        return zolana_mobile::TransportOutcome {
+            response: var_response,
+            failure: var_failure,
+        };
+    }
+}
+
+impl SseDecode for zolana_mobile::TransportRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_method = <String>::sse_decode(deserializer);
+        let mut var_url = <String>::sse_decode(deserializer);
+        let mut var_headers = <std::collections::HashMap<String, String>>::sse_decode(deserializer);
+        let mut var_body = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_maxResponseBytes = <Option<u32>>::sse_decode(deserializer);
+        let mut var_timeoutMs = <Option<u32>>::sse_decode(deserializer);
+        return zolana_mobile::TransportRequest {
+            method: var_method,
+            url: var_url,
+            headers: var_headers,
+            body: var_body,
+            max_response_bytes: var_maxResponseBytes,
+            timeout_ms: var_timeoutMs,
+        };
+    }
+}
+
+impl SseDecode for zolana_mobile::TransportResponse {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_status = <u16>::sse_decode(deserializer);
+        let mut var_body = <Vec<u8>>::sse_decode(deserializer);
+        return zolana_mobile::TransportResponse {
+            status: var_status,
+            body: var_body,
+        };
+    }
+}
+
+impl SseDecode for u16 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u16::<NativeEndian>().unwrap()
+    }
+}
+
 impl SseDecode for u32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2077,25 +2255,17 @@ impl SseDecode for zolana_mobile::WalletConfig {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_rpcUrl = <String>::sse_decode(deserializer);
-        let mut var_rpcHeaders =
-            <Option<std::collections::HashMap<String, String>>>::sse_decode(deserializer);
         let mut var_indexerUrl = <String>::sse_decode(deserializer);
-        let mut var_indexerHeaders =
-            <Option<std::collections::HashMap<String, String>>>::sse_decode(deserializer);
         let mut var_provingKeyDir = <String>::sse_decode(deserializer);
         let mut var_provingKeyUrl = <Option<String>>::sse_decode(deserializer);
         let mut var_proving = <Option<zolana_mobile::Proving>>::sse_decode(deserializer);
-        let mut var_allowInsecureHttp = <bool>::sse_decode(deserializer);
         let mut var_mints = <Vec<String>>::sse_decode(deserializer);
         return zolana_mobile::WalletConfig {
             rpc_url: var_rpcUrl,
-            rpc_headers: var_rpcHeaders,
             indexer_url: var_indexerUrl,
-            indexer_headers: var_indexerHeaders,
             proving_key_dir: var_provingKeyDir,
             proving_key_url: var_provingKeyUrl,
             proving: var_proving,
-            allow_insecure_http: var_allowInsecureHttp,
             mints: var_mints,
         };
     }
@@ -2219,13 +2389,14 @@ fn pde_ffi_dispatcher_primary_impl(
         25 => {
             wire__zolana_mobile__PendingTransaction_summary_impl(port, ptr, rust_vec_len, data_len)
         }
-        26 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__zolana_mobile__load_prover_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__zolana_mobile__prove_prepared_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__zolana_mobile__release_prover_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__zolana_mobile__load_prover_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__zolana_mobile__prove_prepared_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__zolana_mobile__release_prover_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2273,6 +2444,21 @@ impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
 
 impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<PendingTransaction>> for PendingTransaction {
     fn into_into_dart(self) -> FrbWrapper<PendingTransaction> {
+        self.into()
+    }
+}
+
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<Transport> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self.0)
+            .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for FrbWrapper<Transport> {}
+
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<Transport>> for Transport {
+    fn into_into_dart(self) -> FrbWrapper<Transport> {
         self.into()
     }
 }
@@ -2462,17 +2648,81 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::TokenBalance>>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::TransportOutcome> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.response.into_into_dart().into_dart(),
+            self.0.failure.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::TransportOutcome>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::TransportOutcome>>
+    for zolana_mobile::TransportOutcome
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::TransportOutcome> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::TransportRequest> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.method.into_into_dart().into_dart(),
+            self.0.url.into_into_dart().into_dart(),
+            self.0.headers.into_into_dart().into_dart(),
+            self.0.body.into_into_dart().into_dart(),
+            self.0.max_response_bytes.into_into_dart().into_dart(),
+            self.0.timeout_ms.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::TransportRequest>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::TransportRequest>>
+    for zolana_mobile::TransportRequest
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::TransportRequest> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::TransportResponse> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.status.into_into_dart().into_dart(),
+            self.0.body.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::TransportResponse>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::TransportResponse>>
+    for zolana_mobile::TransportResponse
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::TransportResponse> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::WalletConfig> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.0.rpc_url.into_into_dart().into_dart(),
-            self.0.rpc_headers.into_into_dart().into_dart(),
             self.0.indexer_url.into_into_dart().into_dart(),
-            self.0.indexer_headers.into_into_dart().into_dart(),
             self.0.proving_key_dir.into_into_dart().into_dart(),
             self.0.proving_key_url.into_into_dart().into_dart(),
             self.0.proving.into_into_dart().into_dart(),
-            self.0.allow_insecure_http.into_into_dart().into_dart(),
             self.0.mints.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -2534,6 +2784,13 @@ impl SseEncode for PendingTransaction {
     }
 }
 
+impl SseEncode for Transport {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>>::sse_encode(flutter_rust_bridge::for_generated::rust_auto_opaque_encode::<_, MoiArc<_>>(self), serializer);
+    }
+}
+
 impl SseEncode for flutter_rust_bridge::DartOpaque {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2561,6 +2818,17 @@ impl SseEncode
 
 impl SseEncode
     for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
+{
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        let (ptr, size) = self.sse_encode_raw();
+        <usize>::sse_encode(ptr, serializer);
+        <i32>::sse_encode(size, serializer);
+    }
+}
+
+impl SseEncode
+    for RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>
 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2705,16 +2973,6 @@ impl SseEncode for zolana_mobile::LocalProofResult {
     }
 }
 
-impl SseEncode for Option<std::collections::HashMap<String, String>> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.is_some(), serializer);
-        if let Some(value) = self {
-            <std::collections::HashMap<String, String>>::sse_encode(value, serializer);
-        }
-    }
-}
-
 impl SseEncode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2741,6 +2999,26 @@ impl SseEncode for Option<zolana_mobile::Proving> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <zolana_mobile::Proving>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<zolana_mobile::TransportResponse> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <zolana_mobile::TransportResponse>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u32>::sse_encode(value, serializer);
         }
     }
 }
@@ -2831,6 +3109,41 @@ impl SseEncode for zolana_mobile::TokenBalance {
     }
 }
 
+impl SseEncode for zolana_mobile::TransportOutcome {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<zolana_mobile::TransportResponse>>::sse_encode(self.response, serializer);
+        <Option<String>>::sse_encode(self.failure, serializer);
+    }
+}
+
+impl SseEncode for zolana_mobile::TransportRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.method, serializer);
+        <String>::sse_encode(self.url, serializer);
+        <std::collections::HashMap<String, String>>::sse_encode(self.headers, serializer);
+        <Vec<u8>>::sse_encode(self.body, serializer);
+        <Option<u32>>::sse_encode(self.max_response_bytes, serializer);
+        <Option<u32>>::sse_encode(self.timeout_ms, serializer);
+    }
+}
+
+impl SseEncode for zolana_mobile::TransportResponse {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u16>::sse_encode(self.status, serializer);
+        <Vec<u8>>::sse_encode(self.body, serializer);
+    }
+}
+
+impl SseEncode for u16 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u16::<NativeEndian>(self).unwrap();
+    }
+}
+
 impl SseEncode for u32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2871,19 +3184,10 @@ impl SseEncode for zolana_mobile::WalletConfig {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.rpc_url, serializer);
-        <Option<std::collections::HashMap<String, String>>>::sse_encode(
-            self.rpc_headers,
-            serializer,
-        );
         <String>::sse_encode(self.indexer_url, serializer);
-        <Option<std::collections::HashMap<String, String>>>::sse_encode(
-            self.indexer_headers,
-            serializer,
-        );
         <String>::sse_encode(self.proving_key_dir, serializer);
         <Option<String>>::sse_encode(self.proving_key_url, serializer);
         <Option<zolana_mobile::Proving>>::sse_encode(self.proving, serializer);
-        <bool>::sse_encode(self.allow_insecure_http, serializer);
         <Vec<String>>::sse_encode(self.mints, serializer);
     }
 }
@@ -2944,6 +3248,20 @@ mod io {
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>::decrement_strong_count(ptr as _);
     }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_zolana_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>::increment_strong_count(ptr as _);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_zolana_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>::decrement_strong_count(ptr as _);
+    }
 }
 #[cfg(not(target_family = "wasm"))]
 pub use io::*;
@@ -2996,6 +3314,20 @@ mod web {
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>::decrement_strong_count(ptr as _);
+    }
+
+    #[wasm_bindgen]
+    pub fn rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>::increment_strong_count(ptr as _);
+    }
+
+    #[wasm_bindgen]
+    pub fn rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTransport(
+        ptr: *const std::ffi::c_void,
+    ) {
+        MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>::decrement_strong_count(ptr as _);
     }
 }
 #[cfg(target_family = "wasm")]

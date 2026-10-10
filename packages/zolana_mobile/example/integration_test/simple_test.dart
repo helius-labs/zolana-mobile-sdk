@@ -17,7 +17,6 @@ void main() {
         rpcUrl: 'http://127.0.0.1:1',
         indexerUrl: 'http://127.0.0.1:1',
         provingKeyDir: '/nonexistent',
-        allowInsecureHttp: false,
         mints: [],
       ),
     );
