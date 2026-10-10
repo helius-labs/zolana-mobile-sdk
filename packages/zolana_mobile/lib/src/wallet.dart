@@ -324,6 +324,47 @@ class ZolanaWallet {
   Future<PreparedTransaction?> prepareRegistration() =>
       _serial(() => _prepareOptional(_wallet.prepareRegistration()));
 
+  /// Whether this account's user record lets merges of its notes run;
+  /// `false` before registration.
+  Future<bool> mergingEnabled() => _serial(_wallet.mergingEnabled);
+
+  /// Turn merges of this account's notes on or off; this account signs.
+  /// `null` when the record already says so. While merging is on, a merge
+  /// proved with this wallet's nullifier secret needs no signature of this
+  /// account: whoever holds the secret and the notes, such as the prover at
+  /// `WalletConfig.proverUrl`, can merge them. A merge cannot move funds.
+  Future<PreparedTransaction?> prepareMerging(bool enabled) =>
+      _serial(() => _prepareOptional(_wallet.prepareMerging(enabled: enabled)));
+
+  /// Combine the smallest notes of [mint] (SOL when null) on one tree into
+  /// one: at most [maxInputs], 24 when null, 54 at most. A spend takes at most
+  /// 40 notes, so merge when it fails with [WalletError.mergeRequired] or
+  /// [WalletError.tooManyInputTrees], then prepare it again. Notes that
+  /// prepared spends reserve are left out, and the merge reserves its own.
+  /// Fails with [WalletError.nothingToMerge] below two notes, and with
+  /// [WalletError.mergingDisabled] until [prepareMerging] turned merging on.
+  ///
+  /// A merge needs no signature of this account: [feePayer] (this account
+  /// when null) pays and signs alone. [proving] works as in
+  /// [prepareTransfer]; a remote prover receives this wallet's nullifier
+  /// secret and learns every merged amount. The proof expires ten minutes
+  /// after this call, and [refresh] does not extend it.
+  Future<PreparedTransaction> prepareMerge({
+    String? mint,
+    int? maxInputs,
+    String? feePayer,
+    native.Proving? proving,
+  }) => _serial(
+    () => _prepare(
+      _wallet.prepareMerge(
+        mint: mint,
+        maxInputs: maxInputs,
+        feePayer: feePayer,
+        proving: proving,
+      ),
+    ),
+  );
+
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
   Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
@@ -449,6 +490,26 @@ class ZolanaWallet {
     final transaction = await _prepareOptional(_wallet.prepareRegistration());
     return transaction == null ? null : _signAndSubmit(transaction);
   });
+
+  /// [prepareMerging], signed and submitted. `null` when the record already
+  /// says so.
+  Future<String?> setMerging(bool enabled) => _serial(() async {
+    final transaction = await _prepareOptional(
+      _wallet.prepareMerging(enabled: enabled),
+    );
+    return transaction == null ? null : _signAndSubmit(transaction);
+  });
+
+  /// [prepareMerge], signed and submitted by this account.
+  Future<String> merge({
+    String? mint,
+    int? maxInputs,
+    native.Proving? proving,
+  }) => _serial(
+    () => _send(
+      _wallet.prepareMerge(mint: mint, maxInputs: maxInputs, proving: proving),
+    ),
+  );
 
   /// [prepareDeposit], signed and submitted.
   Future<String> deposit(BigInt amount, {String? mint}) =>

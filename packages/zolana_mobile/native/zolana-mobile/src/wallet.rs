@@ -28,6 +28,7 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
     thread::sleep,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use solana_instruction::Instruction;
@@ -40,9 +41,10 @@ use zolana_client::{
     compile_message,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
-        resolved_address_from_record, try_resolve_registered_address,
+        resolved_address_from_record, set_merging_enabled_instruction,
+        try_resolve_registered_address,
     },
-    ClientError, ComputeBudgetConfig, IndexerPollConfig, ProverClient, Rpc,
+    ClientError, ComputeBudgetConfig, IndexerPollConfig, MergeSubmission, ProverClient, Rpc,
     SignedPrivateTransaction, SolanaRpc, SpendableUtxos, Submission, ZolanaClient,
 };
 use zolana_interface::pda;
@@ -51,8 +53,12 @@ use zolana_program::instruction::{
     AssetDeposit, Deposit, DepositAsset, DepositSplAccounts, TransactInterfaceTransferAccounts,
 };
 use zolana_transaction::{
-    instructions::transact::ConfidentialTransaction, select_spend_excluding, LocalShieldedKeys,
-    SpendableDecryptionResult, TransactionError, WalletUtxo,
+    instructions::{
+        merge::{MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT},
+        transact::ConfidentialTransaction,
+    },
+    select_merge, select_spend_excluding, LocalShieldedKeys, SpendableDecryptionResult,
+    TransactionError, WalletUtxo,
 };
 
 use crate::{
@@ -121,6 +127,12 @@ pub enum PendingTransactionKind {
     /// Moves private funds to a public account. Public: recipient, asset,
     /// amount.
     Withdrawal,
+    /// Turns merges of this account's notes on or off. Public: the account
+    /// and the setting.
+    Merging,
+    /// Combines notes of one asset into one, for this account. Public: the
+    /// account and roughly how many notes; not the asset or any amount.
+    Merge,
 }
 
 /// A built, and where needed proved, v1 transaction awaiting signatures. The
@@ -152,7 +164,8 @@ impl PendingTransaction {
         self.kind
     }
 
-    /// Base units a deposit, transfer or withdrawal moves.
+    /// Base units a deposit, transfer or withdrawal moves, or the sum a merge
+    /// combines.
     pub fn amount(&self) -> Option<u64> {
         self.moved.amount
     }
@@ -393,6 +406,97 @@ impl MobileWallet {
                 )
             })
             .transpose()
+    }
+
+    /// Whether this account's user record lets merges of its notes run.
+    /// `false` before registration.
+    pub fn merging_enabled(&self) -> Result<bool, WalletError> {
+        Ok(
+            fetch_user_record_optional_checked(&self.client, self.owner)?
+                .is_some_and(|record| record.merging_enabled),
+        )
+    }
+
+    /// Turn merges of this account's notes on or off; this account signs.
+    /// `None` when the record already says so. While merging is on, a merge
+    /// proved with this wallet's nullifier secret is valid without this
+    /// account's signature: whoever holds the secret and the notes, such as a
+    /// prover that proved its spends, can merge them. It cannot move funds.
+    pub fn prepare_merging(
+        &self,
+        enabled: bool,
+    ) -> Result<Option<PendingTransaction>, WalletError> {
+        if self.merging_enabled()? == enabled {
+            return Ok(None);
+        }
+        let instruction = set_merging_enabled_instruction(self.owner, enabled);
+        self.pending(
+            PendingTransactionKind::Merging,
+            self.message(instruction)?,
+            Moved::default(),
+        )
+        .map(Some)
+    }
+
+    /// Build and prove a merge of the smallest notes of `mint` (SOL for
+    /// `None`) on one tree into one: at most `max_inputs` of them, 24 when
+    /// `None`, 54 at most. Notes that prepared spends reserve are left out,
+    /// and the merge reserves its own. Fails with
+    /// [`WalletError::NothingToMerge`] below two notes, and with
+    /// [`WalletError::MergingDisabled`] unless [`Self::prepare_merging`] turned
+    /// merging on.
+    ///
+    /// The merge needs no signature of this account: `fee_payer` pays and
+    /// signs alone, this account when `None`. `proving` works as in
+    /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
+    /// nullifier secret, which a remote prover receives. The proof expires
+    /// after ten minutes, so a merge cannot be sent later by whoever holds it;
+    /// [`Self::refresh`] does not extend it.
+    pub fn prepare_merge(
+        &mut self,
+        mint: Option<String>,
+        max_inputs: Option<u32>,
+        fee_payer: Option<String>,
+        proving: Option<Proving>,
+    ) -> Result<PendingTransaction, WalletError> {
+        let payer = self.fee_payer(fee_payer)?;
+        let proving = self.proving(proving)?;
+        let asset = self.asset(mint)?;
+        let reserved = self.reserved()?;
+        let max_inputs = max_inputs.map_or(MERGE_DEFAULT_INPUT_COUNT, |max| {
+            usize::try_from(max).unwrap_or(MAX_MERGE_INPUTS)
+        });
+        let inputs = select_merge(self.spendable()?.utxos(), asset.mint, max_inputs, &reserved)?;
+        let spends = nullifiers(&inputs);
+        let tree_id = inputs[0].tree_id();
+        let merge = MergeTransaction::new(inputs)?
+            .with_output_tree_id(tree_id)
+            .with_expiry(merge_expiry())
+            .encrypt(&self.keys)?;
+        let amount = merge.output_utxo.amount;
+        let mut submission =
+            MergeSubmission::new(&merge, self.owner, &self.address, &self.nullifier_key);
+        if proving == Proving::Remote {
+            let remote = self
+                .remote_prover
+                .clone()
+                .ok_or(WalletError::RemoteProverMissing)?;
+            submission = submission.with_prover(remote);
+        }
+        self.native_prover.take_failure();
+        let message = submission
+            .finish_unsigned_sync(&self.client, payer)
+            .map_err(|failure| {
+                self.native_prover
+                    .take_failure()
+                    .unwrap_or_else(|| failure.into())
+            })?;
+        let pending = self.pending(
+            PendingTransactionKind::Merge,
+            message,
+            moved(asset, amount, None),
+        )?;
+        Ok(self.reserve(pending, spends))
     }
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -643,22 +747,28 @@ impl MobileWallet {
     /// those spends can no longer land.
     fn select_notes(&mut self, asset: Asset, amount: u64) -> Result<Vec<WalletUtxo>, WalletError> {
         let spendable = self.spendable()?;
-        let reserved = if self.reservations().reserved.is_empty() {
-            HashSet::new()
-        } else {
-            let height = self.client.get_block_height()?;
-            let mut reservations = self.reservations();
-            reservations
-                .reserved
-                .retain(|_, (_, last_valid_block_height)| *last_valid_block_height >= height);
-            reservations
-                .reserved
-                .values()
-                .flat_map(|(spends, _)| spends.iter().copied())
-                .collect()
-        };
+        let reserved = self.reserved()?;
         select_spend_excluding(spendable.utxos(), asset.mint, amount, &reserved)
             .map_err(|failure| spend_failure(amount, failure))
+    }
+
+    /// The nullifiers of the notes prepared spends and merges reserve.
+    /// Reservations past their last valid block height are dropped: those
+    /// transactions can no longer land.
+    fn reserved(&self) -> Result<HashSet<[u8; 32]>, WalletError> {
+        if self.reservations().reserved.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let height = self.client.get_block_height()?;
+        let mut reservations = self.reservations();
+        reservations
+            .reserved
+            .retain(|_, (_, last_valid_block_height)| *last_valid_block_height >= height);
+        Ok(reservations
+            .reserved
+            .values()
+            .flat_map(|(spends, _)| spends.iter().copied())
+            .collect())
     }
 
     /// `pending` with a new blockhash and the same proof, for an approval that
@@ -847,7 +957,10 @@ impl MobileWallet {
         pending: &PendingTransaction,
         signature: Signature,
     ) -> Result<(), WalletError> {
-        if pending.kind == PendingTransactionKind::Registration {
+        if matches!(
+            pending.kind,
+            PendingTransactionKind::Registration | PendingTransactionKind::Merging
+        ) {
             return wait_for_confirmation(&self.client, signature);
         }
         self.client.confirm_private_transaction_sync(signature)?;
@@ -879,6 +992,19 @@ fn moved(asset: Asset, amount: u64, recipient: Option<Pubkey>) -> Moved {
 
 fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
     notes.iter().map(|note| note.nullifier).collect()
+}
+
+/// How long a merge proof can be sent. Anyone who holds it can send it, and
+/// the program refuses it after this.
+const MERGE_LIFETIME: Duration = Duration::from_secs(600);
+
+/// The unix time a merge prepared now expires at.
+fn merge_expiry() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .saturating_add(MERGE_LIFETIME)
+        .as_secs()
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
@@ -1215,6 +1341,19 @@ mod tests {
                 amount: 410,
                 max_inputs: 40
             }
+        );
+    }
+
+    #[test]
+    fn a_merge_expires_ten_minutes_after_it_is_prepared() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let expiry = merge_expiry();
+        assert!(
+            (now + 600..=now + 601).contains(&expiry),
+            "{expiry} vs {now}"
         );
     }
 

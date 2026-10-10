@@ -75,6 +75,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// The keys [`Self::open_with_keys`] opens this wallet from.
   Future<WalletKeys> exportKeys();
 
+  /// Whether this account's user record lets merges of its notes run.
+  /// `false` before registration.
+  Future<bool> mergingEnabled();
+
   /// Open the wallet of `solana_pubkey` from its signature over
   /// [`derivation_message`]. Every request of the wallet goes through
   /// `transport`; it opens no connection itself.
@@ -112,6 +116,34 @@ abstract class MobileWallet implements RustOpaqueInterface {
     String? mint,
     required BigInt amount,
   });
+
+  /// Build and prove a merge of the smallest notes of `mint` (SOL for
+  /// `None`) on one tree into one: at most `max_inputs` of them, 24 when
+  /// `None`, 54 at most. Notes that prepared spends reserve are left out,
+  /// and the merge reserves its own. Fails with
+  /// [`WalletError::NothingToMerge`] below two notes, and with
+  /// [`WalletError::MergingDisabled`] unless [`Self::prepare_merging`] turned
+  /// merging on.
+  ///
+  /// The merge needs no signature of this account: `fee_payer` pays and
+  /// signs alone, this account when `None`. `proving` works as in
+  /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
+  /// nullifier secret, which a remote prover receives. The proof expires
+  /// after ten minutes, so a merge cannot be sent later by whoever holds it;
+  /// [`Self::refresh`] does not extend it.
+  Future<PendingTransaction> prepareMerge({
+    String? mint,
+    int? maxInputs,
+    String? feePayer,
+    Proving? proving,
+  });
+
+  /// Turn merges of this account's notes on or off; this account signs.
+  /// `None` when the record already says so. While merging is on, a merge
+  /// proved with this wallet's nullifier secret is valid without this
+  /// account's signature: whoever holds the secret and the notes, such as a
+  /// prover that proved its spends, can merge them. It cannot move funds.
+  Future<PendingTransaction?> prepareMerging({required bool enabled});
 
   /// `None` when the registry already holds this wallet's address. Fails
   /// with [`WalletError::RegistrationConflict`] when it holds other keys:
@@ -204,7 +236,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
 abstract class PendingTransaction implements RustOpaqueInterface {
-  /// Base units a deposit, transfer or withdrawal moves.
+  /// Base units a deposit, transfer or withdrawal moves, or the sum a merge
+  /// combines.
   Future<BigInt?> amount();
 
   /// The base58 account that pays the network fee: the first signer.
@@ -382,6 +415,14 @@ enum PendingTransactionKind {
   /// Moves private funds to a public account. Public: recipient, asset,
   /// amount.
   withdrawal,
+
+  /// Turns merges of this account's notes on or off. Public: the account
+  /// and the setting.
+  merging,
+
+  /// Combines notes of one asset into one, for this account. Public: the
+  /// account and roughly how many notes; not the asset or any amount.
+  merge,
 }
 
 class PreparedProverInfo {
@@ -673,6 +714,15 @@ sealed class WalletError with _$WalletError implements FrbException {
 
   /// A spend of zero.
   const factory WalletError.amountZero() = WalletError_AmountZero;
+
+  /// Fewer than two notes of `mint` (`None` for SOL) are free to merge on
+  /// any one tree.
+  const factory WalletError.nothingToMerge({String? mint}) =
+      WalletError_NothingToMerge;
+
+  /// This account's user record does not enable merging:
+  /// `prepare_merging(true)` turns it on.
+  const factory WalletError.mergingDisabled() = WalletError_MergingDisabled;
 
   /// The chain already spent a note this transaction spends: the indexer
   /// was behind when it was prepared, or another session spent it. Prepare

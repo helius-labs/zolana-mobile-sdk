@@ -24,6 +24,12 @@ pub enum WalletError {
     TooManyInputTrees { trees: u64, max_trees: u64 },
     /// A spend of zero.
     AmountZero,
+    /// Fewer than two notes of `mint` (`None` for SOL) are free to merge on
+    /// any one tree.
+    NothingToMerge { mint: Option<String> },
+    /// This account's user record does not enable merging:
+    /// `prepare_merging(true)` turns it on.
+    MergingDisabled,
     /// The chain already spent a note this transaction spends: the indexer
     /// was behind when it was prepared, or another session spent it. Prepare
     /// it again once the indexer has the spend.
@@ -130,9 +136,11 @@ impl From<ClientError> for WalletError {
     fn from(failure: ClientError) -> Self {
         match failure {
             ClientError::Transaction(failure) => failure.into(),
-            ClientError::UserRegistryKeysMismatch { owner } => Self::RegistrationConflict {
+            ClientError::UserRegistryKeysMismatch { owner }
+            | ClientError::MergeViewingKeyMismatch { owner } => Self::RegistrationConflict {
                 owner: owner.to_string(),
             },
+            ClientError::MergeDisabled { .. } => Self::MergingDisabled,
             ClientError::SolanaRpcTransaction { ref source, .. }
                 if program_error(source.get_transaction_error().as_ref())
                     == Some(ShieldedPoolError::NullifierAlreadyQueued as u32) =>
@@ -184,6 +192,9 @@ impl From<TransactionError> for WalletError {
             },
             TransactionError::SpendNeedsExcludedUtxos { amount } => Self::NotesReserved { amount },
             TransactionError::ZeroSpendAmount => Self::AmountZero,
+            TransactionError::NothingToMerge { asset } => Self::NothingToMerge {
+                mint: crate::asset::mint_name(&asset),
+            },
             failure => Self::Client {
                 message: client_message(&ClientError::from(failure)),
             },
@@ -271,6 +282,23 @@ mod tests {
         assert_eq!(
             WalletError::from(ClientError::ProofVerification("x".into())),
             WalletError::ProofInvalid
+        );
+        let owner = solana_address::Address::new_unique();
+        assert_eq!(
+            WalletError::from(ClientError::MergeDisabled { owner }),
+            WalletError::MergingDisabled
+        );
+        assert_eq!(
+            WalletError::from(ClientError::MergeViewingKeyMismatch { owner }),
+            WalletError::RegistrationConflict {
+                owner: owner.to_string()
+            }
+        );
+        assert_eq!(
+            WalletError::from(TransactionError::NothingToMerge {
+                asset: zolana_transaction::SOL_MINT
+            }),
+            WalletError::NothingToMerge { mint: None }
         );
         assert!(matches!(
             WalletError::from(ClientError::Rpc("api-key=k".into())),

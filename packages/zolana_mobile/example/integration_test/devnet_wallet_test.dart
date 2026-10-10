@@ -14,7 +14,8 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 /// prover, asked through the transport. In both, A sends every request
 /// through the application's own transport (`package:http`, logged), as an
 /// application with its own networking does; B uses the package's default
-/// transport. Opt in, since it spends devnet SOL and needs A funded and a
+/// transport. Then B merges its notes twice, proved remotely and on the
+/// device. Opt in, since it spends devnet SOL and needs A funded and a
 /// Helius key for devnet:
 ///
 /// ```sh
@@ -175,6 +176,43 @@ void main() {
     expect(
       transport.sent.where((r) => r.startsWith('GET ') && !_isProof(r)),
       isEmpty,
+    );
+  }, skip: !_enabled);
+
+  testWidgets('merges B notes, proved remotely and on this device', (
+    tester,
+  ) async {
+    final transport = AppTransport();
+    addTearDown(transport.close);
+    final wallet = await ZolanaWallet.open(
+      signer: await DemoSigner.fromSeedHex(demoAccounts[1].seedHex),
+      config: await config(
+        proverUrl: _proverUrl.isEmpty ? Network.devnet.indexerUrl : _proverUrl,
+      ),
+      transport: transport.send,
+    );
+    addTearDown(wallet.close);
+    await wallet.setMerging(true);
+    expect(await wallet.mergingEnabled(), isTrue);
+    for (final proving in [Proving.remote, Proving.local]) {
+      final before = await wallet.privateBalance();
+      final started = DateTime.now();
+      final signature = await wallet.merge(maxInputs: 8, proving: proving);
+      // ignore: avoid_print
+      print(
+        'merged ${proving.name} in '
+        '${DateTime.now().difference(started).inMilliseconds} ms: $signature',
+      );
+      expect(await wallet.privateBalance(), before);
+      final newest = (await wallet.activity()).first;
+      expect(
+        (newest.signature, newest.kind),
+        (signature, ActivityKind.selfTransfer),
+      );
+    }
+    expect(
+      transport.sent.where((r) => r.startsWith('POST ') && _isProof(r)),
+      hasLength(1),
     );
   }, skip: !_enabled);
 }

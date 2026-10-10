@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 2144307026;
+  int get rustContentHash => -1388509053;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -98,6 +98,10 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
   });
 
+  Future<bool> zolanaMobileMobileWalletMergingEnabled({
+    required MobileWallet that,
+  });
+
   Future<MobileWallet> zolanaMobileMobileWalletOpen({
     required WalletConfig config,
     required String solanaPubkey,
@@ -116,6 +120,19 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
     String? mint,
     required BigInt amount,
+  });
+
+  Future<PendingTransaction> zolanaMobileMobileWalletPrepareMerge({
+    required MobileWallet that,
+    String? mint,
+    int? maxInputs,
+    String? feePayer,
+    Proving? proving,
+  });
+
+  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareMerging({
+    required MobileWallet that,
+    required bool enabled,
   });
 
   Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({
@@ -419,6 +436,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<bool> zolanaMobileMobileWalletMergingEnabled({
+    required MobileWallet that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletMergingEnabledConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletMergingEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_merging_enabled",
+        argNames: ["that"],
+      );
+
+  @override
   Future<MobileWallet> zolanaMobileMobileWalletOpen({
     required WalletConfig config,
     required String solanaPubkey,
@@ -439,7 +492,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -487,7 +540,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -528,7 +581,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -551,6 +604,90 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<PendingTransaction> zolanaMobileMobileWalletPrepareMerge({
+    required MobileWallet that,
+    String? mint,
+    int? maxInputs,
+    String? feePayer,
+    Proving? proving,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_opt_String(mint, serializer);
+          sse_encode_opt_box_autoadd_u_32(maxInputs, serializer);
+          sse_encode_opt_String(feePayer, serializer);
+          sse_encode_opt_box_autoadd_proving(proving, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletPrepareMergeConstMeta,
+        argValues: [that, mint, maxInputs, feePayer, proving],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletPrepareMergeConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_prepare_merge",
+        argNames: ["that", "mint", "maxInputs", "feePayer", "proving"],
+      );
+
+  @override
+  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareMerging({
+    required MobileWallet that,
+    required bool enabled,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_bool(enabled, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletPrepareMergingConstMeta,
+        argValues: [that, enabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletPrepareMergingConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_prepare_merging",
+        argNames: ["that", "enabled"],
+      );
+
+  @override
   Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({
     required MobileWallet that,
   }) {
@@ -565,7 +702,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 11,
             port: port_,
           );
         },
@@ -612,7 +749,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 12,
             port: port_,
           );
         },
@@ -666,7 +803,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 13,
             port: port_,
           );
         },
@@ -712,7 +849,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 14,
             port: port_,
           );
         },
@@ -753,7 +890,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 15,
             port: port_,
           );
         },
@@ -790,7 +927,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 16,
             port: port_,
           );
         },
@@ -831,7 +968,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 17,
             port: port_,
           );
         },
@@ -867,7 +1004,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -910,7 +1047,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -948,7 +1085,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -984,7 +1121,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1020,7 +1157,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1056,7 +1193,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1092,7 +1229,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1129,7 +1266,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1165,7 +1302,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1201,7 +1338,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1237,7 +1374,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1273,7 +1410,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1304,7 +1441,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1334,7 +1471,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1368,7 +1505,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1400,7 +1537,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1432,7 +1569,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1462,7 +1599,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1489,7 +1626,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 36,
             port: port_,
           );
         },
@@ -2097,119 +2234,123 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 3:
         return WalletError_AmountZero();
       case 4:
-        return WalletError_NotesAlreadySpent();
+        return WalletError_NothingToMerge(mint: dco_decode_opt_String(raw[1]));
       case 5:
-        return WalletError_NotesReserved(amount: dco_decode_u_64(raw[1]));
+        return WalletError_MergingDisabled();
       case 6:
+        return WalletError_NotesAlreadySpent();
+      case 7:
+        return WalletError_NotesReserved(amount: dco_decode_u_64(raw[1]));
+      case 8:
         return WalletError_RecipientNotRegistered(
           recipient: dco_decode_String(raw[1]),
         );
-      case 7:
+      case 9:
         return WalletError_RecipientTokenAccountMissing(
           recipient: dco_decode_String(raw[1]),
           mint: dco_decode_String(raw[2]),
         );
-      case 8:
+      case 10:
         return WalletError_RegistrationConflict(
           owner: dco_decode_String(raw[1]),
         );
-      case 9:
-        return WalletError_AssetNotSupported(mint: dco_decode_String(raw[1]));
-      case 10:
-        return WalletError_MintNotConfigured(mint: dco_decode_String(raw[1]));
       case 11:
-        return WalletError_InvalidMint(mint: dco_decode_String(raw[1]));
+        return WalletError_AssetNotSupported(mint: dco_decode_String(raw[1]));
       case 12:
+        return WalletError_MintNotConfigured(mint: dco_decode_String(raw[1]));
+      case 13:
+        return WalletError_InvalidMint(mint: dco_decode_String(raw[1]));
+      case 14:
         return WalletError_InvalidTokenProgram(
           mint: dco_decode_String(raw[1]),
           tokenProgram: dco_decode_String(raw[2]),
         );
-      case 13:
-        return WalletError_InvalidPubkey(value: dco_decode_String(raw[1]));
-      case 14:
-        return WalletError_InvalidDerivationSignature();
       case 15:
-        return WalletError_InvalidWalletKeys();
+        return WalletError_InvalidPubkey(value: dco_decode_String(raw[1]));
       case 16:
-        return WalletError_TransportFailed(message: dco_decode_String(raw[1]));
+        return WalletError_InvalidDerivationSignature();
       case 17:
-        return WalletError_SignatureInvalid();
+        return WalletError_InvalidWalletKeys();
       case 18:
+        return WalletError_TransportFailed(message: dco_decode_String(raw[1]));
+      case 19:
+        return WalletError_SignatureInvalid();
+      case 20:
         return WalletError_SignatureCountMismatch(
           expected: dco_decode_u_64(raw[1]),
           got: dco_decode_u_64(raw[2]),
         );
-      case 19:
+      case 21:
         return WalletError_TransactionNotConfirmed(
           signature: dco_decode_String(raw[1]),
         );
-      case 20:
-        return WalletError_RemoteProverMissing();
-      case 21:
-        return WalletError_ProofMalformed();
       case 22:
-        return WalletError_ProofInvalid();
+        return WalletError_RemoteProverMissing();
       case 23:
-        return WalletError_ProofFailed();
+        return WalletError_ProofMalformed();
       case 24:
-        return WalletError_ProverBusy();
+        return WalletError_ProofInvalid();
       case 25:
-        return WalletError_ProverClosed();
+        return WalletError_ProofFailed();
       case 26:
-        return WalletError_ProverUnavailable();
+        return WalletError_ProverBusy();
       case 27:
-        return WalletError_ProverInitFailed();
+        return WalletError_ProverClosed();
       case 28:
-        return WalletError_ProverLoadFailed();
+        return WalletError_ProverUnavailable();
       case 29:
-        return WalletError_UnsupportedCircuit();
+        return WalletError_ProverInitFailed();
       case 30:
-        return WalletError_RpcUrlInsecure(url: dco_decode_String(raw[1]));
+        return WalletError_ProverLoadFailed();
       case 31:
-        return WalletError_IndexerUrlInsecure(url: dco_decode_String(raw[1]));
+        return WalletError_UnsupportedCircuit();
       case 32:
+        return WalletError_RpcUrlInsecure(url: dco_decode_String(raw[1]));
+      case 33:
+        return WalletError_IndexerUrlInsecure(url: dco_decode_String(raw[1]));
+      case 34:
         return WalletError_ProvingKeyUrlInsecure(
           url: dco_decode_String(raw[1]),
         );
-      case 33:
-        return WalletError_ProverUrlInsecure(url: dco_decode_String(raw[1]));
-      case 34:
-        return WalletError_ProvingKeyUnknown(name: dco_decode_String(raw[1]));
       case 35:
-        return WalletError_ProvingKeyMismatch(name: dco_decode_String(raw[1]));
+        return WalletError_ProverUrlInsecure(url: dco_decode_String(raw[1]));
       case 36:
+        return WalletError_ProvingKeyUnknown(name: dco_decode_String(raw[1]));
+      case 37:
+        return WalletError_ProvingKeyMismatch(name: dco_decode_String(raw[1]));
+      case 38:
         return WalletError_ProvingKeyDownloadFailed(
           name: dco_decode_String(raw[1]),
         );
-      case 37:
+      case 39:
         return WalletError_ProvingKeyCorrupt(name: dco_decode_String(raw[1]));
-      case 38:
+      case 40:
         return WalletError_ProvingKeyStoreFailed(
           path: dco_decode_String(raw[1]),
         );
-      case 39:
+      case 41:
         return WalletError_PoseidonInputCountInvalid(
           count: dco_decode_u_64(raw[1]),
         );
-      case 40:
+      case 42:
         return WalletError_PoseidonInputLengthInvalid(
           index: dco_decode_u_64(raw[1]),
           length: dco_decode_u_64(raw[2]),
         );
-      case 41:
+      case 43:
         return WalletError_SignerMissing();
-      case 42:
+      case 44:
         return WalletError_SignerMismatch(
           wallet: dco_decode_String(raw[1]),
           signer: dco_decode_String(raw[2]),
         );
-      case 43:
+      case 45:
         return WalletError_UnexpectedSigners(
           signers: dco_decode_list_String(raw[1]),
         );
-      case 44:
+      case 46:
         return WalletError_WalletClosed();
-      case 45:
+      case 47:
         return WalletError_Client(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
@@ -2892,133 +3033,138 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 3:
         return WalletError_AmountZero();
       case 4:
-        return WalletError_NotesAlreadySpent();
+        var var_mint = sse_decode_opt_String(deserializer);
+        return WalletError_NothingToMerge(mint: var_mint);
       case 5:
+        return WalletError_MergingDisabled();
+      case 6:
+        return WalletError_NotesAlreadySpent();
+      case 7:
         var var_amount = sse_decode_u_64(deserializer);
         return WalletError_NotesReserved(amount: var_amount);
-      case 6:
+      case 8:
         var var_recipient = sse_decode_String(deserializer);
         return WalletError_RecipientNotRegistered(recipient: var_recipient);
-      case 7:
+      case 9:
         var var_recipient = sse_decode_String(deserializer);
         var var_mint = sse_decode_String(deserializer);
         return WalletError_RecipientTokenAccountMissing(
           recipient: var_recipient,
           mint: var_mint,
         );
-      case 8:
+      case 10:
         var var_owner = sse_decode_String(deserializer);
         return WalletError_RegistrationConflict(owner: var_owner);
-      case 9:
-        var var_mint = sse_decode_String(deserializer);
-        return WalletError_AssetNotSupported(mint: var_mint);
-      case 10:
-        var var_mint = sse_decode_String(deserializer);
-        return WalletError_MintNotConfigured(mint: var_mint);
       case 11:
         var var_mint = sse_decode_String(deserializer);
-        return WalletError_InvalidMint(mint: var_mint);
+        return WalletError_AssetNotSupported(mint: var_mint);
       case 12:
+        var var_mint = sse_decode_String(deserializer);
+        return WalletError_MintNotConfigured(mint: var_mint);
+      case 13:
+        var var_mint = sse_decode_String(deserializer);
+        return WalletError_InvalidMint(mint: var_mint);
+      case 14:
         var var_mint = sse_decode_String(deserializer);
         var var_tokenProgram = sse_decode_String(deserializer);
         return WalletError_InvalidTokenProgram(
           mint: var_mint,
           tokenProgram: var_tokenProgram,
         );
-      case 13:
+      case 15:
         var var_value = sse_decode_String(deserializer);
         return WalletError_InvalidPubkey(value: var_value);
-      case 14:
-        return WalletError_InvalidDerivationSignature();
-      case 15:
-        return WalletError_InvalidWalletKeys();
       case 16:
+        return WalletError_InvalidDerivationSignature();
+      case 17:
+        return WalletError_InvalidWalletKeys();
+      case 18:
         var var_message = sse_decode_String(deserializer);
         return WalletError_TransportFailed(message: var_message);
-      case 17:
+      case 19:
         return WalletError_SignatureInvalid();
-      case 18:
+      case 20:
         var var_expected = sse_decode_u_64(deserializer);
         var var_got = sse_decode_u_64(deserializer);
         return WalletError_SignatureCountMismatch(
           expected: var_expected,
           got: var_got,
         );
-      case 19:
+      case 21:
         var var_signature = sse_decode_String(deserializer);
         return WalletError_TransactionNotConfirmed(signature: var_signature);
-      case 20:
-        return WalletError_RemoteProverMissing();
-      case 21:
-        return WalletError_ProofMalformed();
       case 22:
-        return WalletError_ProofInvalid();
+        return WalletError_RemoteProverMissing();
       case 23:
-        return WalletError_ProofFailed();
+        return WalletError_ProofMalformed();
       case 24:
-        return WalletError_ProverBusy();
+        return WalletError_ProofInvalid();
       case 25:
-        return WalletError_ProverClosed();
+        return WalletError_ProofFailed();
       case 26:
-        return WalletError_ProverUnavailable();
+        return WalletError_ProverBusy();
       case 27:
-        return WalletError_ProverInitFailed();
+        return WalletError_ProverClosed();
       case 28:
-        return WalletError_ProverLoadFailed();
+        return WalletError_ProverUnavailable();
       case 29:
-        return WalletError_UnsupportedCircuit();
+        return WalletError_ProverInitFailed();
       case 30:
-        var var_url = sse_decode_String(deserializer);
-        return WalletError_RpcUrlInsecure(url: var_url);
+        return WalletError_ProverLoadFailed();
       case 31:
-        var var_url = sse_decode_String(deserializer);
-        return WalletError_IndexerUrlInsecure(url: var_url);
+        return WalletError_UnsupportedCircuit();
       case 32:
         var var_url = sse_decode_String(deserializer);
-        return WalletError_ProvingKeyUrlInsecure(url: var_url);
+        return WalletError_RpcUrlInsecure(url: var_url);
       case 33:
         var var_url = sse_decode_String(deserializer);
-        return WalletError_ProverUrlInsecure(url: var_url);
+        return WalletError_IndexerUrlInsecure(url: var_url);
       case 34:
-        var var_name = sse_decode_String(deserializer);
-        return WalletError_ProvingKeyUnknown(name: var_name);
+        var var_url = sse_decode_String(deserializer);
+        return WalletError_ProvingKeyUrlInsecure(url: var_url);
       case 35:
-        var var_name = sse_decode_String(deserializer);
-        return WalletError_ProvingKeyMismatch(name: var_name);
+        var var_url = sse_decode_String(deserializer);
+        return WalletError_ProverUrlInsecure(url: var_url);
       case 36:
         var var_name = sse_decode_String(deserializer);
-        return WalletError_ProvingKeyDownloadFailed(name: var_name);
+        return WalletError_ProvingKeyUnknown(name: var_name);
       case 37:
         var var_name = sse_decode_String(deserializer);
-        return WalletError_ProvingKeyCorrupt(name: var_name);
+        return WalletError_ProvingKeyMismatch(name: var_name);
       case 38:
+        var var_name = sse_decode_String(deserializer);
+        return WalletError_ProvingKeyDownloadFailed(name: var_name);
+      case 39:
+        var var_name = sse_decode_String(deserializer);
+        return WalletError_ProvingKeyCorrupt(name: var_name);
+      case 40:
         var var_path = sse_decode_String(deserializer);
         return WalletError_ProvingKeyStoreFailed(path: var_path);
-      case 39:
+      case 41:
         var var_count = sse_decode_u_64(deserializer);
         return WalletError_PoseidonInputCountInvalid(count: var_count);
-      case 40:
+      case 42:
         var var_index = sse_decode_u_64(deserializer);
         var var_length = sse_decode_u_64(deserializer);
         return WalletError_PoseidonInputLengthInvalid(
           index: var_index,
           length: var_length,
         );
-      case 41:
+      case 43:
         return WalletError_SignerMissing();
-      case 42:
+      case 44:
         var var_wallet = sse_decode_String(deserializer);
         var var_signer = sse_decode_String(deserializer);
         return WalletError_SignerMismatch(
           wallet: var_wallet,
           signer: var_signer,
         );
-      case 43:
+      case 45:
         var var_signers = sse_decode_list_String(deserializer);
         return WalletError_UnexpectedSigners(signers: var_signers);
-      case 44:
+      case 46:
         return WalletError_WalletClosed();
-      case 45:
+      case 47:
         var var_message = sse_decode_String(deserializer);
         return WalletError_Client(message: var_message);
       default:
@@ -3703,135 +3849,140 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_u_64(maxTrees, serializer);
       case WalletError_AmountZero():
         sse_encode_i_32(3, serializer);
-      case WalletError_NotesAlreadySpent():
+      case WalletError_NothingToMerge(mint: final mint):
         sse_encode_i_32(4, serializer);
-      case WalletError_NotesReserved(amount: final amount):
+        sse_encode_opt_String(mint, serializer);
+      case WalletError_MergingDisabled():
         sse_encode_i_32(5, serializer);
+      case WalletError_NotesAlreadySpent():
+        sse_encode_i_32(6, serializer);
+      case WalletError_NotesReserved(amount: final amount):
+        sse_encode_i_32(7, serializer);
         sse_encode_u_64(amount, serializer);
       case WalletError_RecipientNotRegistered(recipient: final recipient):
-        sse_encode_i_32(6, serializer);
+        sse_encode_i_32(8, serializer);
         sse_encode_String(recipient, serializer);
       case WalletError_RecipientTokenAccountMissing(
         recipient: final recipient,
         mint: final mint,
       ):
-        sse_encode_i_32(7, serializer);
+        sse_encode_i_32(9, serializer);
         sse_encode_String(recipient, serializer);
         sse_encode_String(mint, serializer);
       case WalletError_RegistrationConflict(owner: final owner):
-        sse_encode_i_32(8, serializer);
+        sse_encode_i_32(10, serializer);
         sse_encode_String(owner, serializer);
       case WalletError_AssetNotSupported(mint: final mint):
-        sse_encode_i_32(9, serializer);
+        sse_encode_i_32(11, serializer);
         sse_encode_String(mint, serializer);
       case WalletError_MintNotConfigured(mint: final mint):
-        sse_encode_i_32(10, serializer);
+        sse_encode_i_32(12, serializer);
         sse_encode_String(mint, serializer);
       case WalletError_InvalidMint(mint: final mint):
-        sse_encode_i_32(11, serializer);
+        sse_encode_i_32(13, serializer);
         sse_encode_String(mint, serializer);
       case WalletError_InvalidTokenProgram(
         mint: final mint,
         tokenProgram: final tokenProgram,
       ):
-        sse_encode_i_32(12, serializer);
+        sse_encode_i_32(14, serializer);
         sse_encode_String(mint, serializer);
         sse_encode_String(tokenProgram, serializer);
       case WalletError_InvalidPubkey(value: final value):
-        sse_encode_i_32(13, serializer);
+        sse_encode_i_32(15, serializer);
         sse_encode_String(value, serializer);
       case WalletError_InvalidDerivationSignature():
-        sse_encode_i_32(14, serializer);
-      case WalletError_InvalidWalletKeys():
-        sse_encode_i_32(15, serializer);
-      case WalletError_TransportFailed(message: final message):
         sse_encode_i_32(16, serializer);
+      case WalletError_InvalidWalletKeys():
+        sse_encode_i_32(17, serializer);
+      case WalletError_TransportFailed(message: final message):
+        sse_encode_i_32(18, serializer);
         sse_encode_String(message, serializer);
       case WalletError_SignatureInvalid():
-        sse_encode_i_32(17, serializer);
+        sse_encode_i_32(19, serializer);
       case WalletError_SignatureCountMismatch(
         expected: final expected,
         got: final got,
       ):
-        sse_encode_i_32(18, serializer);
+        sse_encode_i_32(20, serializer);
         sse_encode_u_64(expected, serializer);
         sse_encode_u_64(got, serializer);
       case WalletError_TransactionNotConfirmed(signature: final signature):
-        sse_encode_i_32(19, serializer);
+        sse_encode_i_32(21, serializer);
         sse_encode_String(signature, serializer);
       case WalletError_RemoteProverMissing():
-        sse_encode_i_32(20, serializer);
-      case WalletError_ProofMalformed():
-        sse_encode_i_32(21, serializer);
-      case WalletError_ProofInvalid():
         sse_encode_i_32(22, serializer);
-      case WalletError_ProofFailed():
+      case WalletError_ProofMalformed():
         sse_encode_i_32(23, serializer);
-      case WalletError_ProverBusy():
+      case WalletError_ProofInvalid():
         sse_encode_i_32(24, serializer);
-      case WalletError_ProverClosed():
+      case WalletError_ProofFailed():
         sse_encode_i_32(25, serializer);
-      case WalletError_ProverUnavailable():
+      case WalletError_ProverBusy():
         sse_encode_i_32(26, serializer);
-      case WalletError_ProverInitFailed():
+      case WalletError_ProverClosed():
         sse_encode_i_32(27, serializer);
-      case WalletError_ProverLoadFailed():
+      case WalletError_ProverUnavailable():
         sse_encode_i_32(28, serializer);
-      case WalletError_UnsupportedCircuit():
+      case WalletError_ProverInitFailed():
         sse_encode_i_32(29, serializer);
-      case WalletError_RpcUrlInsecure(url: final url):
+      case WalletError_ProverLoadFailed():
         sse_encode_i_32(30, serializer);
-        sse_encode_String(url, serializer);
-      case WalletError_IndexerUrlInsecure(url: final url):
+      case WalletError_UnsupportedCircuit():
         sse_encode_i_32(31, serializer);
-        sse_encode_String(url, serializer);
-      case WalletError_ProvingKeyUrlInsecure(url: final url):
+      case WalletError_RpcUrlInsecure(url: final url):
         sse_encode_i_32(32, serializer);
         sse_encode_String(url, serializer);
-      case WalletError_ProverUrlInsecure(url: final url):
+      case WalletError_IndexerUrlInsecure(url: final url):
         sse_encode_i_32(33, serializer);
         sse_encode_String(url, serializer);
-      case WalletError_ProvingKeyUnknown(name: final name):
+      case WalletError_ProvingKeyUrlInsecure(url: final url):
         sse_encode_i_32(34, serializer);
-        sse_encode_String(name, serializer);
-      case WalletError_ProvingKeyMismatch(name: final name):
+        sse_encode_String(url, serializer);
+      case WalletError_ProverUrlInsecure(url: final url):
         sse_encode_i_32(35, serializer);
-        sse_encode_String(name, serializer);
-      case WalletError_ProvingKeyDownloadFailed(name: final name):
+        sse_encode_String(url, serializer);
+      case WalletError_ProvingKeyUnknown(name: final name):
         sse_encode_i_32(36, serializer);
         sse_encode_String(name, serializer);
-      case WalletError_ProvingKeyCorrupt(name: final name):
+      case WalletError_ProvingKeyMismatch(name: final name):
         sse_encode_i_32(37, serializer);
         sse_encode_String(name, serializer);
-      case WalletError_ProvingKeyStoreFailed(path: final path):
+      case WalletError_ProvingKeyDownloadFailed(name: final name):
         sse_encode_i_32(38, serializer);
+        sse_encode_String(name, serializer);
+      case WalletError_ProvingKeyCorrupt(name: final name):
+        sse_encode_i_32(39, serializer);
+        sse_encode_String(name, serializer);
+      case WalletError_ProvingKeyStoreFailed(path: final path):
+        sse_encode_i_32(40, serializer);
         sse_encode_String(path, serializer);
       case WalletError_PoseidonInputCountInvalid(count: final count):
-        sse_encode_i_32(39, serializer);
+        sse_encode_i_32(41, serializer);
         sse_encode_u_64(count, serializer);
       case WalletError_PoseidonInputLengthInvalid(
         index: final index,
         length: final length,
       ):
-        sse_encode_i_32(40, serializer);
+        sse_encode_i_32(42, serializer);
         sse_encode_u_64(index, serializer);
         sse_encode_u_64(length, serializer);
       case WalletError_SignerMissing():
-        sse_encode_i_32(41, serializer);
+        sse_encode_i_32(43, serializer);
       case WalletError_SignerMismatch(
         wallet: final wallet,
         signer: final signer,
       ):
-        sse_encode_i_32(42, serializer);
+        sse_encode_i_32(44, serializer);
         sse_encode_String(wallet, serializer);
         sse_encode_String(signer, serializer);
       case WalletError_UnexpectedSigners(signers: final signers):
-        sse_encode_i_32(43, serializer);
+        sse_encode_i_32(45, serializer);
         sse_encode_list_String(signers, serializer);
       case WalletError_WalletClosed():
-        sse_encode_i_32(44, serializer);
+        sse_encode_i_32(46, serializer);
       case WalletError_Client(message: final message):
-        sse_encode_i_32(45, serializer);
+        sse_encode_i_32(47, serializer);
         sse_encode_String(message, serializer);
     }
   }
@@ -3900,6 +4051,11 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<WalletKeys> exportKeys() =>
       RustLib.instance.api.zolanaMobileMobileWalletExportKeys(that: this);
 
+  /// Whether this account's user record lets merges of its notes run.
+  /// `false` before registration.
+  Future<bool> mergingEnabled() =>
+      RustLib.instance.api.zolanaMobileMobileWalletMergingEnabled(that: this);
+
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
   Future<PendingTransaction> prepareDeposit({
@@ -3910,6 +4066,43 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
     mint: mint,
     amount: amount,
   );
+
+  /// Build and prove a merge of the smallest notes of `mint` (SOL for
+  /// `None`) on one tree into one: at most `max_inputs` of them, 24 when
+  /// `None`, 54 at most. Notes that prepared spends reserve are left out,
+  /// and the merge reserves its own. Fails with
+  /// [`WalletError::NothingToMerge`] below two notes, and with
+  /// [`WalletError::MergingDisabled`] unless [`Self::prepare_merging`] turned
+  /// merging on.
+  ///
+  /// The merge needs no signature of this account: `fee_payer` pays and
+  /// signs alone, this account when `None`. `proving` works as in
+  /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
+  /// nullifier secret, which a remote prover receives. The proof expires
+  /// after ten minutes, so a merge cannot be sent later by whoever holds it;
+  /// [`Self::refresh`] does not extend it.
+  Future<PendingTransaction> prepareMerge({
+    String? mint,
+    int? maxInputs,
+    String? feePayer,
+    Proving? proving,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareMerge(
+    that: this,
+    mint: mint,
+    maxInputs: maxInputs,
+    feePayer: feePayer,
+    proving: proving,
+  );
+
+  /// Turn merges of this account's notes on or off; this account signs.
+  /// `None` when the record already says so. While merging is on, a merge
+  /// proved with this wallet's nullifier secret is valid without this
+  /// account's signature: whoever holds the secret and the notes, such as a
+  /// prover that proved its spends, can merge them. It cannot move funds.
+  Future<PendingTransaction?> prepareMerging({required bool enabled}) => RustLib
+      .instance
+      .api
+      .zolanaMobileMobileWalletPrepareMerging(that: this, enabled: enabled);
 
   /// `None` when the registry already holds this wallet's address. Fails
   /// with [`WalletError::RegistrationConflict`] when it holds other keys:
@@ -4056,7 +4249,8 @@ class PendingTransactionImpl extends RustOpaque implements PendingTransaction {
         .rust_arc_decrement_strong_count_PendingTransactionPtr,
   );
 
-  /// Base units a deposit, transfer or withdrawal moves.
+  /// Base units a deposit, transfer or withdrawal moves, or the sum a merge
+  /// combines.
   Future<BigInt?> amount() =>
       RustLib.instance.api.zolanaMobilePendingTransactionAmount(that: this);
 

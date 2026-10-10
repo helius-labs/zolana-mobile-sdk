@@ -51,6 +51,8 @@ String approvalText(PreparedTransaction tx) {
     PendingTransactionKind.deposit => 'Shield $amount',
     PendingTransactionKind.transfer => 'Send $amount privately to $to',
     PendingTransactionKind.withdrawal => 'Unshield $amount to $to',
+    PendingTransactionKind.merging => 'Change who can merge your notes',
+    PendingTransactionKind.merge => 'Combine notes holding $amount',
   };
 }
 
@@ -69,8 +71,11 @@ String friendlyError(Object error) {
     WalletError_TooManyInputTrees() =>
       'Your balance is split across trees. Send a smaller amount.',
     WalletError_AmountZero() => 'Enter an amount above zero.',
+    WalletError_NothingToMerge() => 'There is nothing to merge yet.',
     WalletError_NotesAlreadySpent() =>
       'Your balance is still updating. Try again in a moment.',
+    WalletError_MergingDisabled() =>
+      'Merging is off for this account. Turn it on first.',
     WalletError_NotesReserved() =>
       'Another payment is waiting to be sent. Finish or cancel it first.',
     WalletError_ProverBusy() =>

@@ -32,8 +32,8 @@ use solana_keypair::Keypair;
 use solana_signer::Signer;
 use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{
-    derivation_message, ActivityKind, MobileWallet, PendingTransaction, Proving,
-    RegistrationStatus, Transport, TransportFailure, TransportOutcome, TransportRequest,
+    derivation_message, ActivityKind, MobileWallet, PendingTransaction, PendingTransactionKind,
+    Proving, RegistrationStatus, Transport, TransportFailure, TransportOutcome, TransportRequest,
     TransportResponse, WalletConfig, WalletError,
 };
 
@@ -391,4 +391,53 @@ fn register_deposit_transfer_and_receive() {
         recipient_before + 3 * SPLIT
     );
     newest(&mut sender_wallet, &transfer, ActivityKind::Sent, SPLIT);
+}
+
+/// The recipient's notes merged twice, proved by the remote prover and on this
+/// machine. A merge needs no signature of its owner: the sender pays alone.
+#[test]
+#[ignore = "needs a Zolana cluster and indexer"]
+fn merges_notes_proved_remotely_and_on_the_device() {
+    let owner = account("ZOLANA_E2E_RECIPIENT_SEED");
+    let payer = account("ZOLANA_E2E_SENDER_SEED");
+    let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
+    for signer in [&owner, &payer] {
+        if rpc.get_balance(signer.pubkey()).expect("balance") < FEES + 2 * SPLIT {
+            rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
+        }
+    }
+    let mut wallet = open(&owner);
+    register(&mut wallet, &owner);
+    if let Some(pending) = wallet.prepare_merging(true).expect("prepare merging") {
+        submit(&wallet, &[&owner], pending);
+    }
+    assert!(wallet.merging_enabled().unwrap());
+    assert_eq!(
+        wallet.prepare_merging(true).unwrap().map(|p| p.kind()),
+        None
+    );
+    // Notes to merge on a fresh account too.
+    for _ in 0..2 {
+        let pending = wallet.prepare_deposit(None, SPLIT).unwrap();
+        submit(&wallet, &[&owner], pending);
+    }
+
+    for proving in [Proving::Remote, Proving::Local] {
+        let before = private_sol(&mut wallet);
+        let started = std::time::Instant::now();
+        let pending = wallet
+            .prepare_merge(
+                None,
+                Some(8),
+                Some(payer.pubkey().to_string()),
+                Some(proving),
+            )
+            .expect("prepare merge");
+        println!("merge proved {proving:?} in {:?}", started.elapsed());
+        assert_eq!(pending.kind(), PendingTransactionKind::Merge);
+        let merged = pending.amount().expect("merged amount");
+        let signature = submit(&wallet, &[&payer], pending);
+        assert_eq!(private_sol(&mut wallet), before);
+        newest(&mut wallet, &signature, ActivityKind::SelfTransfer, merged);
+    }
 }
