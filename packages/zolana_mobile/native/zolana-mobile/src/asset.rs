@@ -58,15 +58,6 @@ impl Asset {
         self.token_program
             .map(|program| pda::associated_token_address_with_program(owner, &self.mint, &program))
     }
-
-    /// `amount` in base units, for transaction summaries.
-    pub fn describe(&self, amount: u64) -> String {
-        if self.token_program.is_none() {
-            format!("{amount} lamports")
-        } else {
-            format!("{amount} base units of {}", self.mint)
-        }
-    }
 }
 
 /// `None` for SOL, the base58 mint otherwise: how assets cross to Dart.

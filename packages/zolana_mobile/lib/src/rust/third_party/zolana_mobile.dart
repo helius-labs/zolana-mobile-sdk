@@ -223,6 +223,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
 abstract class PendingTransaction implements RustOpaqueInterface {
+  /// Base units a deposit, transfer or withdrawal moves.
+  Future<BigInt?> amount();
+
+  /// The base58 account that pays the network fee: the first signer.
+  Future<String> feePayer();
+
   Future<PendingTransactionKind> kind();
 
   /// The last block height at which the message can still land. Past it,
@@ -232,11 +238,16 @@ abstract class PendingTransaction implements RustOpaqueInterface {
   /// The bytes every signer signs with Ed25519.
   Future<Uint8List> messageBytes();
 
+  /// The mint of the asset moved, or of the token account created; `None`
+  /// for SOL.
+  Future<String?> mint();
+
+  /// The account a transfer or withdrawal pays, or whose token account is
+  /// created.
+  Future<String?> recipient();
+
   /// Base58 public keys that must sign, in signature order.
   Future<List<String>> signers();
-
-  /// Human-readable description to show before asking for a signature.
-  Future<String> summary();
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>

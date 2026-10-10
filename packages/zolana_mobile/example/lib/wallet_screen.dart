@@ -87,7 +87,10 @@ class _WalletScreenState extends State<WalletScreen> {
         throw 'Build with --dart-define=ZOLANA_API_KEY=... '
             '(a Helius key) to use devnet.';
       }
-      final signer = await DemoSigner.fromSeedHex(_account.seedHex);
+      final signer = await DemoSigner.fromSeedHex(
+        _account.seedHex,
+        onSign: _snack,
+      );
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';
       final config = WalletConfig(

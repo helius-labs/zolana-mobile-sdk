@@ -25,8 +25,10 @@ Unreleased.
   `release(tx)` frees them. `waitForTransaction(signature)` waits for a
   transaction sent before a restart.
 * `refresh(tx)`: a prepared transaction with a new blockhash and the same
-  proof, for slow approvals. Every prepared transaction has
-  `lastValidBlockHeight`.
+  proof, for slow approvals. Every prepared transaction carries its `kind`,
+  `amount`, `mint`, `recipient`, `feePayer`, `signers`, `message` and
+  `lastValidBlockHeight`; the application builds its approval text from
+  them, and the `SolanaSigner` receives the transaction it signs.
 * `exportKeys()` and `ZolanaWallet.openWithKeys()`: open the wallet from its
   saved derived keys, without a derivation signature; the signer is optional.
 * `close()` for lock and account switch: it rejects queued operations and a

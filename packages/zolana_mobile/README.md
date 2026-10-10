@@ -65,7 +65,8 @@ signs two things:
 1. once, the Zolana derivation message. The signature is the seed of the
    wallet's nullifier and viewing keys, which stay in memory for this session.
    A wallet opened from saved keys (see below) skips this.
-2. each transaction message, shown to the user with its `purpose` first.
+2. each prepared transaction's message, with the `PreparedTransaction` to show
+   the user first: its `kind`, `amount`, `mint`, `recipient` and `feePayer`.
 
 ```dart
 class KeystoreSigner implements SolanaSigner {
@@ -73,8 +74,10 @@ class KeystoreSigner implements SolanaSigner {
   String get publicKey => /* base58 account */;
 
   @override
-  Future<Uint8List> signMessage(Uint8List message, {required String purpose}) =>
-      /* ask the user, then sign with Ed25519 */;
+  Future<Uint8List> signMessage(
+    Uint8List message, {
+    PreparedTransaction? transaction, // null for the derivation message
+  }) => /* show the transaction, ask the user, then sign with Ed25519 */;
 }
 
 await initZolanaMobile();
@@ -255,7 +258,8 @@ transactions itself uses the `prepare` methods and reports back:
 
 ```dart
 final tx = await wallet.prepareTransfer(recipient: account, amount: amount);
-// Show tx.summary, sign tx.message with each of tx.signers, send it.
+// Show tx.kind, tx.amount, tx.mint, tx.recipient and tx.feePayer, sign
+// tx.message with each of tx.signers, send it.
 await wallet.confirm(tx, signature); // base58 transaction signature
 ```
 
