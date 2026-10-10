@@ -4,7 +4,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 asset_dir="$repo_root/packages/zolana_mobile/example/assets/proving"
 key_name="transfer_confidential_2_2.key"
-key="$repo_root/.cache/proving/$key_name"
+# The lockfile's key set, as the wallet lays out its key directory.
+key_set="3a1c88f90f609eb1"
+key="$repo_root/.cache/proving/$key_set/$key_name"
 key_checksum="e810d52962f4558b0bd50b768a89490759e15a0623d4c2c43318f541b8cc61ff"
 pk_checksum="4eb03bbf45b0893075ed7093e5d10fe7c67867f0daeedeba7cc04dcee850a304"
 vk_checksum="40b57a4bc6b638c0849248e97e997b74ec814444e7ca76a3cef082d33e65b26a"
@@ -44,7 +46,7 @@ if [[ ! -f "$key" ]] || [[ "$(sha256 "$key")" != "$key_checksum" ]]; then
   temporary_key="$(mktemp)"
   trap 'rm -f "$temporary_key"' EXIT
   echo "downloading $key_name"
-  curl -fsSL "$base_url/proving-keys/3a1c88f90f609eb1/$key_name" -o "$temporary_key"
+  curl -fsSL "$base_url/proving-keys/$key_set/$key_name" -o "$temporary_key"
   if [[ "$(sha256 "$temporary_key")" != "$key_checksum" ]]; then
     echo "downloaded proving key checksum does not match the lockfile" >&2
     exit 1
