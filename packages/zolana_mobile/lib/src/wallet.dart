@@ -389,7 +389,9 @@ class ZolanaWallet {
   /// [proving] says where the spend is proved, `WalletConfig.proving` when
   /// null. `Proving.remote` asks the prover at `WalletConfig.proverUrl`
   /// through the transport; without one it fails with
-  /// [WalletError.remoteProverMissing]. The wallet verifies a remote proof
+  /// [WalletError.remoteProverMissing]. `Proving.auto` proves on the device
+  /// up to `WalletConfig.maxLocalInputs` notes and remotely past that; past
+  /// it without a prover it fails with [WalletError.proofTooLargeForDevice]. The wallet verifies a remote proof
   /// against the pinned verifying key before it builds the message: a
   /// response that is not a proof of the pinned key fails with
   /// [WalletError.proofMalformed], a proof that does not verify with

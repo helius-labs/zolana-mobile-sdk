@@ -67,6 +67,11 @@ Unreleased.
   pinned verifying key before it builds the message. `WalletConfig.proving`
   sets the default; `proving` on `prepareTransfer`, `prepareWithdrawal`,
   `transfer` and `withdraw` chooses per call.
+* `Proving.auto`, the default, proves on the device up to
+  `WalletConfig.maxLocalInputs` notes (8 unless set) and remotely past that;
+  without `proverUrl` a wider spend fails with
+  `WalletError.proofTooLargeForDevice` and a merge takes at most what the
+  device proves.
 * The wallet never opens a connection: every request (Solana RPC, indexer,
   proving-key downloads, remote proofs) goes through a transport in Dart, the
   package's own on `package:http` by default, or the application's networking

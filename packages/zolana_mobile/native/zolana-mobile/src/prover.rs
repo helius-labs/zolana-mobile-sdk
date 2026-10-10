@@ -20,6 +20,11 @@ pub enum Proving {
     /// through the application's transport. The prover receives the witness,
     /// the wallet's nullifier secret included.
     Remote,
+    /// On the device when its circuit takes at most
+    /// [`WalletConfig::max_local_inputs`](crate::WalletConfig::max_local_inputs)
+    /// notes, a key and a proof the device holds, by the remote prover
+    /// otherwise.
+    Auto,
 }
 
 /// Proves each `/prove` body with the key the client names for it, loading

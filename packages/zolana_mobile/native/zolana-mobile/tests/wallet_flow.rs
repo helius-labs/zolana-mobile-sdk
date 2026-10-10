@@ -77,6 +77,7 @@ fn config() -> WalletConfig {
         proving_key_dir: key_dir,
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
+        max_local_inputs: None,
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
         mints: Vec::new(),
     }

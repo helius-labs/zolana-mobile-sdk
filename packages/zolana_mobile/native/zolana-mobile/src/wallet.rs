@@ -55,8 +55,11 @@ use zolana_program::instruction::{
 };
 use zolana_transaction::{
     instructions::{
-        merge::{MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT},
-        transact::ConfidentialTransaction,
+        merge::{
+            merge_circuit_width, MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT,
+            MERGE_SUPPORTED_INPUT_COUNTS,
+        },
+        transact::{canonical_shape, ConfidentialTransaction},
     },
     select_merge, select_spend_excluding, LocalShieldedKeys, SpendableDecryptionResult,
     TransactionError, WalletUtxo,
@@ -79,9 +82,14 @@ pub struct WalletConfig {
     pub proving_key_dir: String,
     /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
     pub proving_key_url: Option<String>,
-    /// Where spends are proved unless a call says otherwise: on the device
-    /// when `None`. [`Proving::Remote`] needs [`Self::prover_url`].
+    /// Where spends are proved unless a call says otherwise:
+    /// [`Proving::Auto`] when `None`. [`Proving::Remote`] needs
+    /// [`Self::prover_url`].
     pub proving: Option<Proving>,
+    /// The widest circuit, in notes, [`Proving::Auto`] proves on the device:
+    /// [`DEFAULT_MAX_LOCAL_INPUTS`] when `None`. A transfer of more notes
+    /// proves with a key and a prover state the device may not hold.
+    pub max_local_inputs: Option<u32>,
     /// The prover [`Proving::Remote`] asks, through the transport: the
     /// application's backend as a proxy of the prover's `/prove/<key>` routes,
     /// or a Zolana prover. It receives each spend's witness, the wallet's
@@ -257,6 +265,8 @@ pub struct MobileWallet {
     reservations: Mutex<Reservations>,
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
+    /// See [`WalletConfig::max_local_inputs`].
+    max_local_inputs: u32,
     native_prover: NativeProver,
     proving_keys: Arc<KeyStore>,
     /// The SDK's prover client of [`WalletConfig::prover_url`].
@@ -357,7 +367,8 @@ impl MobileWallet {
             viewing_key,
             assets,
             reservations: Mutex::default(),
-            proving: config.proving.unwrap_or(Proving::Local),
+            proving: config.proving.unwrap_or(Proving::Auto),
+            max_local_inputs: config.max_local_inputs.unwrap_or(DEFAULT_MAX_LOCAL_INPUTS),
             native_prover,
             proving_keys,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
@@ -459,8 +470,9 @@ impl MobileWallet {
     ///
     /// The merge needs no signature of this account: `fee_payer` pays and
     /// signs alone, this account when `None`. `proving` works as in
-    /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
-    /// nullifier secret, which a remote prover receives. The proof expires
+    /// [`Self::prepare_transfer`], except that [`Proving::Auto`] without a
+    /// prover merges at most what the device proves; a merge is proved with
+    /// this wallet's nullifier secret, which a remote prover receives. The proof expires
     /// after ten minutes, so a merge cannot be sent later by whoever holds it;
     /// [`Self::refresh`] does not extend it.
     pub fn prepare_merge(
@@ -474,10 +486,15 @@ impl MobileWallet {
         let proving = self.proving(proving)?;
         let asset = self.asset(mint)?;
         let reserved = self.reserved()?;
-        let max_inputs = max_inputs.map_or(MERGE_DEFAULT_INPUT_COUNT, |max| {
+        let mut max_inputs = max_inputs.map_or(MERGE_DEFAULT_INPUT_COUNT, |max| {
             usize::try_from(max).unwrap_or(MAX_MERGE_INPUTS)
         });
+        if proving == Proving::Auto && self.remote_prover.is_none() {
+            // Without a prover, merge what the device proves.
+            max_inputs = max_inputs.min(self.local_merge_width()?);
+        }
         let inputs = select_merge(self.spendable()?.utxos(), asset.mint, max_inputs, &reserved)?;
+        let proving = self.route(proving, merge_circuit_width(inputs.len()))?;
         let spends = nullifiers(&inputs);
         let tree_id = inputs[0].tree_id();
         let merge = MergeTransaction::new(inputs)?
@@ -601,7 +618,9 @@ impl MobileWallet {
     ///
     /// `proving` says where it is proved, [`WalletConfig::proving`] when
     /// `None`. Remote proving without [`WalletConfig::prover_url`] fails with
-    /// [`WalletError::RemoteProverMissing`]. The client verifies a remote
+    /// [`WalletError::RemoteProverMissing`], and [`Proving::Auto`] of more
+    /// notes than [`WalletConfig::max_local_inputs`] without it with
+    /// [`WalletError::ProofTooLargeForDevice`]. The client verifies a remote
     /// proof against the pinned verifying key and the public input it computed
     /// itself before the message is built: a response that is not a proof of
     /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
@@ -630,6 +649,7 @@ impl MobileWallet {
             None => transaction.transfer_sol(&registered.address, amount),
             Some(_) => transaction.transfer(&registered.address, asset.mint, amount),
         }?;
+        let proving = self.route(proving, spend_width(&transaction))?;
         let pending = self.pending(
             PendingTransactionKind::Transfer,
             self.prove(transaction, Vec::new(), payer, proving)?,
@@ -670,6 +690,7 @@ impl MobileWallet {
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         let settlement =
             transaction.withdraw_to(asset.mint, amount, recipient, asset.token_program)?;
+        let proving = self.route(proving, spend_width(&transaction))?;
         let pending = self.pending(
             PendingTransactionKind::Withdrawal,
             self.prove(transaction, vec![settlement], payer, proving)?,
@@ -690,6 +711,36 @@ impl MobileWallet {
             (Proving::Remote, None) => Err(WalletError::RemoteProverMissing),
             _ => Ok(proving),
         }
+    }
+
+    /// Where a spend whose circuit takes `width` notes is proved:
+    /// [`Proving::Auto`] resolved against [`Self::max_local_inputs`].
+    fn route(&self, proving: Proving, width: Option<usize>) -> Result<Proving, WalletError> {
+        let width = width.map_or(u32::MAX, |width| width as u32);
+        Ok(match proving {
+            Proving::Auto if width <= self.max_local_inputs => Proving::Local,
+            Proving::Auto if self.remote_prover.is_some() => Proving::Remote,
+            Proving::Auto => {
+                return Err(WalletError::ProofTooLargeForDevice {
+                    inputs: width,
+                    max_local_inputs: self.max_local_inputs,
+                })
+            }
+            proving => proving,
+        })
+    }
+
+    /// The widest merge circuit the device proves under
+    /// [`Self::max_local_inputs`].
+    fn local_merge_width(&self) -> Result<usize, WalletError> {
+        MERGE_SUPPORTED_INPUT_COUNTS
+            .into_iter()
+            .filter(|width| *width as u32 <= self.max_local_inputs)
+            .max()
+            .ok_or(WalletError::ProofTooLargeForDevice {
+                inputs: MERGE_SUPPORTED_INPUT_COUNTS[0] as u32,
+                max_local_inputs: self.max_local_inputs,
+            })
     }
 
     /// A message with `instruction` alone, paid by this account. Its blockhash
@@ -1020,6 +1071,22 @@ fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
     notes.iter().map(|note| note.nullifier).collect()
 }
 
+/// The widest circuit, in notes, [`Proving::Auto`] proves on the device by
+/// default: its keys stay within about 70 MB.
+pub const DEFAULT_MAX_LOCAL_INPUTS: u32 = 8;
+
+/// The circuit width, in notes, of `transaction`: the inputs of the shape
+/// the Zolana SDK proves its inputs and outputs with.
+fn spend_width(transaction: &ConfidentialTransaction) -> Option<usize> {
+    shape_width(transaction.inputs().len(), transaction.outputs().len())
+}
+
+fn shape_width(inputs: usize, outputs: usize) -> Option<usize> {
+    canonical_shape(inputs, outputs)
+        .ok()
+        .map(|shape| shape.n_inputs())
+}
+
 /// How long a merge proof can be sent. Anyone who holds it can send it, and
 /// the program refuses it after this.
 const MERGE_LIFETIME: Duration = Duration::from_secs(600);
@@ -1100,6 +1167,7 @@ mod tests {
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
+            max_local_inputs: None,
             prover_url: None,
             mints: Vec::new(),
         }
@@ -1606,6 +1674,7 @@ mod tests {
         assert_eq!(missing(&mut local, None), [false; 2]);
         let config = |prover_url: Option<&str>| WalletConfig {
             proving: Some(Proving::Remote),
+            max_local_inputs: None,
             prover_url: prover_url.map(str::to_string),
             ..config()
         };
@@ -1614,6 +1683,66 @@ mod tests {
         assert_eq!(missing(&mut remote, Some(Proving::Local)), [false; 2]);
         let mut remote = open_with(&signer, config(Some("https://prover.example"))).unwrap();
         assert_eq!(missing(&mut remote, None), [false; 2]);
+    }
+
+    #[test]
+    fn auto_proves_on_the_device_up_to_its_limit_and_remotely_past_it() {
+        let signer = Keypair::new();
+        let config = |prover_url: Option<&str>, max_local_inputs| WalletConfig {
+            prover_url: prover_url.map(str::to_string),
+            max_local_inputs,
+            ..config()
+        };
+        let device = open_with(&signer, config(None, None)).unwrap();
+        assert_eq!(device.proving, Proving::Auto);
+        assert_eq!(device.max_local_inputs, DEFAULT_MAX_LOCAL_INPUTS);
+        assert_eq!(
+            device.route(Proving::Auto, shape_width(7, 2)),
+            Ok(Proving::Local)
+        );
+        assert_eq!(
+            device.route(Proving::Auto, shape_width(9, 2)),
+            Err(WalletError::ProofTooLargeForDevice {
+                inputs: 12,
+                max_local_inputs: 8
+            })
+        );
+        assert_eq!(
+            device.route(Proving::Local, shape_width(40, 2)),
+            Ok(Proving::Local)
+        );
+        assert_eq!(device.local_merge_width(), Ok(8));
+
+        let backed = open_with(&signer, config(Some("https://prover.example"), Some(30))).unwrap();
+        assert_eq!(
+            backed.route(Proving::Auto, shape_width(24, 2)),
+            Ok(Proving::Local)
+        );
+        assert_eq!(
+            backed.route(Proving::Auto, shape_width(25, 2)),
+            Ok(Proving::Remote)
+        );
+        // Outputs choose the shape too: 24 notes and four outputs prove with
+        // the 24x4 key, 24 notes and eight with none.
+        assert_eq!(
+            backed.route(Proving::Auto, shape_width(24, 4)),
+            Ok(Proving::Local)
+        );
+        assert_eq!(shape_width(24, 8), None);
+        assert_eq!(
+            backed.route(Proving::Auto, merge_circuit_width(30)),
+            Ok(Proving::Remote)
+        );
+        assert_eq!(backed.local_merge_width(), Ok(24));
+
+        let small = open_with(&signer, config(None, Some(4))).unwrap();
+        assert_eq!(
+            small.local_merge_width(),
+            Err(WalletError::ProofTooLargeForDevice {
+                inputs: 8,
+                max_local_inputs: 4
+            })
+        );
     }
 
     #[test]

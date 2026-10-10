@@ -348,6 +348,7 @@ pub(crate) mod tests {
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
+            max_local_inputs: None,
             prover_url: None,
             mints: Vec::new(),
         };

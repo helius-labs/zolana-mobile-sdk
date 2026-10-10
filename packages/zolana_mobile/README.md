@@ -219,6 +219,7 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `signatureCountMismatch` | `expected`, `got` | `submit` received the wrong number of signatures |
 | `transactionNotConfirmed` | `signature` | Solana did not confirm the transaction within the wait |
 | `remoteProverMissing` | | the spend asked for remote proving without `WalletConfig.proverUrl` |
+| `proofTooLargeForDevice` | `inputs`, `maxLocalInputs` | `Proving.auto` would prove a circuit wider than `maxLocalInputs` remotely, without `WalletConfig.proverUrl` |
 | `proofMalformed` | | the remote prover's response is not a proof of the pinned proving key |
 | `proofInvalid` | | the proof does not verify against the pinned verifying key |
 | `proofFailed` | | the device prover could not prove the request |
@@ -357,7 +358,7 @@ final wallet = await ZolanaWallet.open(
     indexerUrl: indexerUrl,
     provingKeyDir: provingKeyDir,
     proverUrl: 'https://backend.example/zolana', // your backend
-    proving: Proving.remote,                     // the default; optional
+    proving: Proving.remote,                     // every spend; optional
     mints: const [],
   ),
 );
@@ -394,10 +395,39 @@ await wallet.transfer(
   A bad proof never reaches the user's approval. A failed request fails with
   a `WalletError.client` holding the prover client's error, `prover server error: ...` (for example
   `status 401 Unauthorized: ...`), `api-key` values masked.
-- **Choice per call**: `WalletConfig.proving` is the default, `Proving.local`
-  when it is null. `prepareTransfer`, `prepareWithdrawal`, `transfer` and
-  `withdraw` take `proving` to override it. `Proving.remote` without a
-  `proverUrl` fails with `WalletError.remoteProverMissing`.
+- **Choice per call**: `WalletConfig.proving` is the default, `Proving.auto`
+  when it is null. `prepareTransfer`, `prepareWithdrawal`, `prepareMerge`
+  and the calls that send them take `proving` to override it.
+  `Proving.remote` without a `proverUrl` fails with
+  `WalletError.remoteProverMissing`.
+- **`Proving.auto`** proves on the device when the circuit of the spend,
+  the shape the Zolana SDK picks for its notes and outputs, takes at most
+  `WalletConfig.maxLocalInputs` notes, 8 by default, and remotely past that.
+  A wider circuit loads a larger proving key and needs more memory than a
+  phone may give the app. The pinned keys:
+
+  | Notes | 2 outputs | 4 outputs | 8 outputs | 16 outputs |
+  |---|---|---|---|---|
+  | 1 | 9 MB | 11 MB | 14 MB | 18 MB |
+  | 2 | 16 MB | 17 MB | 22 MB | 26 MB |
+  | 3 | 24 MB | 25 MB | 28 MB | |
+  | 4 | 30 MB | 31 MB | 34 MB | 38 MB |
+  | 5 | 36 MB | 37 MB | 44 MB | 49 MB |
+  | 6 | 47 MB | 48 MB | 50 MB | |
+  | 8 | 59 MB | 60 MB | 62 MB | 67 MB |
+  | 12 | 91 MB | 92 MB | 94 MB | |
+  | 16 | 115 MB | 116 MB | 118 MB | |
+  | 24 | 180 MB | 181 MB | | |
+  | 32 | 228 MB | | | |
+  | 40 | 275 MB | | | |
+  | 48 | 356 MB | | | |
+  | 49 | 362 MB | | | |
+
+  A merge of 8, 24 or 54 notes proves with a key of 56, 173 or 380 MB.
+  Without a `proverUrl`, a spend past the limit fails with
+  `WalletError.proofTooLargeForDevice` (merge first), and a merge takes at
+  most the notes the device proves. Raise the limit on devices you have
+  measured, or use `Proving.local` to always prove on the device.
 - **Privacy**: the request carries the transaction's full witness: the notes
   it spends and creates, their amounts and owners, and the wallet's nullifier
   secret (the `nullifierPrivateKey` of `exportKeys()`). The backend and its

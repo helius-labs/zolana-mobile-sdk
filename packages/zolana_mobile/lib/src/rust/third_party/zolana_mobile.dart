@@ -127,8 +127,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   ///
   /// The merge needs no signature of this account: `fee_payer` pays and
   /// signs alone, this account when `None`. `proving` works as in
-  /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
-  /// nullifier secret, which a remote prover receives. The proof expires
+  /// [`Self::prepare_transfer`], except that [`Proving::Auto`] without a
+  /// prover merges at most what the device proves; a merge is proved with
+  /// this wallet's nullifier secret, which a remote prover receives. The proof expires
   /// after ten minutes, so a merge cannot be sent later by whoever holds it;
   /// [`Self::refresh`] does not extend it.
   Future<PendingTransaction> prepareMerge({
@@ -161,7 +162,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   ///
   /// `proving` says where it is proved, [`WalletConfig::proving`] when
   /// `None`. Remote proving without [`WalletConfig::prover_url`] fails with
-  /// [`WalletError::RemoteProverMissing`]. The client verifies a remote
+  /// [`WalletError::RemoteProverMissing`], and [`Proving::Auto`] of more
+  /// notes than [`WalletConfig::max_local_inputs`] without it with
+  /// [`WalletError::ProofTooLargeForDevice`]. The client verifies a remote
   /// proof against the pinned verifying key and the public input it computed
   /// itself before the message is built: a response that is not a proof of
   /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
@@ -487,6 +490,12 @@ enum Proving {
   /// through the application's transport. The prover receives the witness,
   /// the wallet's nullifier secret included.
   remote,
+
+  /// On the device when its circuit takes at most
+  /// [`WalletConfig::max_local_inputs`](crate::WalletConfig::max_local_inputs)
+  /// notes, a key and a proof the device holds, by the remote prover
+  /// otherwise.
+  auto,
 }
 
 /// Where a [`ProvingKeys::prefetch`] is.
@@ -751,9 +760,15 @@ class WalletConfig {
   /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
   final String? provingKeyUrl;
 
-  /// Where spends are proved unless a call says otherwise: on the device
-  /// when `None`. [`Proving::Remote`] needs [`Self::prover_url`].
+  /// Where spends are proved unless a call says otherwise:
+  /// [`Proving::Auto`] when `None`. [`Proving::Remote`] needs
+  /// [`Self::prover_url`].
   final Proving? proving;
+
+  /// The widest circuit, in notes, [`Proving::Auto`] proves on the device:
+  /// [`DEFAULT_MAX_LOCAL_INPUTS`] when `None`. A transfer of more notes
+  /// proves with a key and a prover state the device may not hold.
+  final int? maxLocalInputs;
 
   /// The prover [`Proving::Remote`] asks, through the transport: the
   /// application's backend as a proxy of the prover's `/prove/<key>` routes,
@@ -774,6 +789,7 @@ class WalletConfig {
     required this.provingKeyDir,
     this.provingKeyUrl,
     this.proving,
+    this.maxLocalInputs,
     this.proverUrl,
     required this.mints,
   });
@@ -785,6 +801,7 @@ class WalletConfig {
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
       proving.hashCode ^
+      maxLocalInputs.hashCode ^
       proverUrl.hashCode ^
       mints.hashCode;
 
@@ -798,6 +815,7 @@ class WalletConfig {
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
+          maxLocalInputs == other.maxLocalInputs &&
           proverUrl == other.proverUrl &&
           mints == other.mints;
 }
@@ -929,6 +947,15 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// not set.
   const factory WalletError.remoteProverMissing() =
       WalletError_RemoteProverMissing;
+
+  /// [`Proving::Auto`](crate::Proving::Auto) would prove a circuit of
+  /// `inputs` notes remotely, past `max_local_inputs`, and
+  /// `WalletConfig.prover_url` is not set. Merge the notes first, or set a
+  /// prover.
+  const factory WalletError.proofTooLargeForDevice({
+    required int inputs,
+    required int maxLocalInputs,
+  }) = WalletError_ProofTooLargeForDevice;
 
   /// The remote prover's response is not a proof of the pinned proving key.
   const factory WalletError.proofMalformed() = WalletError_ProofMalformed;

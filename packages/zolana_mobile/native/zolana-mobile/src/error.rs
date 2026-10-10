@@ -79,6 +79,11 @@ pub enum WalletError {
     /// The spend asked for remote proving and `WalletConfig.prover_url` is
     /// not set.
     RemoteProverMissing,
+    /// [`Proving::Auto`](crate::Proving::Auto) would prove a circuit of
+    /// `inputs` notes remotely, past `max_local_inputs`, and
+    /// `WalletConfig.prover_url` is not set. Merge the notes first, or set a
+    /// prover.
+    ProofTooLargeForDevice { inputs: u32, max_local_inputs: u32 },
     /// The remote prover's response is not a proof of the pinned proving key.
     ProofMalformed,
     /// The proof does not verify against the pinned verifying key.
