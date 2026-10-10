@@ -15,4 +15,4 @@ serde_json = "1.0"
 
 [workspace.metadata.upstream]
 repository = "https://github.com/helius-labs/zolana"
-revision = "b55b30311e51e15b6422afe7a3d50cede1fcd64c"
+revision = "42680740cd8aa8b80aef488c5f5846423ddcaba1"

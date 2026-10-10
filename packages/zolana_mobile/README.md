@@ -183,6 +183,8 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `mergeRequired` | `amount`, `maxInputs` | the amount needs more notes than one spend takes |
 | `tooManyInputTrees` | `trees`, `maxTrees` | the notes that cover the amount are on more trees than one spend takes (2) |
 | `amountZero` | | the amount of a spend is zero |
+| `nothingToMerge` | `mint` | fewer than two notes of the mint are free to merge on any one tree |
+| `mergingDisabled` | | the account's record does not enable merging |
 | `notesAlreadySpent` | | the chain already spent a note the transaction spends: the indexer was behind when it was prepared |
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
@@ -388,11 +390,54 @@ await wallet.transfer(
   instead, so the prover does not prove the same spend twice (see
   `TransportResponseLost` below).
 
-Current limits: notes are not merged, so a spend takes at most 40 notes from
-at most two trees and fails with `WalletError.mergeRequired` or
-`WalletError.tooManyInputTrees` beyond that; one prepared
-prover is loaded per process, so close a `LocalProver` before the wallet
-proves. A spend of zero fails with `WalletError.amountZero`.
+Current limits: a spend takes at most 40 notes from at most two trees and
+fails with `WalletError.mergeRequired` or `WalletError.tooManyInputTrees`
+beyond that (see [Merges](#merges)); one prepared prover is loaded per
+process, so close a `LocalProver` before the wallet proves. A spend of zero
+fails with `WalletError.amountZero`.
+
+### Merges
+
+A merge combines up to 54 notes of one asset on one tree into one note of
+their sum. Merge when a spend fails with `WalletError.mergeRequired` or
+`WalletError.tooManyInputTrees`, then prepare the spend again.
+
+```dart
+await wallet.setMerging(true); // once per account; this account signs
+final signature = await wallet.merge(proving: Proving.remote);
+```
+
+- **Turning merging on**: `setMerging(true)` (or `prepareMerging(true)` to
+  sign in the application) writes it to this account's user record; `null`
+  when the record already says so, and `mergingEnabled()` reads it. Until
+  then a merge fails with `WalletError.mergingDisabled`.
+- **What a merge takes**: `prepareMerge` takes the smallest notes of `mint`
+  (SOL when null) on the tree that holds the most of them, at most
+  `maxInputs` (24 by default, 54 at most), and leaves out notes that
+  prepared spends reserve. Fewer than two fails with
+  `WalletError.nothingToMerge`. It reserves its notes as a spend does.
+- **Who signs**: nobody but the fee payer. `feePayer` (this account when
+  null) pays and signs alone, so the application's backend can pay for it.
+- **Proving**: `proving` works as for transfers. Through `proverUrl` the
+  backend proxies the same `/prove` routes; the merge keys are 56 MB (8
+  notes), 173 MB (24) and 380 MB (54), so remote proving suits most phones.
+- **What the prover receives** (`Proving.remote`): for each note its amount,
+  blinding, asset, nullifier and Merkle paths; the account's owner hash and
+  nullifier public key; and the wallet's **nullifier secret**. No signing or
+  viewing secret. The prover learns every merged amount and the merged note,
+  and keeps the nullifier secret; it cannot move funds.
+- **Expiry**: the proof can be sent by anyone who holds it, until ten
+  minutes after `prepareMerge`; after that the program refuses it.
+  `refresh` gives a new blockhash but does not extend the expiry.
+- **Stopping halfway**: each merge is its own transaction, and the wallet
+  reads its notes from the indexer every time. An application that stops
+  between merges, or after preparing one, just prepares the next. A merge
+  that was sent is confirmed with `waitForTransaction(signature)`; one that
+  was not is gone with its expiry. A merge and a spend that share a note
+  cannot both land: the second fails, and is prepared again.
+- **History**: a merge reads as `selfTransfer` of the merged amount.
+- **Visible on chain**: the account (it is the owner of the record), the
+  tree, and roughly how many notes; not the asset or any amount.
 
 ### Networking
 

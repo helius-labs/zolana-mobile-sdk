@@ -19,7 +19,8 @@ drop(prover);
 - `PreparedProver::load_key(key: &str) -> anyhow::Result<Self>` loads an
   upstream Zolana `.key` container (header, proving key, verifying key,
   constraint system) as published, without splitting it. Its header must
-  name the eddsa rail and the shape the constraint system has. The
+  name the shape the constraint system has, and the eddsa rail unless the
+  circuit is a merge, which carries the P-256 owner rail too. The
   container is read before its sections can be checked against each other,
   so verify the file against the pinned proving-key lockfile first.
 - `prove_request(&self, request_json: &str) -> anyhow::Result<Groth16ProofResult>`

@@ -175,6 +175,28 @@ class FakeWallet implements MobileWallet {
     };
   }
 
+  bool merging = false;
+  final merges = <(String?, int?, String?, Proving?)>[];
+
+  @override
+  Future<bool> mergingEnabled() async => merging;
+
+  @override
+  Future<PendingTransaction?> prepareMerging({required bool enabled}) async =>
+      enabled == merging ? null : FakePending(Uint8List.fromList([5]));
+
+  @override
+  Future<PendingTransaction> prepareMerge({
+    String? mint,
+    int? maxInputs,
+    String? feePayer,
+    Proving? proving,
+  }) async {
+    if (!merging) throw const WalletError.mergingDisabled();
+    merges.add((mint, maxInputs, feePayer, proving));
+    return FakePending(Uint8List.fromList([6]));
+  }
+
   @override
   Future<PendingTransaction> prepareDeposit({
     String? mint,
@@ -1104,6 +1126,35 @@ void main() {
       throwsWalletError(const WalletError.registrationConflict(owner: owner)),
     );
     expect(native.submitted, hasLength(1));
+  });
+
+  test('turns merging on once, then merges the notes it names', () async {
+    final (wallet, native, signer, _) = await openWallet();
+    await expectLater(
+      wallet.merge(),
+      throwsWalletError(const WalletError.mergingDisabled()),
+    );
+    expect(await wallet.mergingEnabled(), isFalse);
+    expect(await wallet.setMerging(true), 'signature');
+    native.merging = true;
+    expect(await wallet.setMerging(true), isNull);
+
+    expect(
+      await wallet.merge(mint: 'M', maxInputs: 8, proving: Proving.remote),
+      'signature',
+    );
+    final prepared = await wallet.prepareMerge(feePayer: 'P');
+    expect(native.merges, [
+      ('M', 8, null, Proving.remote),
+      (null, null, 'P', null),
+    ]);
+    expect(prepared.message, [6]);
+    expect(native.submitted, hasLength(2));
+    // After the derivation message: the merging change and the merge.
+    expect(signer.requests.skip(1).map((request) => request.$1), [
+      [5],
+      [6],
+    ]);
   });
 
   test('a prepare that is proving when close is called fails', () async {
