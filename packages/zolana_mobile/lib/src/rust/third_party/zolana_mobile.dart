@@ -664,6 +664,11 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// A spend of zero.
   const factory WalletError.amountZero() = WalletError_AmountZero;
 
+  /// The chain already spent a note this transaction spends: the indexer
+  /// was behind when it was prepared, or another session spent it. Prepare
+  /// it again once the indexer has the spend.
+  const factory WalletError.notesAlreadySpent() = WalletError_NotesAlreadySpent;
+
   /// Only notes a prepared spend reserves would cover `amount`. Submit,
   /// confirm or release that spend first.
   const factory WalletError.notesReserved({required BigInt amount}) =
