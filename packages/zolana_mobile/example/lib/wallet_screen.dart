@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 import 'action_sheet.dart';
+import 'demo_assets.dart';
 import 'demo_keys.dart';
 import 'demo_signer.dart';
 import 'format.dart';
@@ -46,6 +47,7 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen> {
   Network _network = Network.devnet;
   DemoAccount _account = demoAccounts.first;
+  DemoAsset _asset = sol;
   _Phase _phase = _Phase.opening;
   String? _error;
   ZolanaWallet? _wallet;
@@ -97,8 +99,7 @@ class _WalletScreenState extends State<WalletScreen> {
         rpcUrl: _network.rpcUrl,
         indexerUrl: _network.indexerUrl,
         provingKeyDir: keys,
-        // The demo holds SOL only.
-        mints: const [],
+        mints: [for (final asset in demoAssets) ?asset.config],
       );
       final wallet = await ZolanaWallet.open(
         signer: signer,
@@ -126,9 +127,10 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _finishSetup(int generation) async {
     try {
       final wallet = _wallet!;
-      final public = await _publicBalance(wallet);
+      // Registration is paid in SOL, whichever asset is shown.
+      final public = await _publicBalance(wallet, sol);
       if (!_current(generation)) return;
-      setState(() => _public = public);
+      if (_asset == sol) setState(() => _public = public);
       final registration = await wallet.registrationStatus();
       if (!_current(generation)) return;
       if (registration == RegistrationStatus.conflict) {
@@ -166,31 +168,48 @@ class _WalletScreenState extends State<WalletScreen> {
     final generation = _generation;
     setState(() => _refreshing = true);
     try {
-      final private = await wallet.privateBalance();
-      final public = await _publicBalance(wallet);
+      final asset = _asset;
+      final private = await wallet.privateBalance(mint: asset.mint);
+      final public = await _publicBalance(wallet, asset);
       final activity = await wallet.activity();
-      if (!_current(generation)) return;
+      if (!_current(generation) || asset != _asset) return;
       setState(() {
         _private = private;
         _public = public;
-        // The demo shows SOL only.
         _activity = activity
             .where(
               (entry) =>
-                  entry.mint == null && entry.kind != ActivityKind.selfTransfer,
+                  entry.mint == asset.mint &&
+                  entry.kind != ActivityKind.selfTransfer,
             )
             .toList();
       });
     } catch (error) {
-      if (_current(generation)) _snack(friendlyError(error));
+      if (_current(generation)) _snack(friendlyError(error, asset: _asset));
     } finally {
       if (_current(generation)) setState(() => _refreshing = false);
     }
   }
 
-  /// Public SOL is plain Solana state, read with the app's own RPC client.
-  Future<BigInt> _publicBalance(ZolanaWallet wallet) =>
-      TestClusterRpc(_network.rpcUrl).balance(wallet.solanaPublicKey);
+  /// Public SOL and tokens are plain Solana state, read with the app's own
+  /// RPC client.
+  Future<BigInt> _publicBalance(ZolanaWallet wallet, DemoAsset asset) {
+    final rpc = TestClusterRpc(_network.rpcUrl);
+    final mint = asset.mint;
+    return mint == null
+        ? rpc.balance(wallet.solanaPublicKey)
+        : rpc.tokenBalance(wallet.solanaPublicKey, mint);
+  }
+
+  Future<void> _select(DemoAsset asset) async {
+    setState(() {
+      _asset = asset;
+      _private = null;
+      _public = null;
+      _activity = const [];
+    });
+    await _refresh();
+  }
 
   Future<void> _airdrop() async {
     final wallet = _wallet;
@@ -224,23 +243,29 @@ class _WalletScreenState extends State<WalletScreen> {
       _ => _private ?? BigInt.zero,
     };
     final other = demoAccounts.firstWhere((account) => account != _account);
+    final mint = _asset.mint;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => ActionSheet(
         action: action,
+        asset: _asset,
         available: available,
         suggestedRecipient: action == WalletAction.send ? other : null,
-        run: (lamports, recipient) => switch (action) {
+        run: (units, recipient) => switch (action) {
           WalletAction.send => wallet.transfer(
             recipient: recipient!,
-            amount: lamports,
+            amount: units,
+            mint: mint,
           ),
-          WalletAction.shield => wallet.deposit(lamports),
+          WalletAction.shield => wallet.deposit(units, mint: mint),
+          // A token goes to this account's own token account, which holds
+          // the demo token already.
           WalletAction.unshield => wallet.withdraw(
             recipient: wallet.solanaPublicKey,
-            amount: lamports,
+            amount: units,
+            mint: mint,
           ),
         },
       ),
@@ -250,8 +275,10 @@ class _WalletScreenState extends State<WalletScreen> {
     await _refresh();
   }
 
+  /// SOL keeps [_feeReserve] public for fees; a token can be shielded whole.
   BigInt _maxShield() {
     final public = _public ?? BigInt.zero;
+    if (_asset.mint != null) return public;
     return public > _feeReserve ? public - _feeReserve : BigInt.zero;
   }
 
@@ -407,7 +434,19 @@ class _WalletScreenState extends State<WalletScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
             children: [
+              Center(
+                child: SegmentedButton<DemoAsset>(
+                  segments: [
+                    for (final asset in demoAssets)
+                      ButtonSegment(value: asset, label: Text(asset.symbol)),
+                  ],
+                  selected: {_asset},
+                  onSelectionChanged: (selected) => _select(selected.single),
+                ),
+              ),
+              const SizedBox(height: 24),
               _Balances(
+                asset: _asset,
                 private: _private,
                 public: _public,
                 refreshing: _refreshing,
@@ -453,13 +492,14 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Text(
                     _refreshing
                         ? 'Loading…'
-                        : 'Nothing yet. Shield some SOL to start.',
+                        : 'Nothing yet. Shield some ${_asset.symbol} to start.',
                     textAlign: TextAlign.center,
                   ),
                 )
               else
                 for (final entry in _activity)
                   _ActivityRow(
+                    asset: _asset,
                     entry: entry,
                     onTap: () {
                       Clipboard.setData(
@@ -478,11 +518,13 @@ class _WalletScreenState extends State<WalletScreen> {
 
 class _Balances extends StatelessWidget {
   const _Balances({
+    required this.asset,
     required this.private,
     required this.public,
     required this.refreshing,
   });
 
+  final DemoAsset asset;
   final BigInt? private;
   final BigInt? public;
   final bool refreshing;
@@ -499,14 +541,14 @@ class _Balances extends StatelessWidget {
         const SizedBox(height: 8),
         // An unknown balance is not zero: show a dash until it is read.
         Text(
-          private == null ? '—' : formatSol(private!),
+          private == null ? '—' : asset.format(private!),
           style: theme.textTheme.displaySmall,
         ),
         const SizedBox(height: 8),
         Text(
           refreshing
               ? 'Refreshing…'
-              : 'Public ${public == null ? '—' : formatSol(public!)}',
+              : 'Public ${public == null ? '—' : asset.format(public!)}',
           style: muted,
         ),
       ],
@@ -543,8 +585,13 @@ class _ActionButton extends StatelessWidget {
 }
 
 class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({required this.entry, required this.onTap});
+  const _ActivityRow({
+    required this.asset,
+    required this.entry,
+    required this.onTap,
+  });
 
+  final DemoAsset asset;
   final ActivityEntry entry;
   final VoidCallback onTap;
 
@@ -578,7 +625,7 @@ class _ActivityRow extends StatelessWidget {
       title: Text(title),
       subtitle: Text(route),
       trailing: Text(
-        '$sign${formatSol(entry.amount)}',
+        '$sign${asset.format(entry.amount)}',
         style: Theme.of(context).textTheme.bodyLarge,
       ),
       onTap: onTap,

@@ -4,7 +4,11 @@
 //! opened before the transfer from the sender's saved keys, with its fee paid
 //! by another account, two transfers prepared before either is sent, and a
 //! transfer proved by a remote prover. Each step is the newest entry of its
-//! wallets' history.
+//! wallets' history. Another test merges notes, and another deposits,
+//! transfers and withdraws an SPL token: `ZOLANA_E2E_MINT`, a mint the
+//! sender is the mint authority of, or a new mint the test registers with
+//! the shielded pool, on a cluster that allows that without the protocol
+//! authority, as devnet does.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon, the prover and the programs), or any cluster that runs the
@@ -28,14 +32,22 @@
 
 use std::{env, time::Duration};
 
+use solana_address::Address;
+use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
+use solana_pubkey::Pubkey;
 use solana_signer::Signer;
-use zolana_client::{Rpc, SolanaRpc};
-use zolana_mobile::{
-    derivation_message, ActivityKind, MobileWallet, PendingTransaction, PendingTransactionKind,
-    Proving, RegistrationStatus, Transport, TransportFailure, TransportOutcome, TransportRequest,
-    TransportResponse, WalletConfig, WalletError,
+use zolana_client::{ComputeBudgetConfig, Rpc, SolanaRpc};
+use zolana_interface::{
+    SPL_TOKEN_INITIALIZE_MINT2_DISCRIMINATOR, SPL_TOKEN_MINT_ACCOUNT_LEN,
+    SPL_TOKEN_MINT_TO_DISCRIMINATOR, SPL_TOKEN_PROGRAM_ID,
 };
+use zolana_mobile::{
+    derivation_message, ActivityKind, MintConfig, MobileWallet, PendingTransaction,
+    PendingTransactionKind, Proving, RegistrationStatus, Transport, TransportFailure,
+    TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
+};
+use zolana_program::instruction::{CreateAssociatedTokenAccount, CreateSplInterface};
 
 const FUNDING: u64 = 1_000_000_000;
 const DEPOSIT: u64 = 50_000_000;
@@ -168,9 +180,13 @@ fn send(
 }
 
 fn open(signer: &Keypair) -> MobileWallet {
+    open_with(signer, config())
+}
+
+fn open_with(signer: &Keypair, config: WalletConfig) -> MobileWallet {
     let pubkey = signer.pubkey().to_string();
     let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
-    MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), transport())
+    MobileWallet::open(config, pubkey, signature.as_ref().to_vec(), transport())
         .expect("open wallet")
 }
 
@@ -200,6 +216,17 @@ fn private_sol(wallet: &mut MobileWallet) -> u64 {
 /// The newest history entry is the transaction `signature`, moving `amount`
 /// SOL as `kind`.
 fn newest(wallet: &mut MobileWallet, signature: &str, kind: ActivityKind, amount: u64) {
+    newest_of(wallet, signature, kind, None, amount);
+}
+
+/// As [`newest`], of `mint` (`None` for SOL).
+fn newest_of(
+    wallet: &mut MobileWallet,
+    signature: &str,
+    kind: ActivityKind,
+    mint: Option<&str>,
+    amount: u64,
+) {
     let activity = wallet.activity().unwrap();
     let entry = activity.first().expect("an activity entry");
     assert_eq!(
@@ -209,7 +236,7 @@ fn newest(wallet: &mut MobileWallet, signature: &str, kind: ActivityKind, amount
             entry.mint.as_deref(),
             entry.amount
         ),
-        (signature, kind, None, amount)
+        (signature, kind, mint, amount)
     );
 }
 
@@ -395,6 +422,229 @@ fn register_deposit_transfer_and_receive() {
 
 /// The recipient's notes merged twice, proved by the remote prover and on this
 /// machine. A merge needs no signature of its owner: the sender pays alone.
+const TOKEN_DEPOSIT: u64 = 5_000_000;
+const TOKEN_TRANSFER: u64 = 2_000_000;
+const TOKEN_WITHDRAWAL: u64 = 1_000_000;
+
+fn send_instructions(
+    rpc: &SolanaRpc,
+    payer: &Keypair,
+    signers: &[&dyn Signer],
+    instructions: &[Instruction],
+) {
+    rpc.create_and_send_transaction(
+        instructions,
+        Address::new_from_array(payer.pubkey().to_bytes()),
+        signers,
+        ComputeBudgetConfig::for_instruction_count(instructions.len()),
+    )
+    .expect("send");
+}
+
+/// `ZOLANA_E2E_MINT`, an SPL Token mint `authority` mints, or a new one the
+/// shielded pool registers. The cluster must allow permissionless SPL
+/// registration, as devnet does.
+fn test_mint(rpc: &SolanaRpc, authority: &Keypair) -> Pubkey {
+    if let Ok(mint) = env::var("ZOLANA_E2E_MINT") {
+        return mint.parse().expect("ZOLANA_E2E_MINT is a base58 key");
+    }
+    let token_program = Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID);
+    let mint = Keypair::new();
+    let rent = rpc
+        .get_minimum_balance_for_rent_exemption(SPL_TOKEN_MINT_ACCOUNT_LEN)
+        .unwrap();
+    // SystemInstruction::CreateAccount: tag, lamports, space, owner.
+    let mut create = vec![0u8; 4];
+    create.extend_from_slice(&rent.to_le_bytes());
+    create.extend_from_slice(&(SPL_TOKEN_MINT_ACCOUNT_LEN as u64).to_le_bytes());
+    create.extend_from_slice(&token_program.to_bytes());
+    // InitializeMint2: six decimals, `authority` mints, no freeze authority.
+    let mut initialize = vec![SPL_TOKEN_INITIALIZE_MINT2_DISCRIMINATOR, 6];
+    initialize.extend_from_slice(&authority.pubkey().to_bytes());
+    initialize.push(0);
+    send_instructions(
+        rpc,
+        authority,
+        &[authority, &mint],
+        &[
+            Instruction {
+                program_id: Pubkey::default(),
+                accounts: vec![
+                    AccountMeta::new(authority.pubkey(), true),
+                    AccountMeta::new(mint.pubkey(), true),
+                ],
+                data: create,
+            },
+            Instruction {
+                program_id: token_program,
+                accounts: vec![AccountMeta::new(mint.pubkey(), false)],
+                data: initialize,
+            },
+        ],
+    );
+    send_instructions(
+        rpc,
+        authority,
+        &[authority],
+        &[CreateSplInterface {
+            authority: authority.pubkey(),
+            mint: mint.pubkey(),
+            token_program,
+        }
+        .instruction()],
+    );
+    println!("test mint {}, reuse it with ZOLANA_E2E_MINT", mint.pubkey());
+    mint.pubkey()
+}
+
+/// `owner`'s associated token account of `mint`, created by `payer` if it
+/// is missing.
+fn token_account(rpc: &SolanaRpc, payer: &Keypair, owner: Pubkey, mint: Pubkey) -> Pubkey {
+    let create = CreateAssociatedTokenAccount {
+        payer: payer.pubkey(),
+        owner,
+        mint,
+        token_program: Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID),
+    };
+    let address = create.address();
+    send_instructions(rpc, payer, &[payer], &[create.instruction()]);
+    address
+}
+
+fn mint_to(rpc: &SolanaRpc, authority: &Keypair, mint: Pubkey, account: Pubkey, amount: u64) {
+    let mut data = vec![SPL_TOKEN_MINT_TO_DISCRIMINATOR];
+    data.extend_from_slice(&amount.to_le_bytes());
+    send_instructions(
+        rpc,
+        authority,
+        &[authority],
+        &[Instruction {
+            program_id: Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID),
+            accounts: vec![
+                AccountMeta::new(mint, false),
+                AccountMeta::new(account, false),
+                AccountMeta::new_readonly(authority.pubkey(), true),
+            ],
+            data,
+        }],
+    );
+}
+
+/// The amount a token account holds: bytes 64..72 of its data.
+fn public_tokens(rpc: &SolanaRpc, account: Pubkey) -> u64 {
+    let data = rpc
+        .get_account(Address::new_from_array(account.to_bytes()))
+        .unwrap()
+        .expect("token account")
+        .data;
+    u64::from_le_bytes(data[64..72].try_into().unwrap())
+}
+
+#[test]
+#[ignore = "needs a Zolana cluster and indexer"]
+fn deposits_transfers_and_withdraws_an_spl_token() {
+    let sender = account("ZOLANA_E2E_SENDER_SEED");
+    let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
+    let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
+    for (signer, needed) in [(&sender, FEES), (&recipient, FEES)] {
+        if rpc.get_balance(signer.pubkey()).expect("balance") < needed {
+            rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
+        }
+    }
+    let mint = test_mint(&rpc, &sender);
+    let sender_tokens = token_account(&rpc, &sender, sender.pubkey(), mint);
+    mint_to(&rpc, &sender, mint, sender_tokens, TOKEN_DEPOSIT);
+    let recipient_tokens = token_account(&rpc, &sender, recipient.pubkey(), mint);
+
+    let with_mint = || WalletConfig {
+        mints: vec![MintConfig {
+            mint: mint.to_string(),
+            token_program: Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID).to_string(),
+        }],
+        ..config()
+    };
+    let mut sender_wallet = open_with(&sender, with_mint());
+    let mut recipient_wallet = open_with(&recipient, with_mint());
+    register(&mut sender_wallet, &sender);
+    register(&mut recipient_wallet, &recipient);
+    let name = mint.to_string();
+    let private = |wallet: &mut MobileWallet| wallet.private_balance(Some(name.clone())).unwrap();
+    let sender_before = private(&mut sender_wallet);
+    let recipient_before = private(&mut recipient_wallet);
+
+    let pending = sender_wallet
+        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT)
+        .unwrap();
+    let deposit = submit(&sender_wallet, &[&sender], pending);
+    assert_eq!(private(&mut sender_wallet), sender_before + TOKEN_DEPOSIT);
+    newest_of(
+        &mut sender_wallet,
+        &deposit,
+        ActivityKind::Deposit,
+        Some(&name),
+        TOKEN_DEPOSIT,
+    );
+
+    let pending = sender_wallet
+        .prepare_transfer(
+            recipient.pubkey().to_string(),
+            Some(name.clone()),
+            TOKEN_TRANSFER,
+            None,
+            None,
+        )
+        .expect("prove a token transfer");
+    let transfer = submit(&sender_wallet, &[&sender], pending);
+    assert_eq!(
+        private(&mut sender_wallet),
+        sender_before + TOKEN_DEPOSIT - TOKEN_TRANSFER
+    );
+    assert_eq!(
+        private(&mut recipient_wallet),
+        recipient_before + TOKEN_TRANSFER
+    );
+    newest_of(
+        &mut recipient_wallet,
+        &transfer,
+        ActivityKind::Received,
+        Some(&name),
+        TOKEN_TRANSFER,
+    );
+
+    let public_before = public_tokens(&rpc, recipient_tokens);
+    let pending = recipient_wallet
+        .prepare_withdrawal(
+            recipient.pubkey().to_string(),
+            Some(name.clone()),
+            TOKEN_WITHDRAWAL,
+            None,
+            None,
+        )
+        .expect("prove a token withdrawal");
+    let withdrawal = submit(&recipient_wallet, &[&recipient], pending);
+    assert_eq!(
+        public_tokens(&rpc, recipient_tokens),
+        public_before + TOKEN_WITHDRAWAL
+    );
+    assert_eq!(
+        private(&mut recipient_wallet),
+        recipient_before + TOKEN_TRANSFER - TOKEN_WITHDRAWAL
+    );
+    newest_of(
+        &mut recipient_wallet,
+        &withdrawal,
+        ActivityKind::Withdrawal,
+        Some(&name),
+        TOKEN_WITHDRAWAL,
+    );
+    // The SOL balance is not touched by token flows.
+    assert!(sender_wallet
+        .balances()
+        .unwrap()
+        .iter()
+        .any(|balance| balance.mint.as_deref() == Some(name.as_str())));
+}
+
 #[test]
 #[ignore = "needs a Zolana cluster and indexer"]
 fn merges_notes_proved_remotely_and_on_the_device() {
