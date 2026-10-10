@@ -3,8 +3,10 @@ import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 import 'package:zolana_mobile_demo/app_transport.dart';
+import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
+import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
@@ -15,8 +17,9 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 /// through the application's own transport (`package:http`, logged), as an
 /// application with its own networking does; B uses the package's default
 /// transport. Then B merges its notes twice, proved remotely and on the
-/// device. Opt in, since it spends devnet SOL and needs A funded and a
-/// Helius key for devnet:
+/// device, and the demo token is shielded, sent and unshielded. Opt in,
+/// since it spends devnet SOL and needs A funded and a Helius key for
+/// devnet:
 ///
 /// ```sh
 /// flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
@@ -40,7 +43,7 @@ void main() {
     provingKeyDir:
         '${(await getApplicationSupportDirectory()).path}/proving-keys',
     proverUrl: proverUrl,
-    mints: const [],
+    mints: [for (final asset in demoAssets) ?asset.config],
   );
 
   Future<ZolanaWallet> open(DemoAccount account) async => ZolanaWallet.open(
@@ -176,6 +179,62 @@ void main() {
     expect(
       transport.sent.where((r) => r.startsWith('GET ') && !_isProof(r)),
       isEmpty,
+    );
+  }, skip: !_enabled);
+
+  testWidgets('shields, sends and unshields the demo token', (tester) async {
+    final mint = demoToken.mint!;
+    final rpc = TestClusterRpc(Network.devnet.rpcUrl);
+    final sender = await open(demoAccounts[0]);
+    addTearDown(sender.close);
+    final recipient = await open(demoAccounts[1]);
+    addTearDown(recipient.close);
+    final shield = demoToken.parse('1')!;
+    final send = demoToken.parse('0.5')!;
+    final unshield = demoToken.parse('0.25')!;
+    expect(
+      await rpc.tokenBalance(demoAccounts[0].publicKey, mint),
+      greaterThanOrEqualTo(shield),
+      reason: 'account A holds the demo token',
+    );
+    final senderBefore = await sender.privateBalance(mint: mint);
+    final recipientBefore = await recipient.privateBalance(mint: mint);
+
+    await sender.deposit(shield, mint: mint);
+    expect(await sender.privateBalance(mint: mint), senderBefore + shield);
+
+    final sent = await sender.transfer(
+      recipient: demoAccounts[1].publicKey,
+      amount: send,
+      mint: mint,
+    );
+    expect(
+      await sender.privateBalance(mint: mint),
+      senderBefore + shield - send,
+    );
+    expect(await recipient.privateBalance(mint: mint), recipientBefore + send);
+    final received = (await recipient.activity()).first;
+    expect(
+      (received.signature, received.kind, received.mint, received.amount),
+      (sent, ActivityKind.received, mint, send),
+    );
+
+    final publicBefore = await rpc.tokenBalance(
+      demoAccounts[1].publicKey,
+      mint,
+    );
+    await recipient.withdraw(
+      recipient: demoAccounts[1].publicKey,
+      amount: unshield,
+      mint: mint,
+    );
+    expect(
+      await rpc.tokenBalance(demoAccounts[1].publicKey, mint),
+      publicBefore + unshield,
+    );
+    expect(
+      await recipient.privateBalance(mint: mint),
+      recipientBefore + send - unshield,
     );
   }, skip: !_enabled);
 

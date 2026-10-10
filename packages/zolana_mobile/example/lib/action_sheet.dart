@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'demo_assets.dart';
 import 'demo_keys.dart';
 import 'format.dart';
 
@@ -12,18 +13,20 @@ class ActionSheet extends StatefulWidget {
   const ActionSheet({
     super.key,
     required this.action,
+    required this.asset,
     required this.available,
     required this.run,
     this.suggestedRecipient,
   });
 
   final WalletAction action;
+  final DemoAsset asset;
 
-  /// Lamports the action can spend.
+  /// Base units of [asset] the action can spend.
   final BigInt available;
 
   /// Performs the action and returns its transaction signature.
-  final Future<String> Function(BigInt lamports, String? recipient) run;
+  final Future<String> Function(BigInt units, String? recipient) run;
 
   final DemoAccount? suggestedRecipient;
 
@@ -94,13 +97,13 @@ class _ActionSheetState extends State<ActionSheet> {
     WalletAction.unshield => 'Proving on device and unshielding…',
   };
 
-  BigInt? get _lamports => parseSol(_amount.text);
+  BigInt? get _units => widget.asset.parse(_amount.text);
 
   String? get _amountProblem {
-    final lamports = _lamports;
+    final units = _units;
     if (_amount.text.trim().isEmpty) return null;
-    if (lamports == null || lamports <= BigInt.zero) return 'Enter an amount';
-    if (lamports > widget.available) return 'More than available';
+    if (units == null || units <= BigInt.zero) return 'Enter an amount';
+    if (units > widget.available) return 'More than available';
     return null;
   }
 
@@ -112,7 +115,7 @@ class _ActionSheetState extends State<ActionSheet> {
   }
 
   bool get _ready =>
-      _lamports != null &&
+      _units != null &&
       _amountProblem == null &&
       _recipientProblem == null &&
       (!_needsRecipient || _recipient.text.trim().isNotEmpty);
@@ -121,7 +124,7 @@ class _ActionSheetState extends State<ActionSheet> {
     setState(() => _stage = _Stage.working);
     try {
       final signature = await widget.run(
-        _lamports!,
+        _units!,
         _needsRecipient ? _recipient.text.trim() : null,
       );
       if (mounted) {
@@ -133,7 +136,7 @@ class _ActionSheetState extends State<ActionSheet> {
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = friendlyError(error);
+          _error = friendlyError(error, asset: widget.asset);
           _stage = _Stage.failed;
         });
       }
@@ -169,7 +172,7 @@ class _ActionSheetState extends State<ActionSheet> {
               const Icon(Icons.check_circle_outline, size: 56),
               const SizedBox(height: 16),
               Text(
-                '${_done()} ${formatSol(_lamports!)}',
+                '${_done()} ${widget.asset.format(_units!)}',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge,
               ),
@@ -235,13 +238,13 @@ class _ActionSheetState extends State<ActionSheet> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: 'Amount',
-        suffixText: 'SOL',
+        suffixText: widget.asset.symbol,
         errorText: _amountProblem,
-        helperText: 'Available ${formatSol(widget.available)}',
+        helperText: 'Available ${widget.asset.format(widget.available)}',
         border: const OutlineInputBorder(),
         suffixIcon: TextButton(
           onPressed: widget.available > BigInt.zero
-              ? () => _amount.text = solString(widget.available)
+              ? () => _amount.text = widget.asset.amountString(widget.available)
               : null,
           child: const Text('Max'),
         ),

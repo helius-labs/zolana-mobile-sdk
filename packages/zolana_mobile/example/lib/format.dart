@@ -1,30 +1,11 @@
 import 'package:zolana_mobile/zolana_mobile.dart';
 
+import 'demo_assets.dart';
+
 final lamportsPerSol = BigInt.from(1000000000);
 
 /// `1.5 SOL`, trimmed to at most four decimals.
-String formatSol(BigInt lamports) =>
-    '${solString(lamports, maxDecimals: 4)} SOL';
-
-/// Exact decimal SOL, or rounded down to [maxDecimals].
-String solString(BigInt lamports, {int maxDecimals = 9}) {
-  final whole = lamports ~/ lamportsPerSol;
-  var fraction = (lamports % lamportsPerSol).toString().padLeft(9, '0');
-  fraction = fraction.substring(0, maxDecimals).replaceAll(RegExp(r'0+$'), '');
-  return fraction.isEmpty ? '$whole' : '$whole.$fraction';
-}
-
-/// Lamports for a decimal SOL string, or null if it is not one.
-BigInt? parseSol(String text) {
-  final match = RegExp(r'^(\d*)(?:\.(\d{0,9}))?$').firstMatch(text.trim());
-  if (match == null ||
-      (match.group(1)!.isEmpty && (match.group(2) ?? '').isEmpty)) {
-    return null;
-  }
-  final whole = BigInt.parse(match.group(1)!.isEmpty ? '0' : match.group(1)!);
-  final fraction = BigInt.parse((match.group(2) ?? '').padRight(9, '0'));
-  return whole * lamportsPerSol + fraction;
-}
+String formatSol(BigInt lamports) => sol.format(lamports);
 
 final _base58 = RegExp(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$');
 
@@ -37,13 +18,13 @@ String shortAddress(String value) => value.length <= 12
 String explorerUrl(String signature) =>
     'https://explorer.solana.com/tx/$signature?cluster=devnet';
 
-/// What a prepared transaction does, to show before signing. The demo holds
-/// SOL only, so token amounts stay in base units.
+/// What a prepared transaction does, to show before signing. A mint the demo
+/// does not hold shows in base units.
 String approvalText(PreparedTransaction tx) {
-  final amount = switch ((tx.amount, tx.mint)) {
+  final amount = switch ((tx.amount, demoAsset(tx.mint))) {
     (null, _) => '',
-    (final lamports?, null) => formatSol(lamports),
-    (final units?, final mint?) => '$units units of ${shortAddress(mint)}',
+    (final units?, final asset?) => asset.format(units),
+    (final units?, null) => '$units units of ${shortAddress(tx.mint!)}',
   };
   final to = tx.recipient == null ? '' : shortAddress(tx.recipient!);
   return switch (tx.kind) {
@@ -56,8 +37,9 @@ String approvalText(PreparedTransaction tx) {
   };
 }
 
-/// A sentence for the wallet's failures; other errors pass through.
-String friendlyError(Object error) {
+/// A sentence for the wallet's failures, amounts in [asset]; other errors
+/// pass through.
+String friendlyError(Object error, {DemoAsset asset = sol}) {
   if (error is! ZolanaWalletException) return '$error';
   return switch (error.error) {
     WalletError_RecipientNotRegistered() =>
@@ -65,7 +47,7 @@ String friendlyError(Object error) {
     WalletError_RegistrationConflict() =>
       'This account is registered with keys from another app.',
     WalletError_InsufficientPrivateBalance(:final available) =>
-      'Insufficient private balance: ${formatSol(available)} available.',
+      'Insufficient private balance: ${asset.format(available)} available.',
     WalletError_MergeRequired(:final maxInputs) =>
       'This amount needs more than $maxInputs notes. Send a smaller amount.',
     WalletError_TooManyInputTrees() =>

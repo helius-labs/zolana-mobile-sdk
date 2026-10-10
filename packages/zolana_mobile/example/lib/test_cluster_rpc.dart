@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 /// The plain Solana calls the demo makes with its own RPC client: the public
-/// balance and the devnet airdrop that funds a demo account. Everything else
+/// balances and the devnet airdrop that funds a demo account. Everything else
 /// goes through the Zolana wallet.
 class TestClusterRpc {
   TestClusterRpc(this.url);
@@ -16,6 +16,23 @@ class TestClusterRpc {
       {'commitment': 'confirmed'},
     ]);
     return BigInt.from((result as Map)['value'] as int);
+  }
+
+  /// Base units of [mint] in [owner]'s token accounts, at the commitment the
+  /// wallet confirms at.
+  Future<BigInt> tokenBalance(String owner, String mint) async {
+    final result = await _call('getTokenAccountsByOwner', [
+      owner,
+      {'mint': mint},
+      {'encoding': 'jsonParsed', 'commitment': 'confirmed'},
+    ]);
+    var total = BigInt.zero;
+    for (final account in (result as Map)['value'] as List) {
+      final amount =
+          account['account']['data']['parsed']['info']['tokenAmount']['amount'];
+      total += BigInt.parse(amount as String);
+    }
+    return total;
   }
 
   /// Request [lamports] and wait until the airdrop is confirmed.

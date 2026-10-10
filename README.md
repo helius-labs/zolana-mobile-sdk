@@ -26,8 +26,10 @@ The generated native library keeps Mopro's internal
 The example is a private wallet on Zolana devnet with two built-in demo accounts,
 A and B, so one phone can pay itself privately. Their keys are public in
 `example/lib/demo_keys.dart`: fund them with devnet SOL only, for example from
-faucet.solana.com. The first send downloads the proving key for its shape into
-app storage; later sends reuse it.
+faucet.solana.com. The wallet screen switches between SOL and TEST, a devnet
+SPL Token mint the demo accounts hold 1,000 of (`example/lib/demo_assets.dart`;
+account A is its mint authority). The first send downloads the proving key for
+its shape into app storage; later sends reuse it.
 
 Install Flutter and the platform toolchain. Then:
 
@@ -38,7 +40,8 @@ flutter pub get
 flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
 
-To send privately from A to B on a device or simulator, proving there:
+To send privately from A to B on a device or simulator, proving there, merge
+B's notes, and shield, send and unshield the demo token:
 
 ```sh
 flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
@@ -127,12 +130,15 @@ public key together. Releases signed with the old key stop verifying.
 either the wallet or the application sends them. `LocalProver.proveRequest`
 remains for callers that assemble their own `/prove` requests. The wallet holds
 SOL and the SPL tokens the shielded pool has registered, keeps its state in
-memory, and does not merge notes yet.
+memory, and merges notes on request.
 
-The end-to-end wallet test registers, deposits, proves a private transfer on
-this machine, checks the recipient's balance, and unshields from a second,
-stale session of the sender. Zolana devnet runs the pinned revision; the demo
-accounts avoid devnet airdrop limits once funded:
+The end-to-end wallet tests register, deposit, prove a private transfer on this
+machine, check the recipient's balance, and unshield from a second, stale
+session of the sender; merge notes; and deposit, transfer and withdraw an SPL
+token. Zolana devnet runs the pinned revision; the demo accounts avoid devnet
+airdrop limits once funded. `ZOLANA_E2E_MINT` names the token: the demo token
+`Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6`, which account A mints; without
+it the test creates a mint and registers it with the shielded pool:
 
 ```sh
 ZOLANA_E2E_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
@@ -140,7 +146,8 @@ ZOLANA_E2E_INDEXER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$AP
 ZOLANA_E2E_PROVER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
 ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
 ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
-cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture
+ZOLANA_E2E_MINT=Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6 \
+cargo test -p zolana-mobile --release --test wallet_flow -- --ignored --nocapture --test-threads 1
 ```
 
 A local cluster started by `just` in the zolana repository works as well.
