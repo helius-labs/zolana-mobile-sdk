@@ -1,7 +1,10 @@
 //! What a wallet call reports when it fails. The bindings carry it as data,
 //! so the application reads the fields instead of parsing a message.
 
+use solana_instruction::error::InstructionError;
+use solana_transaction_error::TransactionError as ChainError;
 use zolana_client::ClientError;
+use zolana_interface::error::ShieldedPoolError;
 use zolana_keypair::KeypairError;
 use zolana_program::instruction::DepositBuildError;
 use zolana_transaction::TransactionError;
@@ -21,6 +24,10 @@ pub enum WalletError {
     TooManyInputTrees { trees: u64, max_trees: u64 },
     /// A spend of zero.
     AmountZero,
+    /// The chain already spent a note this transaction spends: the indexer
+    /// was behind when it was prepared, or another session spent it. Prepare
+    /// it again once the indexer has the spend.
+    NotesAlreadySpent,
     /// Only notes a prepared spend reserves would cover `amount`. Submit,
     /// confirm or release that spend first.
     NotesReserved { amount: u64 },
@@ -126,6 +133,12 @@ impl From<ClientError> for WalletError {
             ClientError::UserRegistryKeysMismatch { owner } => Self::RegistrationConflict {
                 owner: owner.to_string(),
             },
+            ClientError::SolanaRpcTransaction { ref source, .. }
+                if program_error(source.get_transaction_error().as_ref())
+                    == Some(ShieldedPoolError::NullifierAlreadyQueued as u32) =>
+            {
+                Self::NotesAlreadySpent
+            }
             ClientError::ProofVerification(_) | ClientError::ProvingKeyMismatch { .. } => {
                 Self::ProofInvalid
             }
@@ -176,6 +189,22 @@ impl From<TransactionError> for WalletError {
             },
         }
     }
+}
+
+/// The custom error code of a failed instruction, such as the shielded pool's.
+fn program_error(failure: Option<&ChainError>) -> Option<u32> {
+    match failure? {
+        ChainError::InstructionError(_, InstructionError::Custom(code)) => Some(*code),
+        _ => None,
+    }
+}
+
+/// Whether `failure` is the chain's verdict on a transaction: it ran, or a
+/// node refused it, so it did not land and will not. Any other failure of a
+/// send may have come after the transaction went out.
+pub(crate) fn rejected_by_chain(failure: &ClientError) -> bool {
+    matches!(failure, ClientError::SolanaRpcTransaction { source, .. }
+        if source.get_transaction_error().is_some())
 }
 
 /// The error and its causes, so a failed request says why it failed (DNS,

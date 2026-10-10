@@ -42,8 +42,8 @@ use zolana_client::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, try_resolve_registered_address,
     },
-    ComputeBudgetConfig, IndexerPollConfig, ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc,
-    SpendableUtxos, Submission, ZolanaClient,
+    ClientError, ComputeBudgetConfig, IndexerPollConfig, ProverClient, Rpc,
+    SignedPrivateTransaction, SolanaRpc, SpendableUtxos, Submission, ZolanaClient,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -58,7 +58,7 @@ use zolana_transaction::{
 use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
-    error::WalletError,
+    error::{rejected_by_chain, WalletError},
     keys::KeyStore,
     prover::{NativeProver, Proving},
     transport::Transport,
@@ -760,13 +760,54 @@ impl MobileWallet {
             }
             transaction_signatures.push(Signature::from(signature));
         }
+        let signature = transaction_signatures[0];
         let transaction = VersionedTransaction {
             signatures: transaction_signatures,
             message: pending.message.clone(),
         };
-        let signature = self.client.process_transaction(transaction)?;
+        if let Err(failure) = self.client.process_transaction(transaction) {
+            // A send can fail after the transaction went out, such as when
+            // the RPC loses the confirmation: look for it before failing.
+            if rejected_by_chain(&failure) || !self.landed(signature, pending)? {
+                return Err(failure.into());
+            }
+        }
         self.settle(pending, signature)?;
         Ok(signature.to_string())
+    }
+
+    /// Whether `signature`, `pending` sent, landed: polled until it shows or
+    /// its blockhash expires. A transaction the chain ran and refused fails
+    /// with the chain's error.
+    fn landed(
+        &self,
+        signature: Signature,
+        pending: &PendingTransaction,
+    ) -> Result<bool, WalletError> {
+        let poll = IndexerPollConfig::default();
+        for delay in std::iter::once(Default::default()).chain(poll.backoff()) {
+            sleep(delay);
+            let status = self
+                .client
+                .get_signature_statuses(vec![signature])?
+                .into_iter()
+                .next()
+                .flatten();
+            if let Some(status) = status {
+                return match status.err {
+                    None => Ok(true),
+                    Some(failure) => Err(ClientError::SolanaRpcTransaction {
+                        operation: "process_transaction",
+                        source: failure.into(),
+                    }
+                    .into()),
+                };
+            }
+            if self.client.get_block_height()? > pending.last_valid_block_height {
+                return Ok(false);
+            }
+        }
+        Ok(false)
     }
 
     /// Wait for a transaction the application sent itself: until Solana
@@ -964,6 +1005,119 @@ mod tests {
             last_valid_block_height: 0,
             spends: Vec::new(),
         }
+    }
+
+    /// A wallet whose Solana RPC answers each JSON-RPC method with
+    /// `answer(method)`: `{"result": ..}` or `{"error": ..}`. Returns the
+    /// methods it was asked, in order.
+    fn rpc_wallet(
+        signer: &Keypair,
+        answer: impl Fn(&str) -> serde_json::Value + Send + Sync + 'static,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&asked);
+        let (transport, _) = crate::transport::tests::fake(move |request| {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            let method = body["method"].as_str().unwrap_or_default().to_string();
+            let mut reply = answer(&method);
+            reply["jsonrpc"] = "2.0".into();
+            reply["id"] = body["id"].clone();
+            log.lock().unwrap().push(method);
+            crate::transport::tests::ok(&reply.to_string())
+        });
+        let pubkey = signer.pubkey().to_string();
+        let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
+        let wallet =
+            MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), transport).unwrap();
+        (wallet, asked)
+    }
+
+    fn status(landed: bool) -> serde_json::Value {
+        let value = if landed {
+            serde_json::json!([{
+                "slot": 5, "confirmations": null, "err": null,
+                "status": {"Ok": null}, "confirmationStatus": "finalized"
+            }])
+        } else {
+            serde_json::json!([null])
+        };
+        serde_json::json!({"result": {"context": {"slot": 5}, "value": value}})
+    }
+
+    /// A send whose confirmation the RPC lost, for a transaction that landed
+    /// (or did not): the wallet looks for it before it reports a failure.
+    #[test]
+    fn a_send_error_is_checked_against_the_signature_status() {
+        let signer = Keypair::new();
+        let internal =
+            || serde_json::json!({"error": {"code": -32603, "message": "Internal error"}});
+        let registration = |signer: &Keypair| PendingTransaction {
+            kind: PendingTransactionKind::Registration,
+            ..unsigned(signer)
+        };
+        let signed = |pending: &PendingTransaction| {
+            vec![signer
+                .sign_message(&pending.message_bytes())
+                .as_ref()
+                .to_vec()]
+        };
+
+        let (wallet, asked) = rpc_wallet(&signer, move |method| match method {
+            "sendTransaction" => internal(),
+            _ => status(true),
+        });
+        let pending = registration(&signer);
+        let signature = wallet
+            .submit(&pending, signed(&pending))
+            .expect("it landed");
+        assert_eq!(
+            signature,
+            signer.sign_message(&pending.message_bytes()).to_string()
+        );
+        assert!(asked
+            .lock()
+            .unwrap()
+            .contains(&"getSignatureStatuses".to_string()));
+
+        let (wallet, _) = rpc_wallet(&signer, move |method| match method {
+            "sendTransaction" => internal(),
+            "getBlockHeight" => serde_json::json!({"result": 10}),
+            _ => status(false),
+        });
+        let error = wallet.submit(&pending, signed(&pending)).unwrap_err();
+        assert!(
+            matches!(&error, WalletError::Client { message } if message.contains("Internal error")),
+            "{error:?}"
+        );
+    }
+
+    /// A spend of a note the chain already spent fails as such, at once: the
+    /// node refused it, so it cannot have landed.
+    #[test]
+    fn a_spent_note_is_notes_already_spent() {
+        let signer = Keypair::new();
+        let (wallet, asked) = rpc_wallet(&signer, |method| match method {
+            "sendTransaction" => serde_json::json!({"error": {
+                "code": -32002,
+                "message": "Transaction simulation failed: custom program error: 0x1b83",
+                "data": {
+                    "err": {"InstructionError": [0, {"Custom": 7043}]},
+                    "logs": [], "accounts": null, "unitsConsumed": 0,
+                    "returnData": null, "innerInstructions": null
+                }
+            }}),
+            _ => status(true),
+        });
+        let pending = unsigned(&signer);
+        let signatures = vec![signer
+            .sign_message(&pending.message_bytes())
+            .as_ref()
+            .to_vec()];
+        assert_eq!(
+            wallet.submit(&pending, signatures).unwrap_err(),
+            WalletError::NotesAlreadySpent
+        );
+        assert_eq!(*asked.lock().unwrap(), ["sendTransaction"]);
     }
 
     /// A SOL note of `amount` on `tree_id` whose nullifier is

@@ -69,6 +69,8 @@ String friendlyError(Object error) {
     WalletError_TooManyInputTrees() =>
       'Your balance is split across trees. Send a smaller amount.',
     WalletError_AmountZero() => 'Enter an amount above zero.',
+    WalletError_NotesAlreadySpent() =>
+      'Your balance is still updating. Try again in a moment.',
     WalletError_NotesReserved() =>
       'Another payment is waiting to be sent. Finish or cancel it first.',
     WalletError_ProverBusy() =>

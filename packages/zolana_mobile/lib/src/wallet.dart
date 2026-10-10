@@ -404,7 +404,10 @@ class ZolanaWallet {
       _serial(() => _prepare(_wallet.refresh(pending: transaction._pending)));
 
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
-  /// wait as [confirm] does. Returns the transaction signature.
+  /// wait as [confirm] does. Returns the transaction signature. A send that
+  /// fails without the chain's verdict, such as a lost confirmation, is
+  /// checked against the signature's status until the blockhash expires. A
+  /// note the chain already spent fails with [WalletError.notesAlreadySpent].
   Future<String> submit(
     PreparedTransaction transaction,
     List<Uint8List> signatures,

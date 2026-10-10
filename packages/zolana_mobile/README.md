@@ -180,6 +180,7 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `mergeRequired` | `amount`, `maxInputs` | the amount needs more notes than one spend takes |
 | `tooManyInputTrees` | `trees`, `maxTrees` | the notes that cover the amount are on more trees than one spend takes (2) |
 | `amountZero` | | the amount of a spend is zero |
+| `notesAlreadySpent` | | the chain already spent a note the transaction spends: the indexer was behind when it was prepared |
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
 | `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient has no associated token account for the mint |
@@ -307,6 +308,14 @@ sends through the wallet's RPC instead.
 - After a restart the prepared transaction is gone, but its signature is
   enough: `wallet.waitForTransaction(signature)` waits until Solana confirms
   it and the indexer has it, and fails with the chain's error if it failed.
+- A send can fail after the transaction went out, for example when the RPC
+  loses its confirmation. `submit` then looks for the signature until the
+  blockhash expires before it reports a failure. An application that sends
+  itself does the same: after any send error that is not the chain's
+  verdict, call `waitForTransaction(signature)` before showing a failure.
+- When the indexer is behind, a spend can select a note the chain has
+  already spent. It fails with `WalletError.notesAlreadySpent`, before or
+  after sending; prepare it again once the indexer has caught up.
 
 ### Backend proving
 
