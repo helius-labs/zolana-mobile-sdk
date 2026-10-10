@@ -37,6 +37,12 @@ pub struct TransportRequest {
     /// (600 s for a proof request, 30 s for a status poll); otherwise the
     /// transport's own applies.
     pub timeout_ms: Option<u32>,
+    /// For a proving-key download: the file to write the body to, chunk by
+    /// chunk, so a key of hundreds of MB never sits in memory. The response
+    /// then carries no body. The wallet checks the file and removes it when
+    /// it is wrong. A transport that returns the body instead still works,
+    /// holding the key in memory.
+    pub download_path: Option<String>,
 }
 
 /// The server's response, whatever its status.
@@ -210,6 +216,7 @@ impl Middleware for Sender {
                 body,
                 max_response_bytes: None,
                 timeout_ms: None,
+                download_path: None,
             })
             .await
             .map_err(reqwest_middleware::Error::middleware)?;
@@ -244,6 +251,7 @@ impl BlockingHttpClient for Sender {
             body: std::mem::take(&mut *body),
             max_response_bytes: body_limit.map(|limit| u32::try_from(limit).unwrap_or(u32::MAX)),
             timeout_ms: timeout.map(|timeout| millis(transport_deadline(timeout))),
+            download_path: None,
         };
         let response = self.0.send_blocking(request).map_err(|error| {
             if error.0.status.is_some() {

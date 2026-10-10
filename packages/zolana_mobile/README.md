@@ -160,12 +160,15 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   never contain key material.
 
 - **Lock and account switch**: call `wallet.close()`. Operations not yet
-  started fail with `WalletError.walletClosed`, and so does a `prepare` call that is
-  proving at the time: the application never receives a transaction after the
-  lock. Nothing is signed or submitted after the call, so lock the UI without
-  awaiting `close()`. It waits for the running native step (a proof cannot be
-  interrupted) and for an open signer prompt, so cancel your prompt on lock.
-  Then it releases the native wallet: its keys and the proving key it loaded.
+  started fail with `WalletError.walletClosed`, and so does the running one,
+  whether it is proving or waiting for the network: the application never
+  receives a transaction after the lock. Nothing is signed or submitted after
+  the call, so lock the UI without awaiting `close()`. The package's default
+  transport aborts its requests in flight at once; an application's transport
+  should abort its own when the application locks. `close()` waits for the
+  running native step (a proof cannot be interrupted) and for an open signer
+  prompt, so cancel your prompt on lock. Then it releases the native wallet:
+  its keys and the proving key it loaded.
   Open the next account after `close()` completes. A transaction already
   submitted is not recalled.
 
@@ -456,6 +459,11 @@ final wallet = await ZolanaWallet.open(
 - A key download sets `maxResponseBytes`, the key's size in the lockfile.
   Stop reading and throw when the body exceeds it; the wallet refuses a longer
   body either way, but only after the whole of it arrived.
+- A key download also sets `downloadPath`: write the body to that file as it
+  arrives and return the response with an empty body. Keys reach hundreds of
+  MB, so holding one in memory can get the app killed. The wallet checks the
+  file against the lockfile and removes it when it is wrong. A transport that
+  returns the body instead still works, at that memory cost.
 - Return the response whatever its status, with its headers: a prover
   inside a TEE marks its encrypted body in them. Throw only when there is no
   response (no network, DNS, TLS, a timeout). The wallet then fails with a
@@ -473,8 +481,9 @@ final wallet = await ZolanaWallet.open(
   the status arrived, throw `TransportResponseLost`. The SDK gives up a
   second later and counts a request that failed any other way as unanswered,
   which it sends again: a prover would prove the spend twice. Time out every
-  other request too: the wallet and `close()` wait for each answer. For the
-  same reason the transport must not call the wallet.
+  other request too: the wallet and `close()` wait for each answer, so abort
+  the requests in flight when the application locks. For the same reason the
+  transport must not call the wallet.
 - `example/lib/app_transport.dart` is the transport above with a log of what
   it sent; the example's devnet test sends through it.
 

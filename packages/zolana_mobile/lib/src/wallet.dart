@@ -489,22 +489,21 @@ class ZolanaWallet {
   );
 
   /// Stop this wallet. Operations not yet started fail with
-  /// [WalletError.walletClosed], and so does a `prepare` call that is proving
-  /// when [close] is called: the
-  /// application never receives a transaction after it locks. Nothing is
-  /// signed or submitted after this call. Waits for the running native step
-  /// (a proof cannot be interrupted), then releases the native wallet: its
-  /// keys and proving key. Lock the UI without waiting for it; wait only
-  /// before opening the next account.
+  /// [WalletError.walletClosed], and so does the running one, whether it is
+  /// proving or waiting for the network: the application never receives a
+  /// transaction after it locks. Nothing is signed or submitted after this
+  /// call. The package's own transport aborts its requests at once; an
+  /// application's transport should abort its own when the application locks.
+  /// Waits for the running native step (a proof cannot be interrupted), then
+  /// releases the native wallet: its keys and proving key. Lock the UI
+  /// without waiting for it; wait only before opening the next account.
   ///
   /// It does not recall a transaction already submitted.
-  Future<void> close() => _closing ??= _last.then((_) {
-    try {
-      _wallet.dispose();
-    } finally {
-      _defaultTransport?.close();
-    }
-  });
+  Future<void> close() => _closing ??= () {
+    // Requests in flight fail now instead of holding up the lock.
+    _defaultTransport?.close();
+    return _last.then((_) => _wallet.dispose());
+  }();
 
   /// The transaction [prepared] built, unless the wallet was closed while it
   /// was being built.
@@ -566,9 +565,15 @@ class ZolanaWallet {
   }
 
   Future<T> _serial<T>(Future<T> Function() operation) {
-    final result = _last.then((_) {
+    final result = _last.then((_) async {
       _ensureOpen();
-      return _native(operation);
+      try {
+        return await _native(operation);
+      } catch (_) {
+        // A step that failed because close() aborted it reports the close.
+        _ensureOpen();
+        rethrow;
+      }
     });
     _last = result.then((_) {}, onError: (_) {});
     return result;
