@@ -24,6 +24,8 @@ Unreleased.
   chain's verdict, so a transaction that landed is not reported as failed.
   A spend of a note the chain already spent fails with
   `WalletError.notesAlreadySpent`.
+* `close()` aborts the default transport's requests in flight instead of
+  waiting for them; the step they held fails with `WalletError.walletClosed`.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
 * Prepared spends reserve their notes, so the next spend selects others;

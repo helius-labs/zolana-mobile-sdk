@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -98,6 +99,10 @@ class FakeWallet implements MobileWallet {
   final confirmed = <(PendingTransaction, String)>[];
   final events = <String>[];
   Completer<void>? holdBalances;
+
+  /// What balances() fails with once it is let go, as a native read whose
+  /// request failed does.
+  WalletError? balancesError;
   Completer<void>? holdTransfer;
   Completer<void>? holdRegistration;
   Object? transferError;
@@ -148,6 +153,8 @@ class FakeWallet implements MobileWallet {
     events.add('balances start');
     await holdBalances?.future;
     events.add('balances end');
+    final error = balancesError;
+    if (error != null) throw error;
     return const [];
   }
 
@@ -537,6 +544,40 @@ void main() {
       ),
     );
     expect(outcome.failure!.message, contains('closed'));
+  });
+
+  test('close aborts a request in flight instead of waiting for it', () async {
+    // A server that takes the request and never answers.
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((_) {});
+    final (wallet, native, _, backend) = await openWallet();
+    // The running native step waits for its request, as an indexer read does.
+    final request = backend.transport!(
+      TransportRequest(
+        method: 'POST',
+        url: 'http://127.0.0.1:${server.port}/v1/zolana',
+        headers: const {},
+        body: Uint8List(0),
+      ),
+    );
+    native
+      ..holdBalances = Completer()
+      ..balancesError = const WalletError.client(
+        message: 'transport failed: connection closed',
+      );
+    unawaited(request.whenComplete(native.holdBalances!.complete));
+    final running = wallet.balances();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final clock = Stopwatch()..start();
+    await wallet.close();
+    expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
+    expect((await request).failure, isNotNull);
+    await expectLater(
+      running,
+      throwsWalletError(const WalletError.walletClosed()),
+    );
   });
 
   test('close releases the default transport when dispose fails', () async {
