@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -14,7 +15,9 @@ import 'rust/third_party/zolana_mobile.dart'
 /// takes longer; one without fails when the response, or the next part of its
 /// body, takes longer than [stall] (a proving key is several MB, so its
 /// download is bounded by progress, not in all). It stops reading a body past
-/// [TransportRequest.maxResponseBytes]. A body that fails after the status
+/// [TransportRequest.maxResponseBytes]. A request with
+/// [TransportRequest.downloadPath], a proving key, has its body written to
+/// that file as it arrives, never held in memory. A body that fails after the status
 /// arrived, its deadline included, is a [TransportResponseLost]: the SDK
 /// gives up at its own deadline and would otherwise send a proof request
 /// again.
@@ -53,18 +56,30 @@ class HttpTransport {
       unawaited(response.stream.listen(null).cancel());
       throw _TooLarge(limit);
     }
+    final downloadPath = request.downloadPath;
+    final file = downloadPath == null ? null : File(downloadPath).openWrite();
     final body = BytesBuilder(copy: false);
+    var received = 0;
     final chunks = StreamIterator(response.stream);
     try {
       while (await chunks.moveNext().timeout(wait())) {
-        body.add(chunks.current);
-        if (limit != null && body.length > limit) throw _TooLarge(limit);
+        final chunk = chunks.current;
+        received += chunk.length;
+        if (limit != null && received > limit) throw _TooLarge(limit);
+        if (file == null) {
+          body.add(chunk);
+        } else {
+          file.add(chunk);
+        }
       }
+      await file?.close();
     } on _TooLarge {
       unawaited(chunks.cancel());
+      await file?.close();
       rethrow;
     } catch (error) {
       unawaited(chunks.cancel());
+      await file?.close().catchError((_) {});
       throw TransportResponseLost(response.statusCode, error);
     }
     return TransportResponse(

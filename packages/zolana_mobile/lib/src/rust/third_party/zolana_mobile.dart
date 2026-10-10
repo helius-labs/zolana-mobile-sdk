@@ -516,6 +516,13 @@ class TransportRequest {
   /// transport's own applies.
   final int? timeoutMs;
 
+  /// For a proving-key download: the file to write the body to, chunk by
+  /// chunk, so a key of hundreds of MB never sits in memory. The response
+  /// then carries no body. The wallet checks the file and removes it when
+  /// it is wrong. A transport that returns the body instead still works,
+  /// holding the key in memory.
+  final String? downloadPath;
+
   const TransportRequest({
     required this.method,
     required this.url,
@@ -523,6 +530,7 @@ class TransportRequest {
     required this.body,
     this.maxResponseBytes,
     this.timeoutMs,
+    this.downloadPath,
   });
 
   @override
@@ -532,7 +540,8 @@ class TransportRequest {
       headers.hashCode ^
       body.hashCode ^
       maxResponseBytes.hashCode ^
-      timeoutMs.hashCode;
+      timeoutMs.hashCode ^
+      downloadPath.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -544,7 +553,8 @@ class TransportRequest {
           headers == other.headers &&
           body == other.body &&
           maxResponseBytes == other.maxResponseBytes &&
-          timeoutMs == other.timeoutMs;
+          timeoutMs == other.timeoutMs &&
+          downloadPath == other.downloadPath;
 }
 
 /// The server's response, whatever its status.

@@ -138,13 +138,25 @@ fn send(
     if let Some(timeout) = request.timeout_ms {
         outgoing = outgoing.timeout(Duration::from_millis(timeout.into()));
     }
-    let response = outgoing.send().map_err(|error| failed(error, None))?;
+    let mut response = outgoing.send().map_err(|error| failed(error, None))?;
     let status = response.status().as_u16();
     let headers = response
         .headers()
         .iter()
         .filter_map(|(name, value)| Some((name.to_string(), value.to_str().ok()?.to_string())))
         .collect();
+    // A proving key goes to the file the wallet names, never into memory.
+    if let Some(path) = request.download_path {
+        let mut file = std::fs::File::create(path).expect("key file");
+        response
+            .copy_to(&mut file)
+            .map_err(|error| failed(error, Some(status)))?;
+        return Ok(TransportResponse {
+            status,
+            headers,
+            body: Vec::new(),
+        });
+    }
     Ok(TransportResponse {
         status,
         headers,

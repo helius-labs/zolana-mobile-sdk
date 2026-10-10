@@ -97,44 +97,50 @@ impl KeyStore {
         Ok(path)
     }
 
+    /// Download key `name` next to `path`, check it against `entry` as it
+    /// lies on disk, and move it into place. The transport writes the body to
+    /// the file itself, so the key is never held in memory.
     fn download(&self, name: &str, entry: &LockEntry, path: &Path) -> Result<(), WalletError> {
         let url = format!("{}/{}/{name}", self.base_url, lockfile().prefix);
-        let body = self
-            .fetch(url, entry.size)
-            .ok_or_else(|| WalletError::ProvingKeyDownloadFailed { name: name.into() })?;
         let partial = path.with_extension("key.partial");
         let result = (|| {
-            let mut file = File::create(&partial).map_err(|_| store_failed(path))?;
-            let digest = copy_bounded(&mut body.as_slice(), &mut file, entry.size, name, path)?;
-            file.sync_all().map_err(|_| store_failed(path))?;
+            let _ = fs::remove_file(&partial);
+            let failed = || WalletError::ProvingKeyDownloadFailed { name: name.into() };
+            let response = self
+                .transport
+                .send_blocking(TransportRequest {
+                    method: "GET".to_string(),
+                    url,
+                    headers: HashMap::new(),
+                    body: Vec::new(),
+                    max_response_bytes: u32::try_from(entry.size).ok(),
+                    timeout_ms: None,
+                    download_path: Some(partial.display().to_string()),
+                })
+                .map_err(|_| failed())?;
+            if !(200..300).contains(&response.status) {
+                return Err(failed());
+            }
+            // A transport that returned the body instead of writing the file.
+            if !response.body.is_empty() || !partial.exists() {
+                let mut file = File::create(&partial).map_err(|_| store_failed(path))?;
+                file.write_all(&response.body)
+                    .map_err(|_| store_failed(path))?;
+            }
+            let mut file = File::open(&partial).map_err(|_| store_failed(path))?;
+            let digest = copy_bounded(&mut file, &mut std::io::sink(), entry.size, name, path)?;
             if digest != entry.sha256 {
                 return Err(WalletError::ProvingKeyCorrupt { name: name.into() });
             }
+            File::open(&partial)
+                .and_then(|file| file.sync_all())
+                .map_err(|_| store_failed(path))?;
             fs::rename(&partial, path).map_err(|_| store_failed(path))
         })();
         if result.is_err() {
             let _ = fs::remove_file(&partial);
         }
         result
-    }
-
-    /// The body of `url`, whole: it is checked before it is written. The
-    /// transport is asked to stop past `size` bytes.
-    fn fetch(&self, url: String, size: u64) -> Option<Vec<u8>> {
-        let response = self
-            .transport
-            .send_blocking(TransportRequest {
-                method: "GET".to_string(),
-                url,
-                headers: HashMap::new(),
-                body: Vec::new(),
-                max_response_bytes: u32::try_from(size).ok(),
-                timeout_ms: None,
-            })
-            .ok()?;
-        (200..300)
-            .contains(&response.status)
-            .then_some(response.body)
     }
 }
 
@@ -285,6 +291,38 @@ mod tests {
         );
         assert!(request.headers.is_empty() && request.body.is_empty());
         assert_eq!(request.max_response_bytes, Some(3));
+        let partial = path.with_extension("key.partial");
+        assert_eq!(request.download_path, Some(partial.display().to_string()));
+
+        // A transport that writes the file itself returns no body.
+        fs::remove_file(&path).unwrap();
+        let streaming = |body: &'static [u8]| {
+            fake(move |request| {
+                fs::write(request.download_path.as_ref().unwrap(), body).unwrap();
+                Ok(crate::TransportResponse {
+                    status: 200,
+                    headers: Default::default(),
+                    body: Vec::new(),
+                })
+            })
+            .0
+        };
+        store(streaming(b"abc"))
+            .download("k.key", &entry, &path)
+            .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"abc");
+        assert!(!partial.exists());
+        fs::remove_file(&path).unwrap();
+        assert_eq!(
+            store(streaming(b"abd"))
+                .download("k.key", &entry, &path)
+                .unwrap_err(),
+            WalletError::ProvingKeyCorrupt {
+                name: "k.key".into()
+            }
+        );
+        assert!(!path.exists() && !partial.exists());
+        fs::write(&path, b"abc").unwrap();
 
         fs::remove_file(&path).unwrap();
         let (missing, _) = fake(|_| {
