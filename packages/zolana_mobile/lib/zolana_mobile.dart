@@ -11,6 +11,7 @@ export 'src/rust/third_party/zolana_mobile.dart'
     hide
         MobileWallet,
         PendingTransaction,
+        ProvingKeys,
         Transport,
         TransportFailure,
         TransportOutcome,

@@ -66,7 +66,7 @@ use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
     error::{rejected_by_chain, WalletError},
-    keys::KeyStore,
+    keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
 };
@@ -258,6 +258,7 @@ pub struct MobileWallet {
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
     native_prover: NativeProver,
+    proving_keys: Arc<KeyStore>,
     /// The SDK's prover client of [`WalletConfig::prover_url`].
     remote_prover: Option<Arc<ProverClient>>,
     /// Proves nothing itself: each spend names its prover.
@@ -335,12 +336,12 @@ impl MobileWallet {
         let keys =
             LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())?;
         let assets = Assets::new(config.mints)?;
-        let proving_keys = KeyStore::new(
+        let proving_keys = Arc::new(KeyStore::new(
             config.proving_key_dir,
             config.proving_key_url,
             transport.clone(),
-        );
-        let native_prover = NativeProver::new(proving_keys);
+        ));
+        let native_prover = NativeProver::new(Arc::clone(&proving_keys));
         // With its own prover, the client fetches every Merkle proof from the
         // indexer itself: the wallet's provers prove only complete witnesses.
         let client = ZolanaClient::with_prover(
@@ -358,9 +359,18 @@ impl MobileWallet {
             reservations: Mutex::default(),
             proving: config.proving.unwrap_or(Proving::Local),
             native_prover,
+            proving_keys,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
             client,
         })
+    }
+
+    /// The proving keys this wallet proves with on the device. Their calls
+    /// run beside the wallet's own and outlive it.
+    pub fn proving_keys(&self) -> ProvingKeys {
+        ProvingKeys {
+            store: Arc::clone(&self.proving_keys),
+        }
     }
 
     pub fn shielded_address(&self) -> String {

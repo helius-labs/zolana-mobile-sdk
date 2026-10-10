@@ -177,12 +177,14 @@ class ZolanaWallet {
     this.solanaPublicKey,
     this._signer,
     this._wallet,
+    this._keys,
     this.shieldedAddress,
     this._defaultTransport,
   );
 
   final SolanaSigner? _signer;
   final native.MobileWallet _wallet;
+  final native.ProvingKeys _keys;
 
   /// The package's transport, when the application passed none; closed with
   /// the wallet.
@@ -283,6 +285,7 @@ class ZolanaWallet {
         solanaPublicKey,
         signer,
         wallet,
+        await wallet.provingKeys(),
         await wallet.shieldedAddress(),
         http,
       );
@@ -563,8 +566,78 @@ class ZolanaWallet {
   Future<void> close() => _closing ??= () {
     // Requests in flight fail now instead of holding up the lock.
     _defaultTransport?.close();
-    return _last.then((_) => _wallet.dispose());
+    return _last.then((_) {
+      _wallet.dispose();
+      _keys.dispose();
+    });
   }();
+
+  /// The proving keys this wallet proves with on the device, smallest
+  /// first, with how much of each is downloaded. Reads only file sizes.
+  Future<List<native.ProvingKeyStatus>> provingKeys() {
+    _ensureOpen();
+    return _native(_keys.status);
+  }
+
+  /// Download ahead of time the proving keys of spends of up to [maxInputs]
+  /// notes with [outputs] outputs, and of merges of up to [maxMergeInputs]
+  /// notes, so the first proof of each shape does not wait for its key. A
+  /// transfer or withdrawal has two outputs.
+  ///
+  /// The download starts when the stream is listened to and reports each
+  /// part of a few MB; keys already on the device are skipped. Cancelling the
+  /// subscription stops it after the part in flight, and so does [close]:
+  /// what was downloaded stays, and the next download of that key resumes
+  /// from it. It runs beside the wallet's other calls, and a proof that needs
+  /// a key it is downloading waits for it. A failure, such as
+  /// [WalletError.provingKeyDownloadFailed], ends the stream with a
+  /// [ZolanaWalletException].
+  Stream<native.ProvingKeyProgress> prefetchProvingKeys({
+    required int maxInputs,
+    List<int> outputs = const [2],
+    int maxMergeInputs = 0,
+  }) {
+    var stopped = false;
+    late final StreamController<native.ProvingKeyProgress> updates;
+    updates = StreamController(
+      onListen: () async {
+        try {
+          _ensureOpen();
+          final names = await _native(
+            () => _keys.needed(
+              maxInputs: maxInputs,
+              outputs: outputs,
+              maxMergeInputs: maxMergeInputs,
+            ),
+          );
+          final done = await _native(
+            () => _keys.prefetch(
+              names: names,
+              progress: (update) {
+                if (stopped || isClosed) return false;
+                updates.add(update);
+                return true;
+              },
+            ),
+          );
+          if (!done && !stopped) _ensureOpen();
+        } catch (error, stack) {
+          if (!stopped) updates.addError(error, stack);
+        }
+        await updates.close();
+      },
+      onCancel: () => stopped = true,
+    );
+    return updates.stream;
+  }
+
+  /// Remove the downloaded proving keys and partial downloads from the
+  /// device. A prefetch or proof downloading a key finishes its part first;
+  /// the next proof downloads its key again.
+  Future<void> clearProvingKeys() {
+    _ensureOpen();
+    return _native(_keys.clear);
+  }
 
   /// The transaction [prepared] built, unless the wallet was closed while it
   /// was being built.

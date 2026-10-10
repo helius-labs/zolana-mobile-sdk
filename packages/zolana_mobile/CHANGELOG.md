@@ -32,9 +32,17 @@ Unreleased.
 * Balances, activity and every spend wait for the indexer to reach the RPC's
   confirmed slot, and fail with `WalletError.indexerBehind` when it does not
   within about ten seconds.
-* Proving keys download straight to disk: a key download carries
-  `TransportRequest.downloadPath`, the default and example transports write
-  the body there as it arrives, and the wallet checks the file from disk.
+* Proving keys download in ranged parts of 8 MB, each written to
+  `TransportRequest.downloadPath` as it arrives, so a key never sits in
+  memory and an interrupted download resumes where it stopped. One key
+  downloads once however many calls need it. A checked key is recorded beside
+  it and not hashed again until its file changes. The keys of one lockfile
+  live in a directory of their own under `provingKeyDir`; opening a wallet
+  removes those of other lockfiles.
+* `prefetchProvingKeys(maxInputs, outputs, maxMergeInputs)` downloads the
+  keys of those spends and merges ahead of time with a progress stream, and
+  stops when its subscription is cancelled; `provingKeys()` lists the keys
+  and how much of each is on the device; `clearProvingKeys()` removes them.
 * `close()` aborts the default transport's requests in flight instead of
   waiting for them; the step they held fails with `WalletError.walletClosed`.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
@@ -69,9 +77,8 @@ Unreleased.
   `TransportResponseLost` when a body fails after its status arrived, so a
   proof request is not sent twice.
 * Proving keys download on first use, pinned by the Zolana proving-key
-  lockfile. With the default transport, a download that receives no data for
-  30 s fails with `WalletError.provingKeyDownloadFailed`, and the next call downloads
-  the key again.
+  lockfile. With the default transport, a part that receives no data for
+  30 s fails with `WalletError.provingKeyDownloadFailed`.
 * Errors are `ZolanaWalletException`s whose `error` is a `WalletError` with
   the data of what happened: amounts, accounts, mints. They carry no key
   material, and `api-key` values in them are masked.

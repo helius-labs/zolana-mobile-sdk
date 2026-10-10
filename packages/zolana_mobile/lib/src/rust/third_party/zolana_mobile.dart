@@ -193,6 +193,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// the indexer now.
   Future<BigInt> privateBalance({String? mint});
 
+  /// The proving keys this wallet proves with on the device. Their calls
+  /// run beside the wallet's own and outlive it.
+  Future<ProvingKeys> provingKeys();
+
   /// `pending` with a new blockhash and the same proof, for an approval that
   /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
   /// over the old message do not apply to the new one.
@@ -262,6 +266,36 @@ abstract class PendingTransaction implements RustOpaqueInterface {
 
   /// Base58 public keys that must sign, in signature order.
   Future<List<String>> signers();
+}
+
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ProvingKeys>>
+abstract class ProvingKeys implements RustOpaqueInterface {
+  /// Remove the keys and partial downloads from the device. A prefetch or
+  /// proof that is downloading a key finishes its part first.
+  Future<void> clear();
+
+  /// The keys spends of up to `max_inputs` notes with `outputs` outputs,
+  /// and merges of up to `max_merge_inputs` notes, prove with, smallest
+  /// first. A transfer has two outputs, the payment and the change; a
+  /// withdrawal pads its change to two.
+  Future<List<String>> needed({
+    required int maxInputs,
+    required List<int> outputs,
+    required int maxMergeInputs,
+  });
+
+  /// Download `names` (see [`Self::needed`]) that are not on the device,
+  /// each checked against the lockfile. `progress` hears of every part, and
+  /// stops the prefetch by answering `false`; what it downloaded stays, and
+  /// the next download of that key resumes from it. Returns whether every
+  /// key is on the device.
+  Future<bool> prefetch({
+    required List<String> names,
+    required FutureOr<bool> Function(ProvingKeyProgress) progress,
+  });
+
+  /// Every key the wallet can prove with on the device, smallest first.
+  Future<List<ProvingKeyStatus>> status();
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Transport>>
@@ -455,6 +489,86 @@ enum Proving {
   remote,
 }
 
+/// Where a [`ProvingKeys::prefetch`] is.
+class ProvingKeyProgress {
+  /// The key downloading now.
+  final String name;
+  final BigInt keyDownloaded;
+  final BigInt keySize;
+
+  /// Keys complete so far, of `keys_total` that were not on the device
+  /// when the prefetch started.
+  final int keysDone;
+  final int keysTotal;
+
+  /// Bytes on the device of those keys, of `total`.
+  final BigInt downloaded;
+  final BigInt total;
+
+  const ProvingKeyProgress({
+    required this.name,
+    required this.keyDownloaded,
+    required this.keySize,
+    required this.keysDone,
+    required this.keysTotal,
+    required this.downloaded,
+    required this.total,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      keyDownloaded.hashCode ^
+      keySize.hashCode ^
+      keysDone.hashCode ^
+      keysTotal.hashCode ^
+      downloaded.hashCode ^
+      total.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProvingKeyProgress &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          keyDownloaded == other.keyDownloaded &&
+          keySize == other.keySize &&
+          keysDone == other.keysDone &&
+          keysTotal == other.keysTotal &&
+          downloaded == other.downloaded &&
+          total == other.total;
+}
+
+/// A proving key of the wallet and how much of it is on the device.
+class ProvingKeyStatus {
+  final String name;
+
+  /// The key's size in the lockfile.
+  final BigInt size;
+
+  /// Bytes on the device: `size` once it downloaded, what an interrupted
+  /// download left otherwise.
+  final BigInt downloaded;
+
+  const ProvingKeyStatus({
+    required this.name,
+    required this.size,
+    required this.downloaded,
+  });
+
+  @override
+  int get hashCode => name.hashCode ^ size.hashCode ^ downloaded.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProvingKeyStatus &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          size == other.size &&
+          downloaded == other.downloaded;
+}
+
 /// Whether the user registry publishes this wallet's shielded address.
 enum RegistrationStatus {
   /// No record: others cannot pay this account privately yet.
@@ -539,8 +653,8 @@ class TransportRequest {
   final String method;
   final String url;
 
-  /// The content type of a `POST`, and `x-sync` or `x-async` on a proof
-  /// request; nothing else.
+  /// The content type of a `POST`, `x-sync` or `x-async` on a proof
+  /// request, and `range` on a proving-key download; nothing else.
   final Map<String, String> headers;
 
   /// Empty for a `GET`. A proof request's body is the transaction's
@@ -548,8 +662,8 @@ class TransportRequest {
   final Uint8List body;
 
   /// The most bytes the response body may hold, for a proving-key download
-  /// (the key's size in the lockfile). A transport stops reading and fails
-  /// past it; the wallet refuses a longer body either way.
+  /// (the size of the part it asks for). A transport stops reading and
+  /// fails past it; the wallet refuses a longer body either way.
   final int? maxResponseBytes;
 
   /// The caller's bound on the request, in milliseconds, when it has one
@@ -557,11 +671,11 @@ class TransportRequest {
   /// transport's own applies.
   final int? timeoutMs;
 
-  /// For a proving-key download: the file to write the body to, chunk by
-  /// chunk, so a key of hundreds of MB never sits in memory. The response
-  /// then carries no body. The wallet checks the file and removes it when
-  /// it is wrong. A transport that returns the body instead still works,
-  /// holding the key in memory.
+  /// For a proving-key download: the file to write the body, a part of the
+  /// key, to as it arrives. The response then carries no body. The wallet
+  /// appends the part to the key and checks the key once it is complete. A
+  /// transport that returns the body instead still works, holding the part
+  /// in memory.
   final String? downloadPath;
 
   const TransportRequest({

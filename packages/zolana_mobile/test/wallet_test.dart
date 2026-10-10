@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:zolana_mobile/src/http_transport.dart';
 import 'package:zolana_mobile/src/rust/third_party/zolana_mobile.dart'
-    show MobileWallet, PendingTransaction, TransportOutcome;
+    show MobileWallet, PendingTransaction, ProvingKeys, TransportOutcome;
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 const owner = 'Owner1111111111111111111111111111111111111';
@@ -255,6 +255,75 @@ class FakeWallet implements MobileWallet {
     disposed = true;
     if (disposeError case final error?) throw error;
   }
+
+  @override
+  bool get isDisposed => disposed;
+
+  final keys = FakeProvingKeys();
+
+  @override
+  Future<ProvingKeys> provingKeys() async => keys;
+}
+
+/// Downloads three parts of one key, each once the test lets it go.
+class FakeProvingKeys implements ProvingKeys {
+  final asked = <(int, List<int>, int)>[];
+
+  /// What each `progress` call answered.
+  final answers = <bool>[];
+  Completer<void>? holdPart;
+  WalletError? prefetchError;
+  bool disposed = false;
+
+  static ProvingKeyProgress part(int part) => ProvingKeyProgress(
+    name: 'transfer_confidential_1_2.key',
+    keyDownloaded: BigInt.from(part * 10),
+    keySize: BigInt.from(30),
+    keysDone: part == 3 ? 1 : 0,
+    keysTotal: 1,
+    downloaded: BigInt.from(part * 10),
+    total: BigInt.from(30),
+  );
+
+  @override
+  Future<List<String>> needed({
+    required int maxInputs,
+    required List<int> outputs,
+    required int maxMergeInputs,
+  }) async {
+    asked.add((maxInputs, outputs, maxMergeInputs));
+    return ['transfer_confidential_1_2.key'];
+  }
+
+  @override
+  Future<bool> prefetch({
+    required List<String> names,
+    required FutureOr<bool> Function(ProvingKeyProgress) progress,
+  }) async {
+    if (prefetchError case final error?) throw error;
+    for (var index = 0; index <= 3; index++) {
+      await holdPart?.future;
+      final answer = await progress(part(index));
+      answers.add(answer);
+      if (!answer) return false;
+    }
+    return true;
+  }
+
+  @override
+  Future<List<ProvingKeyStatus>> status() async => [
+    ProvingKeyStatus(
+      name: 'transfer_confidential_1_2.key',
+      size: BigInt.from(30),
+      downloaded: BigInt.from(10),
+    ),
+  ];
+
+  @override
+  Future<void> clear() async {}
+
+  @override
+  void dispose() => disposed = true;
 
   @override
   bool get isDisposed => disposed;
@@ -1219,6 +1288,90 @@ void main() {
       throwsWalletError(const WalletError.walletClosed()),
     );
     expect(identical(wallet.close(), closed), isTrue);
+  });
+
+  test(
+    'prefetches the keys of the shapes it is asked for, beside a spend',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+      native.keys.holdPart = Completer();
+      final updates = <BigInt>[];
+      final done = wallet
+          .prefetchProvingKeys(maxInputs: 4, maxMergeInputs: 24)
+          .listen((update) => updates.add(update.downloaded))
+          .asFuture<void>();
+      await Future<void>.delayed(Duration.zero);
+      expect(native.keys.asked, [
+        (4, const [2], 24),
+      ]);
+
+      // The prefetch holds no place in the wallet's queue.
+      expect(await wallet.balances(), isEmpty);
+      native.keys.holdPart!.complete();
+      await done;
+      expect(updates, [0, 10, 20, 30].map(BigInt.from));
+      expect(native.keys.answers, [true, true, true, true]);
+      expect(await wallet.provingKeys(), hasLength(1));
+    },
+  );
+
+  test('a cancelled prefetch stops after the part in flight', () async {
+    final (wallet, native, _, _) = await openWallet();
+    native.keys.holdPart = Completer();
+    final subscription = wallet
+        .prefetchProvingKeys(maxInputs: 1)
+        .listen((_) {});
+    await Future<void>.delayed(Duration.zero);
+    await subscription.cancel();
+    native.keys.holdPart!.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(native.keys.answers, [false]);
+  });
+
+  test('close stops a prefetch and releases the proving keys', () async {
+    final (wallet, native, _, _) = await openWallet();
+    native.keys.holdPart = Completer();
+    final errors = <Object>[];
+    final done = wallet
+        .prefetchProvingKeys(maxInputs: 1)
+        .handleError(errors.add)
+        .drain<void>();
+    await Future<void>.delayed(Duration.zero);
+    await wallet.close();
+    expect(native.keys.disposed, isTrue);
+    native.keys.holdPart!.complete();
+    await done;
+    expect(native.keys.answers, [false]);
+    expect(errors, [
+      isA<ZolanaWalletException>().having(
+        (e) => e.error,
+        'error',
+        const WalletError.walletClosed(),
+      ),
+    ]);
+    expect(
+      () => wallet.prefetchProvingKeys(maxInputs: 1).drain<void>(),
+      throwsWalletError(const WalletError.walletClosed()),
+    );
+  });
+
+  test('a failed prefetch ends its stream with the error', () async {
+    final (wallet, native, _, _) = await openWallet();
+    native.keys.prefetchError = const WalletError.provingKeyDownloadFailed(
+      name: 'transfer_confidential_1_2.key',
+    );
+    await expectLater(
+      wallet.prefetchProvingKeys(maxInputs: 1),
+      emitsError(
+        isA<ZolanaWalletException>().having(
+          (e) => e.error,
+          'error',
+          const WalletError.provingKeyDownloadFailed(
+            name: 'transfer_confidential_1_2.key',
+          ),
+        ),
+      ),
+    );
   });
 
   test('runs operations one at a time and survives a failure', () async {

@@ -17,7 +17,7 @@ mod wallet;
 pub use activity::{ActivityEntry, ActivityKind};
 pub use asset::MintConfig;
 pub use error::WalletError;
-pub use keys::DEFAULT_PROVING_KEYS_URL;
+pub use keys::{ProvingKeyProgress, ProvingKeyStatus, ProvingKeys, DEFAULT_PROVING_KEYS_URL};
 pub use prover::Proving;
 pub use transport::{
     Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
