@@ -87,7 +87,7 @@ final wallet = await ZolanaWallet.open(
     rpcUrl: rpcUrl,
     indexerUrl: indexerUrl,
     provingKeyDir: '${(await getApplicationSupportDirectory()).path}/keys',
-    mints: const [],                  // SPL mints balances() lists
+    mints: const [],                  // SPL mints the wallet holds, see Tokens
   ),
 );
 await wallet.register();               // once, so others can pay this wallet
@@ -104,11 +104,27 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   data for 30 s fails with `WalletError.provingKeyDownloadFailed`, and the
   next call downloads the key again; an application's transport applies its
   own timeout.
-- **Tokens**: pass `mint` (base58) for an SPL Token or Token-2022 asset; no
-  `mint` is SOL. Amounts are in base units. A mint works once the shielded pool
-  has registered it, otherwise calls fail with `WalletError.assetNotSupported`.
-  `balances()` lists the private balance of SOL and of each mint in
-  `WalletConfig.mints` or named in a call; notes in other mints are left out.
+- **Tokens**: list each SPL Token or Token-2022 mint the wallet holds in
+  `WalletConfig.mints`, with the token program that owns it, as your Solana
+  SDK reads it:
+
+  ```dart
+  mints: [
+    MintConfig(
+      mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      tokenProgram: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
+    ),
+  ],
+  ```
+
+  The wallet reads only the asset id the shielded pool registered for each.
+  Then pass `mint` (base58) to a call; no `mint` is SOL. Amounts are in base
+  units. A mint that is not in the config fails with
+  `WalletError.mintNotConfigured`, one the pool has not registered with
+  `WalletError.assetNotSupported`, and a token program that is neither SPL
+  Token nor Token-2022 fails `open` with `WalletError.invalidTokenProgram`.
+  `balances()` lists the private balance of SOL and of each configured mint;
+  notes in other mints are left out.
   A token withdrawal goes to the recipient's associated token account: when it
   fails with `WalletError.recipientTokenAccountMissing`, `prepareTokenAccount`
   creates the account.
@@ -167,8 +183,9 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient has no associated token account for the mint |
 | `registrationConflict` | `owner` | the registry holds other keys for this account |
 | `assetNotSupported` | `mint` | the shielded pool has not registered the mint |
-| `mintNotFound` | `mint` | no account exists at the mint |
-| `invalidMint` | `mint` | not a base58 key, or not an SPL Token or Token-2022 mint |
+| `mintNotConfigured` | `mint` | the mint is not in `WalletConfig.mints` |
+| `invalidMint` | `mint` | not a base58 key |
+| `invalidTokenProgram` | `mint`, `tokenProgram` | the configured token program is neither SPL Token nor Token-2022 |
 | `invalidPubkey` | `value` | not a base58 public key |
 | `invalidTokenAccount` | `account` | the account's data is not a token account's |
 | `invalidDerivationSignature` | | the signature is not the account's over the derivation message |

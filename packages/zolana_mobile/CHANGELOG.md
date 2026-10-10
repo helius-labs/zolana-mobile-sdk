@@ -7,8 +7,9 @@ Unreleased.
   key stays with the application's `SolanaSigner`.
 * The wallet keeps no chain state: `balances()`, `privateBalance()`,
   `activity()` and every spend read the indexer when they run.
-  `WalletConfig.mints` lists the SPL mints `balances()` reports. A spend takes
-  the largest notes first, at most 40 from at most two trees, as the Zolana
+  `WalletConfig.mints` lists the SPL mints the wallet holds, each with its
+  token program; the wallet reads only their asset ids. A spend takes the
+  largest notes first, at most 40 from at most two trees, as the Zolana
   SDK selects them, and fails with `WalletError.mergeRequired` or
   `WalletError.tooManyInputTrees` beyond that and with
   `WalletError.amountZero` for a zero amount.

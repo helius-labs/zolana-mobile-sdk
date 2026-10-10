@@ -35,11 +35,14 @@ pub enum WalletError {
     RegistrationConflict { owner: String },
     /// The shielded pool has not registered `mint`.
     AssetNotSupported { mint: String },
-    /// No account exists at `mint`.
-    MintNotFound { mint: String },
-    /// `mint` is not a base58 key, or its account is not owned by SPL Token
-    /// or Token-2022.
+    /// `mint` is not in [`WalletConfig::mints`](crate::WalletConfig::mints),
+    /// so the wallet does not know its token program.
+    MintNotConfigured { mint: String },
+    /// `mint` is not a base58 key.
     InvalidMint { mint: String },
+    /// The configured `token_program` of `mint` is neither SPL Token nor
+    /// Token-2022.
+    InvalidTokenProgram { mint: String, token_program: String },
     /// `value` is not a base58 public key.
     InvalidPubkey { value: String },
     /// The data of `account` is not a token account's.

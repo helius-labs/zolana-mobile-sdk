@@ -57,7 +57,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<List<ActivityEntry>> activity();
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL, the configured mints and the mints named so far.
+  /// held in SOL and the configured mints.
   Future<List<TokenBalance>> balances();
 
   /// Wait for a transaction the application sent itself: until Solana
@@ -365,6 +365,26 @@ class LocalProofResult {
           totalMs == other.totalMs;
 }
 
+/// An SPL mint the wallet holds, and the token program that owns it: SPL
+/// Token or Token-2022. Both base58.
+class MintConfig {
+  final String mint;
+  final String tokenProgram;
+
+  const MintConfig({required this.mint, required this.tokenProgram});
+
+  @override
+  int get hashCode => mint.hashCode ^ tokenProgram.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MintConfig &&
+          runtimeType == other.runtimeType &&
+          mint == other.mint &&
+          tokenProgram == other.tokenProgram;
+}
+
 /// What a submitted transaction waits for.
 enum PendingTransactionKind {
   /// Publishes the wallet's shielded address so others can pay it.
@@ -558,11 +578,12 @@ class WalletConfig {
   /// [`MobileWallet::set_remote_prover`].
   final Proving? proving;
 
-  /// SPL mints [`MobileWallet::balances`] reports. SOL is always included,
-  /// and a mint named in any call is added for the rest of the session.
-  /// Notes in other mints are left out, as the Zolana SDK leaves out assets
-  /// its registry does not hold.
-  final List<String> mints;
+  /// The SPL mints the wallet holds, each with its token program. A call
+  /// that names another mint fails with [`WalletError::MintNotConfigured`].
+  /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
+  /// are left out, as the Zolana SDK leaves out assets its registry does
+  /// not hold.
+  final List<MintConfig> mints;
 
   const WalletConfig({
     required this.rpcUrl,
@@ -649,14 +670,21 @@ sealed class WalletError with _$WalletError implements FrbException {
   const factory WalletError.assetNotSupported({required String mint}) =
       WalletError_AssetNotSupported;
 
-  /// No account exists at `mint`.
-  const factory WalletError.mintNotFound({required String mint}) =
-      WalletError_MintNotFound;
+  /// `mint` is not in [`WalletConfig::mints`](crate::WalletConfig::mints),
+  /// so the wallet does not know its token program.
+  const factory WalletError.mintNotConfigured({required String mint}) =
+      WalletError_MintNotConfigured;
 
-  /// `mint` is not a base58 key, or its account is not owned by SPL Token
-  /// or Token-2022.
+  /// `mint` is not a base58 key.
   const factory WalletError.invalidMint({required String mint}) =
       WalletError_InvalidMint;
+
+  /// The configured `token_program` of `mint` is neither SPL Token nor
+  /// Token-2022.
+  const factory WalletError.invalidTokenProgram({
+    required String mint,
+    required String tokenProgram,
+  }) = WalletError_InvalidTokenProgram;
 
   /// `value` is not a base58 public key.
   const factory WalletError.invalidPubkey({required String value}) =

@@ -159,8 +159,9 @@ class PreparedTransaction {
 ///
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit for
 /// a token. `mint` is the base58 mint address, or `null` for SOL. A token
-/// works once the shielded pool has registered its mint; otherwise calls fail
-/// with [WalletError.assetNotSupported].
+/// works when `WalletConfig.mints` lists its mint, with its token program, and
+/// the shielded pool has registered it; otherwise calls fail with
+/// [WalletError.mintNotConfigured] or [WalletError.assetNotSupported].
 ///
 /// The wallet keeps no chain state: [balances], [privateBalance], [activity]
 /// and every spend read the wallet's notes from the indexer when they run.
@@ -321,8 +322,7 @@ class ZolanaWallet {
       _serial(_wallet.registrationStatus);
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL, the configured `WalletConfig.mints` and the mints named so
-  /// far.
+  /// held in SOL and the mints of `WalletConfig.mints`.
   Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
 
   /// Spendable private balance of [mint], read from the indexer now.
