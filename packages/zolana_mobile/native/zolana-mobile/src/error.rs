@@ -81,7 +81,8 @@ pub enum WalletError {
     /// The prepared circuit's shape is not one the wallet proves.
     UnsupportedCircuit,
     /// With the default transport, `open` refuses a plaintext Solana RPC URL
-    /// off loopback unless `allowInsecureHttp` is set.
+    /// off loopback unless `allowInsecureHttp` is set. `api-key` values in
+    /// `url` are masked.
     RpcUrlInsecure { url: String },
     /// As [`Self::RpcUrlInsecure`], for the indexer URL.
     IndexerUrlInsecure { url: String },

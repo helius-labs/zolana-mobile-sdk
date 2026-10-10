@@ -719,7 +719,8 @@ sealed class WalletError with _$WalletError implements FrbException {
       WalletError_UnsupportedCircuit;
 
   /// With the default transport, `open` refuses a plaintext Solana RPC URL
-  /// off loopback unless `allowInsecureHttp` is set.
+  /// off loopback unless `allowInsecureHttp` is set. `api-key` values in
+  /// `url` are masked.
   const factory WalletError.rpcUrlInsecure({required String url}) =
       WalletError_RpcUrlInsecure;
 

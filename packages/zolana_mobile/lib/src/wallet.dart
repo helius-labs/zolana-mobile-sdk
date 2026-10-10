@@ -632,10 +632,17 @@ void _refusePlaintext(native.WalletConfig config, bool allowInsecureHttp) {
     ),
   ]) {
     if (url != null && !isSecureUrl(url)) {
-      throw ZolanaWalletException(insecure(url));
+      throw ZolanaWalletException(insecure(_redactApiKeys(url)));
     }
   }
 }
+
+/// [text] with the value of every `api-key` parameter replaced by
+/// `redacted`, as the native wallet masks them in its errors.
+String _redactApiKeys(String text) => text.replaceAllMapped(
+  RegExp(r'(api-key=)[^&#)"\s]*'),
+  (match) => '${match[1]}redacted',
+);
 
 Future<T> _native<T>(Future<T> Function() operation) async {
   try {

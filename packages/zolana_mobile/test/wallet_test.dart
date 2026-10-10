@@ -415,15 +415,17 @@ void main() {
           mints: const [],
         );
     const plaintext = 'http://10.0.2.2:8899/?api-key=secret';
+    // The error names the URL without its key.
+    const reported = 'http://10.0.2.2:8899/?api-key=redacted';
     for (final (insecure, error) in [
-      (withUrls(rpc: plaintext), WalletError.rpcUrlInsecure(url: plaintext)),
+      (withUrls(rpc: plaintext), WalletError.rpcUrlInsecure(url: reported)),
       (
         withUrls(indexer: plaintext),
-        WalletError.indexerUrlInsecure(url: plaintext),
+        WalletError.indexerUrlInsecure(url: reported),
       ),
       (
         withUrls(keys: plaintext),
-        WalletError.provingKeyUrlInsecure(url: plaintext),
+        WalletError.provingKeyUrlInsecure(url: reported),
       ),
     ]) {
       final signer = RecordingSigner();
@@ -448,7 +450,7 @@ void main() {
         keys: savedKeys,
         backend: FakeBackend(FakeWallet()),
       ),
-      throwsWalletError(WalletError.indexerUrlInsecure(url: plaintext)),
+      throwsWalletError(WalletError.indexerUrlInsecure(url: reported)),
     );
     await open(
       withUrls(
