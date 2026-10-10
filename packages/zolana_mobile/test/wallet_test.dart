@@ -101,24 +101,18 @@ class FakeWallet implements MobileWallet {
   Completer<void>? holdTransfer;
   Completer<void>? holdRegistration;
   Object? transferError;
-  Object? remoteProverError;
+  Object? shieldedAddressError;
   Object? disposeError;
   bool disposed = false;
   List<String> transferSigners = const [owner];
   String? transferFeePayer;
   final proved = <Proving?>[];
-  FutureOr<Uint8List?> Function(Uint8List)? remoteProver;
 
   @override
-  Future<void> setRemoteProver({
-    required FutureOr<Uint8List?> Function(Uint8List) prove,
-  }) async {
-    if (remoteProverError case final error?) throw error;
-    remoteProver = prove;
+  Future<String> shieldedAddress() async {
+    if (shieldedAddressError case final error?) throw error;
+    return 'shielded';
   }
-
-  @override
-  Future<String> shieldedAddress() async => 'shielded';
 
   @override
   Future<WalletKeys> exportKeys() async => savedKeys;
@@ -241,6 +235,7 @@ class FakeBackend implements WalletBackend {
   FakeBackend(this.wallet);
 
   final FakeWallet wallet;
+  WalletConfig? config;
   Uint8List? openedWith;
   WalletKeys? openedWithKeys;
   NativeTransport? transport;
@@ -256,6 +251,7 @@ class FakeBackend implements WalletBackend {
     Uint8List derivationSignature,
     NativeTransport transport,
   ) async {
+    this.config = config;
     openedWith = derivationSignature;
     this.transport = transport;
     return wallet;
@@ -268,6 +264,7 @@ class FakeBackend implements WalletBackend {
     WalletKeys keys,
     NativeTransport transport,
   ) async {
+    this.config = config;
     openedWithKeys = keys;
     this.transport = transport;
     return wallet;
@@ -308,7 +305,11 @@ void main() {
     final requests = <TransportRequest>[];
     Future<TransportResponse> transport(TransportRequest request) async {
       requests.add(request);
-      return TransportResponse(status: 200, body: Uint8List.fromList([7]));
+      return TransportResponse(
+        status: 200,
+        headers: const {},
+        body: Uint8List.fromList([7]),
+      );
     }
 
     final request = TransportRequest(
@@ -362,8 +363,17 @@ void main() {
     final outcome = await failing(StateError('no network'));
     expect(outcome.response, isNull);
     // No stack trace: the message is all the wallet gets.
-    expect(outcome.failure, 'Bad state: no network');
-    expect((await failing(_Unprintable())).failure, 'transport error');
+    expect(outcome.failure!.message, 'Bad state: no network');
+    expect(outcome.failure!.status, isNull);
+    expect((await failing(_Unprintable())).failure!.message, 'transport error');
+
+    // The status arrived: the wallet does not send the request again.
+    final lost = await failing(
+      const TransportResponseLost(200, 'Connection reset by peer'),
+    );
+    expect(lost.response, isNull);
+    expect(lost.failure!.message, 'Connection reset by peer');
+    expect(lost.failure!.status, 200);
   });
 
   test(
@@ -384,7 +394,7 @@ void main() {
         ),
       );
       expect(outcome.response, isNull);
-      expect(outcome.failure, contains('closed'));
+      expect(outcome.failure!.message, contains('closed'));
     },
   );
 
@@ -406,14 +416,19 @@ void main() {
       return backend;
     }
 
-    WalletConfig withUrls({String? rpc, String? indexer, String? keys}) =>
-        WalletConfig(
-          rpcUrl: rpc ?? config.rpcUrl,
-          indexerUrl: indexer ?? config.indexerUrl,
-          provingKeyDir: config.provingKeyDir,
-          provingKeyUrl: keys,
-          mints: const [],
-        );
+    WalletConfig withUrls({
+      String? rpc,
+      String? indexer,
+      String? keys,
+      String? prover,
+    }) => WalletConfig(
+      rpcUrl: rpc ?? config.rpcUrl,
+      indexerUrl: indexer ?? config.indexerUrl,
+      provingKeyDir: config.provingKeyDir,
+      provingKeyUrl: keys,
+      proverUrl: prover,
+      mints: const [],
+    );
     const plaintext = 'http://10.0.2.2:8899/?api-key=secret';
     // The error names the URL without its key.
     const reported = 'http://10.0.2.2:8899/?api-key=redacted';
@@ -427,6 +442,10 @@ void main() {
         withUrls(keys: plaintext),
         WalletError.provingKeyUrlInsecure(url: reported),
       ),
+      (
+        withUrls(prover: plaintext),
+        WalletError.proverUrlInsecure(url: reported),
+      ),
     ]) {
       final signer = RecordingSigner();
       await expectLater(
@@ -439,8 +458,11 @@ void main() {
       // An application transport applies its own policy.
       await open(
         insecure,
-        transport: (_) async =>
-            TransportResponse(status: 200, body: Uint8List(0)),
+        transport: (_) async => TransportResponse(
+          status: 200,
+          headers: const {},
+          body: Uint8List(0),
+        ),
       );
     }
     await expectLater(
@@ -457,18 +479,50 @@ void main() {
         rpc: 'http://localhost:8899',
         indexer: 'http://127.0.0.1:8784/v1/zolana',
         keys: 'http://[::1]:9000',
+        prover: 'http://127.0.0.1:3001',
       ),
     );
   });
 
+  test(
+    'hands the prover URL and proving default to the native wallet',
+    () async {
+      const remote = WalletConfig(
+        rpcUrl: 'https://rpc.example',
+        indexerUrl: 'https://indexer.example',
+        provingKeyDir: '/keys',
+        proving: Proving.remote,
+        proverUrl: 'https://backend.example/zolana?api-key=secret',
+        mints: [],
+      );
+      final opened = FakeBackend(FakeWallet());
+      await ZolanaWallet.open(
+        config: remote,
+        signer: RecordingSigner(),
+        backend: opened,
+      );
+      final reopened = FakeBackend(FakeWallet());
+      await ZolanaWallet.openWithKeys(
+        config: remote,
+        solanaPublicKey: owner,
+        keys: savedKeys,
+        backend: reopened,
+      );
+      for (final backend in [opened, reopened]) {
+        expect(backend.config!.proverUrl, remote.proverUrl);
+        expect(backend.config!.proving, Proving.remote);
+      }
+      expect(config.proverUrl, isNull);
+    },
+  );
+
   test('a failed open releases the native wallet and its transport', () async {
-    final native = FakeWallet()..remoteProverError = StateError('bridge');
+    final native = FakeWallet()..shieldedAddressError = StateError('bridge');
     final backend = FakeBackend(native);
     await expectLater(
       ZolanaWallet.open(
         config: config,
         signer: RecordingSigner(),
-        remoteProver: (request) async => request,
         backend: backend,
       ),
       throwsStateError,
@@ -482,7 +536,7 @@ void main() {
         body: Uint8List(0),
       ),
     );
-    expect(outcome.failure, contains('closed'));
+    expect(outcome.failure!.message, contains('closed'));
   });
 
   test('close releases the default transport when dispose fails', () async {
@@ -497,7 +551,7 @@ void main() {
         body: Uint8List(0),
       ),
     );
-    expect(outcome.failure, contains('closed'));
+    expect(outcome.failure!.message, contains('closed'));
   });
 
   group('HttpTransport', () {
@@ -572,6 +626,60 @@ void main() {
       expect(chunks, hasLength(6));
     });
 
+    test(
+      'reports a body lost after the status, not a body too large',
+      () async {
+        TransportRequest get(int? max) => TransportRequest(
+          method: 'GET',
+          url: 'https://prover.example/prove/k/status',
+          headers: const {},
+          body: Uint8List(0),
+          maxResponseBytes: max,
+        );
+        Stream<List<int>> resetAfterTwoBytes() async* {
+          yield [1, 2];
+          throw http.ClientException('Connection reset');
+        }
+
+        final reset = HttpTransport(
+          client: MockClient.streaming(
+            (_, _) async => http.StreamedResponse(resetAfterTwoBytes(), 200),
+          ),
+        );
+        await expectLater(
+          reset.send(get(null)),
+          throwsA(
+            isA<TransportResponseLost>()
+                .having((e) => e.status, 'status', 200)
+                .having(
+                  (e) => '${e.cause}',
+                  'cause',
+                  contains('Connection reset'),
+                ),
+          ),
+        );
+        await expectLater(
+          reset.send(get(1)),
+          throwsA(isNot(isA<TransportResponseLost>())),
+        );
+      },
+    );
+
+    Stream<List<int>> slowly() async* {
+      for (final byte in [1, 2, 3]) {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        yield [byte];
+      }
+    }
+
+    TransportRequest within(int? timeoutMs) => TransportRequest(
+      method: 'POST',
+      url: 'https://prover.example/prove/k',
+      headers: const {},
+      body: Uint8List(0),
+      timeoutMs: timeoutMs,
+    );
+
     test('bounds a request by its timeoutMs', () async {
       final slow = HttpTransport(
         client: MockClient((_) async {
@@ -579,62 +687,71 @@ void main() {
           return http.Response('', 200);
         }),
       );
-      TransportRequest after(int timeoutMs) => TransportRequest(
-        method: 'POST',
-        url: 'https://prover.example/prove',
-        headers: const {},
-        body: Uint8List(0),
-        timeoutMs: timeoutMs,
-      );
-      await expectLater(slow.send(after(20)), throwsA(isA<TimeoutException>()));
-      expect((await slow.send(after(2000))).status, 200);
-    });
-
-    // A proving-key download takes the same bound, 30 s without timeoutMs.
-    test('fails a body that stalls, not one that keeps moving', () async {
-      TransportRequest key(int timeoutMs) => TransportRequest(
-        method: 'GET',
-        url: 'https://keys.example/k.key',
-        headers: const {},
-        body: Uint8List(0),
-        timeoutMs: timeoutMs,
-      );
-      final stalled = HttpTransport(
-        client: MockClient.streaming(
-          (_, _) async => http.StreamedResponse(
-            // One byte, then nothing: the body never ends.
-            (StreamController<List<int>>()..add([1])).stream,
-            200,
-            contentLength: 3,
-          ),
-        ),
-      );
-      final started = DateTime.now();
       await expectLater(
-        stalled.send(key(100)),
+        slow.send(within(20)),
         throwsA(isA<TimeoutException>()),
       );
-      expect(DateTime.now().difference(started).inSeconds, lessThan(5));
+      expect((await slow.send(within(2000))).status, 200);
+    });
 
-      Stream<List<int>> slowly() async* {
-        for (final byte in [1, 2, 3]) {
-          await Future<void>.delayed(const Duration(milliseconds: 60));
-          yield [byte];
-        }
-      }
-
-      final slow = HttpTransport(
+    // The SDK gives up at its own deadline and would send the proof request
+    // again; the transport reports first that the status arrived.
+    test('timeoutMs bounds the whole body, keeping its status', () async {
+      final dripping = HttpTransport(
         client: MockClient.streaming(
           (_, _) async => http.StreamedResponse(slowly(), 200),
         ),
       );
-      final moving = DateTime.now();
-      expect((await slow.send(key(100))).body, [1, 2, 3]);
-      expect(
-        DateTime.now().difference(moving).inMilliseconds,
-        greaterThan(100),
+      final started = DateTime.now();
+      await expectLater(
+        dripping.send(within(100)),
+        throwsA(
+          isA<TransportResponseLost>()
+              .having((e) => e.status, 'status', 200)
+              .having((e) => e.cause, 'cause', isA<TimeoutException>()),
+        ),
       );
+      expect(DateTime.now().difference(started).inMilliseconds, lessThan(170));
+      expect((await dripping.send(within(1000))).body, [1, 2, 3]);
     });
+
+    // A proving-key download has no timeoutMs: each wait is bounded.
+    test(
+      'without timeoutMs, fails a body that stalls, not one that keeps moving',
+      () async {
+        final stalled = HttpTransport(
+          stall: const Duration(milliseconds: 100),
+          client: MockClient.streaming(
+            (_, _) async => http.StreamedResponse(
+              // One byte, then nothing: the body never ends.
+              (StreamController<List<int>>()..add([1])).stream,
+              200,
+              contentLength: 3,
+            ),
+          ),
+        );
+        await expectLater(
+          stalled.send(within(null)),
+          throwsA(
+            isA<TransportResponseLost>()
+                .having((e) => e.status, 'status', 200)
+                .having((e) => e.cause, 'cause', isA<TimeoutException>()),
+          ),
+        );
+        final moving = HttpTransport(
+          stall: const Duration(milliseconds: 100),
+          client: MockClient.streaming(
+            (_, _) async => http.StreamedResponse(slowly(), 200),
+          ),
+        );
+        final started = DateTime.now();
+        expect((await moving.send(within(null))).body, [1, 2, 3]);
+        expect(
+          DateTime.now().difference(started).inMilliseconds,
+          greaterThan(100),
+        );
+      },
+    );
 
     test('isSecureUrl allows https and http to this device only', () {
       for (final url in [
@@ -862,41 +979,6 @@ void main() {
       ]);
     },
   );
-
-  test('hands the remote prover to the native wallet', () async {
-    final requests = <Uint8List>[];
-    Future<Uint8List> backend(Uint8List request) async {
-      requests.add(request);
-      if (request.isEmpty) throw StateError('backend unreachable');
-      return Uint8List.fromList([...request.reversed]);
-    }
-
-    final opened = FakeWallet();
-    await ZolanaWallet.open(
-      config: config,
-      signer: RecordingSigner(),
-      remoteProver: backend,
-      backend: FakeBackend(opened),
-    );
-    final restored = FakeWallet();
-    await ZolanaWallet.openWithKeys(
-      config: config,
-      solanaPublicKey: owner,
-      keys: savedKeys,
-      remoteProver: backend,
-      backend: FakeBackend(restored),
-    );
-    for (final native in [opened, restored]) {
-      final prove = native.remoteProver!;
-      expect(await prove(Uint8List.fromList([1, 2])), [2, 1]);
-      // A failed backend is a missing proof: the native wallet names it.
-      expect(await prove(Uint8List(0)), isNull);
-    }
-    expect(requests, hasLength(4));
-
-    final (_, local, _, _) = await openWallet();
-    expect(local.remoteProver, isNull);
-  });
 
   test('refuses a transaction another key must sign', () async {
     final (wallet, native, signer, _) = await openWallet();

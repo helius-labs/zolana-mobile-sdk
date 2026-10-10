@@ -191,14 +191,13 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `invalidPubkey` | `value` | not a base58 public key |
 | `invalidDerivationSignature` | | the signature is not the account's over the derivation message |
 | `invalidWalletKeys` | | saved keys are malformed or do not match their public keys |
-| `rpcUrlInsecure`, `indexerUrlInsecure`, `provingKeyUrlInsecure` | `url` | with the default transport, a plaintext URL off loopback without `allowInsecureHttp` |
+| `rpcUrlInsecure`, `indexerUrlInsecure`, `provingKeyUrlInsecure`, `proverUrlInsecure` | `url` | with the default transport, a plaintext URL off loopback without `allowInsecureHttp` |
 | `transportFailed` | `message` | the Solana RPC client could not be built |
 | `signatureInvalid` | | a signature is malformed or not the signer's over the message |
 | `signatureCountMismatch` | `expected`, `got` | `submit` received the wrong number of signatures |
 | `transactionNotConfirmed` | `signature` | Solana did not confirm the transaction within the wait |
-| `remoteProverMissing` | | the spend asked for remote proving without a `remoteProver` |
-| `remoteProverFailed` | | the `remoteProver` threw or returned nothing |
-| `proofMalformed` | | the remote prover's response is not a gnark proof |
+| `remoteProverMissing` | | the spend asked for remote proving without `WalletConfig.proverUrl` |
+| `proofMalformed` | | the remote prover's response is not a proof of the pinned proving key |
 | `proofInvalid` | | the proof does not verify against the pinned verifying key |
 | `proofFailed` | | the device prover could not prove the request |
 | `proverBusy`, `proverClosed`, `proverUnavailable` | | the prepared prover slot is taken, released or unusable |
@@ -311,15 +310,21 @@ sends through the wallet's RPC instead.
 
 ### Backend proving
 
-A transfer or withdrawal can be proved by the application's backend instead
-of the device. Pass a `remoteProver` to `ZolanaWallet.open` or
-`openWithKeys`, and ask for remote proving per call or in the config:
+A transfer or withdrawal can be proved by a remote prover instead of the
+device: the application's backend, or a Zolana prover. Set
+`WalletConfig.proverUrl` and ask for remote proving per call or in the config:
 
 ```dart
 final wallet = await ZolanaWallet.open(
   signer: KeystoreSigner(),
-  config: config,          // config.proving is the default
-  remoteProver: api.prove, // sends the request to your backend
+  config: WalletConfig(
+    rpcUrl: rpcUrl,
+    indexerUrl: indexerUrl,
+    provingKeyDir: provingKeyDir,
+    proverUrl: 'https://backend.example/zolana', // your backend
+    proving: Proving.remote,                     // the default; optional
+    mints: const [],
+  ),
 );
 await wallet.transfer(
   recipient: account,
@@ -328,35 +333,48 @@ await wallet.transfer(
 );
 ```
 
-- **The request**: `request` is the `/prove` request body (JSON) that the
-  Zolana SDK's own prover client sends, unchanged. The backend can send it to
-  a Zolana prover as that client does: `POST <prover>/prove` with
-  `Content-Type: application/json` and `X-Sync: true`, for example the Helius
-  prover at `https://beta-devnet.helius-rpc.com/v1/zolana/prove?api-key=...`
-  on devnet. When the prover queues the proof (a `jobId` in the response),
-  poll `<prover>/prove/status?jobId=...` until `status` is `completed`. Or
-  the backend runs its own prover.
-- **The response**: `remoteProver` returns the proof as the prover returns
-  it: the gnark proof JSON (`{ar, bs, krs}`), alone or as the `proof` of the
-  response (the `result` of a completed job). When it throws, the spend fails
-  with `WalletError.remoteProverFailed`.
+- **The requests**: the wallet asks the prover with the Zolana SDK's own
+  prover client, through the wallet's transport (see
+  [Networking](#networking)), like every other request. It sends
+  `POST <proverUrl>/prove/<key>` with `Content-Type: application/json`,
+  `X-Sync: true` and the proof request as the body. `<key>` is the proving
+  key's name without `.key`, for example `transfer_confidential_2_2`. The
+  query of `proverUrl` (an `api-key`, for example) stays on every request.
+  When the prover queues the proof and answers with a `jobId`, the wallet
+  polls `GET <proverUrl>/prove/<key>/status?jobId=<jobId>` until the job
+  completes or fails.
+  The Helius gateway (`https://*.helius-rpc.com/v1/zolana`) routes proofs
+  by their body, so for it the paths are `/prove` and `/prove/status`.
+- **The application's backend** serves these two routes as a proxy of a
+  Zolana prover: it forwards the body and the `X-Sync` / `X-Async` header to
+  the same path of the prover, and returns the prover's status and body as
+  they are. The response carries the proof's `provingKeySha256`, which the
+  wallet checks. A Zolana prover that serves these routes can also be
+  `proverUrl` directly.
 - **Verification on the device**: the wallet verifies the proof against the
   pinned verifying key and the public input it computed itself, before it
-  builds the message. A response that is not a proof fails with
-  `WalletError.proofMalformed`, a proof that does not verify with
-  `WalletError.proofInvalid`. A bad proof never reaches the user's approval.
+  builds the message. A response that is not a proof of the pinned key fails
+  with `WalletError.proofMalformed`, a proof that does not verify with
+  `WalletError.proofInvalid`.
+  A bad proof never reaches the user's approval. A failed request fails with
+  a `WalletError.client` holding the prover client's error, `prover server error: ...` (for example
+  `status 401 Unauthorized: ...`), `api-key` values masked.
 - **Choice per call**: `WalletConfig.proving` is the default, `Proving.local`
   when it is null. `prepareTransfer`, `prepareWithdrawal`, `transfer` and
   `withdraw` take `proving` to override it. `Proving.remote` without a
-  `remoteProver` fails with `WalletError.remoteProverMissing`.
+  `proverUrl` fails with `WalletError.remoteProverMissing`.
 - **Privacy**: the request carries the transaction's full witness: the notes
   it spends and creates, their amounts and owners, and the wallet's nullifier
   secret (the `nullifierPrivateKey` of `exportKeys()`). The backend and its
   prover learn the transaction and can recognize later spends of these notes.
   They cannot move funds: every spend needs the account's signature. Prove on
-  the device when this is not acceptable.
-- The wallet, and `close()`, wait for `remoteProver`: give your backend call
-  a timeout, and do not call the wallet from it.
+  the device when this is not acceptable. With the default transport, `open`
+  refuses a plaintext `proverUrl` off loopback with
+  `WalletError.proverUrlInsecure`.
+- **Retries**: the prover client sends the proof request again only when no
+  response arrived. When the status arrived and the body was lost, it fails
+  instead, so the prover does not prove the same spend twice (see
+  `TransportResponseLost` below).
 
 Current limits: notes are not merged, so a spend takes at most 40 notes from
 at most two trees and fails with `WalletError.mergeRequired` or
@@ -367,19 +385,20 @@ proves. A spend of zero fails with `WalletError.amountZero`.
 ### Networking
 
 The wallet never opens a connection. Every request, Solana RPC and indexer
-calls (`POST`, JSON) and proving-key downloads (`GET`, the key files above,
-returned whole and checked against the lockfile), goes through one transport
-in Dart:
+calls (`POST`, JSON), proving-key downloads (`GET`, the key files above,
+returned whole and checked against the lockfile) and remote proofs (see
+[Backend proving](#backend-proving)), goes through one transport in Dart:
 
 - By default, the package's own transport on `package:http`: one connection
   pool per wallet, closed with `close()`. `open` and `openWithKeys` refuse a
   plaintext (`http`) URL off loopback in the config before anything else, with
-  `WalletError.rpcUrlInsecure`, `WalletError.indexerUrlInsecure` or
-  `WalletError.provingKeyUrlInsecure`, unless `allowInsecureHttp: true` is
-  passed. It follows redirects, fails a
+  `WalletError.rpcUrlInsecure`, `WalletError.indexerUrlInsecure`,
+  `WalletError.provingKeyUrlInsecure` or `WalletError.proverUrlInsecure`,
+  unless `allowInsecureHttp: true` is passed. It follows redirects, fails a
   request whose response or any part of its body takes longer than
-  `timeoutMs` (30 seconds without one), and stops reading a body past
-  `maxResponseBytes`.
+  `timeoutMs` (30 seconds without one), stops reading a body past
+  `maxResponseBytes`, and throws `TransportResponseLost` when a body fails
+  after the status arrived.
 - Or the application's: pass a `transport` to `ZolanaWallet.open` or
   `ZolanaWallet.openWithKeys` to send through your own stack (a proxy,
   certificate pinning, your backend). Headers, timeouts and which URLs it
@@ -387,9 +406,10 @@ in Dart:
 
 ```dart
 final client = http.Client();
-const timeout = Duration(seconds: 30);
 
 Future<TransportResponse> send(TransportRequest request) async {
+  final clock = Stopwatch()..start();
+  final timeout = Duration(milliseconds: request.timeoutMs ?? 30000);
   final response = await client
       .send(
         http.Request(request.method, Uri.parse(request.url))
@@ -397,10 +417,19 @@ Future<TransportResponse> send(TransportRequest request) async {
           ..bodyBytes = request.body,
       )
       .timeout(timeout);
-  return TransportResponse(
-    status: response.statusCode,
-    body: await http.ByteStream(response.stream.timeout(timeout)).toBytes(),
-  );
+  try {
+    final body = http.ByteStream(response.stream.timeout(timeout)).toBytes();
+    return TransportResponse(
+      status: response.statusCode,
+      headers: response.headers,
+      // `timeoutMs` bounds the whole request; a proving key only each wait.
+      body: await (request.timeoutMs == null
+          ? body
+          : body.timeout(timeout - clock.elapsed)),
+    );
+  } catch (error) {
+    throw TransportResponseLost(response.statusCode, error);
+  }
 }
 
 final wallet = await ZolanaWallet.open(
@@ -410,22 +439,33 @@ final wallet = await ZolanaWallet.open(
 );
 ```
 
-- The request carries the method, the URL with its `api-key` parameter, and
-  the content type of a `POST`; nothing else. Send it as it is, and follow
-  redirects: the proving-key host may redirect.
+- The request carries the method, the URL with its `api-key` parameter, the
+  content type of a `POST`, and `X-Sync` or `X-Async` on a proof request;
+  nothing else. Send it as it is, and follow redirects: the proving-key host
+  may redirect. A proof request's body is the transaction's witness, the
+  nullifier secret included: do not log it.
 - A key download sets `maxResponseBytes`, the key's size in the lockfile.
   Stop reading and throw when the body exceeds it; the wallet refuses a longer
   body either way, but only after the whole of it arrived.
-- Return the response whatever its status. Throw only when there is no
+- Return the response whatever its status, with its headers: a prover
+  inside a TEE marks its encrypted body in them. Throw only when there is no
   response (no network, DNS, TLS, a timeout). The wallet then fails with a
   `WalletError.client` whose message holds `transport failed: ` and the
   exception message, never its stack trace, `api-key` values masked.
-- A request with `timeoutMs` set carries the SDK's bound for it, in
-  milliseconds; use it in place of your own. Time out every other request
-  too: the wallet and `close()` wait for each answer. For the same reason the
-  transport must not call the wallet.
-- A `remoteProver` is not a transport request: the wallet hands it the
-  `/prove` request body directly, and the application sends it to its backend.
+- When the status arrived and the body could not be read (a reset or a
+  timeout while reading it), throw `TransportResponseLost(status, error)`.
+  The server has the request and may be acting on it, so the wallet does not
+  send it again: a prover would otherwise prove the same spend twice. Any
+  other exception counts as no response, and a proof request is sent again.
+- A request with `timeoutMs` set carries the bound for the whole request,
+  body included, in milliseconds: just under 600 000 for a proof request,
+  which the prover may answer only when the proof is done, and under 30 000
+  for a status poll. Use it in place of your own, and when it passes after
+  the status arrived, throw `TransportResponseLost`. The SDK gives up a
+  second later and counts a request that failed any other way as unanswered,
+  which it sends again: a prover would prove the spend twice. Time out every
+  other request too: the wallet and `close()` wait for each answer. For the
+  same reason the transport must not call the wallet.
 - `example/lib/app_transport.dart` is the transport above with a log of what
   it sent; the example's devnet test sends through it.
 

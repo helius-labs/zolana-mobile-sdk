@@ -3,8 +3,8 @@
 //! a refreshed blockhash, the recipient's balance, a withdrawal from a session
 //! opened before the transfer from the sender's saved keys, with its fee paid
 //! by another account, two transfers prepared before either is sent, and a
-//! transfer proved by the application's backend. Each step is the newest entry
-//! of its wallets' history.
+//! transfer proved by a remote prover. Each step is the newest entry of its
+//! wallets' history.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon, the prover and the programs), or any cluster that runs the
@@ -17,24 +17,24 @@
 //! cargo test -p zolana-mobile --test wallet_flow -- --ignored --nocapture
 //! ```
 //!
-//! The backend in this test forwards each request to the prover at
-//! `ZOLANA_E2E_PROVER_URL`, such as the Helius gateway
-//! (`https://beta-devnet.helius-rpc.com/v1/zolana?api-key=...`).
+//! The remote proof comes from the prover at `ZOLANA_E2E_PROVER_URL`, such as
+//! the Helius gateway (`https://beta-devnet.helius-rpc.com/v1/zolana?api-key=...`),
+//! asked through the test's transport.
 //!
 //! `ZOLANA_E2E_KEY_DIR` keeps downloaded proving keys between runs.
 //! `ZOLANA_E2E_SENDER_SEED` / `ZOLANA_E2E_RECIPIENT_SEED` (32-byte hex) reuse
 //! funded accounts, such as the example's demo accounts, where airdrops are
 //! rate limited; otherwise fresh accounts are airdropped.
 
-use std::{env, future::Future, pin::Pin, thread::sleep, time::Duration};
+use std::{env, time::Duration};
 
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{
     derivation_message, ActivityKind, MobileWallet, PendingTransaction, Proving,
-    RegistrationStatus, Transport, TransportOutcome, TransportRequest, TransportResponse,
-    WalletConfig, WalletError,
+    RegistrationStatus, Transport, TransportFailure, TransportOutcome, TransportRequest,
+    TransportResponse, WalletConfig, WalletError,
 };
 
 const FUNDING: u64 = 1_000_000_000;
@@ -45,6 +45,9 @@ const WITHDRAWAL: u64 = 10_000_000;
 /// the sender has a second note for them.
 const SPLIT: u64 = 1_000_000;
 const FEES: u64 = 20_000_000;
+/// A prover the test's transport answers itself, with a real proof of another
+/// transaction.
+const REPLAYING_PROVER: &str = "https://replaying-prover.invalid";
 
 fn required(name: &str) -> String {
     env::var(name).unwrap_or_else(|_| panic!("set {name}"))
@@ -74,6 +77,7 @@ fn config() -> WalletConfig {
         proving_key_dir: key_dir,
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
+        prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
         mints: Vec::new(),
     }
 }
@@ -81,7 +85,8 @@ fn config() -> WalletConfig {
 /// An application's transport: a blocking HTTP client, answering on its own
 /// thread as the application's event loop does. The Solana RPC client calls
 /// the transport inside its own async runtime, where a blocking client on the
-/// same thread would panic.
+/// same thread would panic. Proof requests to [`REPLAYING_PROVER`] get the
+/// fixture proof.
 fn transport() -> Transport {
     let http = reqwest::blocking::Client::builder()
         .timeout(None)
@@ -97,9 +102,9 @@ fn transport() -> Transport {
                 response: Some(response),
                 failure: None,
             },
-            Err(error) => TransportOutcome {
+            Err(failure) => TransportOutcome {
                 response: None,
-                failure: Some(error.to_string()),
+                failure: Some(failure),
             },
         };
         Box::pin(async move { outcome })
@@ -109,7 +114,18 @@ fn transport() -> Transport {
 fn send(
     http: &reqwest::blocking::Client,
     request: TransportRequest,
-) -> reqwest::Result<TransportResponse> {
+) -> Result<TransportResponse, TransportFailure> {
+    if request.url.starts_with(REPLAYING_PROVER) {
+        return Ok(TransportResponse {
+            status: 200,
+            headers: Default::default(),
+            body: include_bytes!("../../../../../fixtures/prove-response-2x2.json").to_vec(),
+        });
+    }
+    let failed = |error: reqwest::Error, status| TransportFailure {
+        message: error.to_string(),
+        status,
+    };
     let mut outgoing = http
         .request(
             reqwest::Method::from_bytes(request.method.as_bytes()).expect("HTTP method"),
@@ -119,10 +135,23 @@ fn send(
     for (name, value) in request.headers {
         outgoing = outgoing.header(name, value);
     }
-    let response = outgoing.send()?;
+    if let Some(timeout) = request.timeout_ms {
+        outgoing = outgoing.timeout(Duration::from_millis(timeout.into()));
+    }
+    let response = outgoing.send().map_err(|error| failed(error, None))?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| Some((name.to_string(), value.to_str().ok()?.to_string())))
+        .collect();
     Ok(TransportResponse {
-        status: response.status().as_u16(),
-        body: response.bytes()?.to_vec(),
+        status,
+        headers,
+        body: response
+            .bytes()
+            .map_err(|error| failed(error, Some(status)))?
+            .to_vec(),
     })
 }
 
@@ -170,62 +199,6 @@ fn newest(wallet: &mut MobileWallet, signature: &str, kind: ActivityKind, amount
         ),
         (signature, kind, None, amount)
     );
-}
-
-type ProverResponse = Pin<Box<dyn Future<Output = Option<Vec<u8>>> + Send>>;
-
-/// An application's backend that proves through the prover at
-/// `ZOLANA_E2E_PROVER_URL`.
-fn backend() -> impl Fn(Vec<u8>) -> ProverResponse + Send + Sync + 'static {
-    let prover = reqwest::Url::parse(&required("ZOLANA_E2E_PROVER_URL")).expect("prover URL");
-    let http = reqwest::blocking::Client::new();
-    move |request| {
-        let proof = forward(&http, &prover, request);
-        Box::pin(async move { proof })
-    }
-}
-
-/// Post `request` to the prover as the SDK's prover client does, and wait for
-/// the proof if the prover queues it.
-fn forward(
-    http: &reqwest::blocking::Client,
-    prover: &reqwest::Url,
-    request: Vec<u8>,
-) -> Option<Vec<u8>> {
-    let url = |path: &str| {
-        let mut url = prover.clone();
-        url.path_segments_mut()
-            .ok()?
-            .pop_if_empty()
-            .extend(path.split('/'));
-        Some(url)
-    };
-    let json = |response: reqwest::blocking::Response| -> Option<serde_json::Value> {
-        serde_json::from_slice(&response.error_for_status().ok()?.bytes().ok()?).ok()
-    };
-    let response = json(
-        http.post(url("prove")?)
-            .header("Content-Type", "application/json")
-            .header("X-Sync", "true")
-            .body(request)
-            .send()
-            .ok()?,
-    )?;
-    let Some(job) = response["jobId"].as_str() else {
-        return Some(response.to_string().into_bytes());
-    };
-    let mut status = url("prove/status")?;
-    status.query_pairs_mut().append_pair("jobId", job);
-    for _ in 0..240 {
-        sleep(Duration::from_millis(250));
-        let response = json(http.get(status.clone()).send().ok()?)?;
-        match response["status"].as_str() {
-            Some("completed") => return Some(response["result"].to_string().into_bytes()),
-            Some("failed") => return None,
-            _ => {}
-        }
-    }
-    None
 }
 
 fn register(wallet: &mut MobileWallet, signer: &Keypair) {
@@ -369,27 +342,26 @@ fn register_deposit_transfer_and_receive() {
         sender_before + DEPOSIT - TRANSFER - WITHDRAWAL - SPLIT
     );
 
-    // A backend proof the pinned verifying key rejects fails the spend before
+    // A remote proof the pinned verifying key rejects fails the spend before
     // a message is built: here a real proof of another transaction.
-    let replayed = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
-    for (response, failure) in [
-        (&replayed[..], WalletError::ProofInvalid),
-        (b"garbage", WalletError::ProofMalformed),
-    ] {
-        sender_wallet.set_remote_prover(move |_| Box::pin(async move { Some(response.to_vec()) }));
-        let error = sender_wallet
-            .prepare_transfer(
-                recipient.pubkey().to_string(),
-                None,
-                SPLIT,
-                None,
-                Some(Proving::Remote),
-            )
-            .err();
-        assert_eq!(error, Some(failure));
-    }
-    // A transfer the backend proves lands like one proved on the device.
-    sender_wallet.set_remote_prover(backend());
+    let pubkey = sender.pubkey().to_string();
+    let signature = sender.sign_message(&derivation_message(pubkey.clone()).unwrap());
+    let replaying = WalletConfig {
+        prover_url: Some(REPLAYING_PROVER.to_string()),
+        ..config()
+    };
+    let error = MobileWallet::open(replaying, pubkey, signature.as_ref().to_vec(), transport())
+        .expect("open wallet")
+        .prepare_transfer(
+            recipient.pubkey().to_string(),
+            None,
+            SPLIT,
+            None,
+            Some(Proving::Remote),
+        )
+        .err();
+    assert_eq!(error, Some(WalletError::ProofInvalid));
+    // A transfer the remote prover proves lands like one proved on the device.
     let started = std::time::Instant::now();
     let pending = sender_wallet
         .prepare_transfer(
@@ -399,8 +371,8 @@ fn register_deposit_transfer_and_receive() {
             None,
             Some(Proving::Remote),
         )
-        .expect("prove transfer through the backend");
-    println!("built and proved by the backend in {:?}", started.elapsed());
+        .expect("prove transfer remotely");
+    println!("built and proved remotely in {:?}", started.elapsed());
     let transfer = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(
         private_sol(&mut recipient_wallet),

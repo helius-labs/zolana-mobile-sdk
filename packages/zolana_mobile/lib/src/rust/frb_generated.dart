@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -822563512;
+  int get rustContentHash => 2144307026;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -157,11 +157,6 @@ abstract class RustLibApi extends BaseApi {
   Future<void> zolanaMobileMobileWalletRelease({
     required MobileWallet that,
     required PendingTransaction pending,
-  });
-
-  Future<void> zolanaMobileMobileWalletSetRemoteProver({
-    required MobileWallet that,
-    required FutureOr<Uint8List?> Function(Uint8List) prove,
   });
 
   Future<String> zolanaMobileMobileWalletShieldedAddress({
@@ -858,47 +853,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<void> zolanaMobileMobileWalletSetRemoteProver({
-    required MobileWallet that,
-    required FutureOr<Uint8List?> Function(Uint8List) prove,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
-            that,
-            serializer,
-          );
-          sse_encode_DartFn_Inputs_list_prim_u_8_strict_Output_opt_list_prim_u_8_strict_AnyhowException(
-            prove,
-            serializer,
-          );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 15,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: null,
-        ),
-        constMeta: kZolanaMobileMobileWalletSetRemoteProverConstMeta,
-        argValues: [that, prove],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kZolanaMobileMobileWalletSetRemoteProverConstMeta =>
-      const TaskConstMeta(
-        debugName: "MobileWallet_set_remote_prover",
-        argNames: ["that", "prove"],
-      );
-
-  @override
   Future<String> zolanaMobileMobileWalletShieldedAddress({
     required MobileWallet that,
   }) {
@@ -913,7 +867,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 15,
             port: port_,
           );
         },
@@ -956,7 +910,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 16,
             port: port_,
           );
         },
@@ -994,7 +948,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 17,
             port: port_,
           );
         },
@@ -1030,7 +984,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1066,7 +1020,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1102,7 +1056,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1138,7 +1092,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1175,7 +1129,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1211,7 +1165,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1247,7 +1201,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1283,7 +1237,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1319,7 +1273,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1350,7 +1304,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1380,7 +1334,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1414,7 +1368,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1446,7 +1400,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1478,7 +1432,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1508,7 +1462,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1535,7 +1489,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1552,41 +1506,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kZolanaMobileSdkVersionConstMeta =>
       const TaskConstMeta(debugName: "sdk_version", argNames: []);
-
-  Future<void> Function(int, dynamic)
-  encode_DartFn_Inputs_list_prim_u_8_strict_Output_opt_list_prim_u_8_strict_AnyhowException(
-    FutureOr<Uint8List?> Function(Uint8List) raw,
-  ) {
-    return (callId, rawArg0) async {
-      final arg0 = dco_decode_list_prim_u_8_strict(rawArg0);
-
-      Box<Uint8List?>? rawOutput;
-      Box<AnyhowException>? rawError;
-      try {
-        rawOutput = Box(await raw(arg0));
-      } catch (e, s) {
-        rawError = Box(AnyhowException("$e\n\n$s"));
-      }
-
-      final serializer = SseSerializer(generalizedFrbRustBinding);
-      assert((rawOutput != null) ^ (rawError != null));
-      if (rawOutput != null) {
-        serializer.buffer.putUint8(0);
-        sse_encode_opt_list_prim_u_8_strict(rawOutput.value, serializer);
-      } else {
-        serializer.buffer.putUint8(1);
-        sse_encode_AnyhowException(rawError!.value, serializer);
-      }
-      final output = serializer.intoRaw();
-
-      generalizedFrbRustBinding.dartFnDeliverOutput(
-        callId: callId,
-        ptr: output.ptr,
-        rustVecLen: output.rustVecLen,
-        dataLen: output.dataLen,
-      );
-    };
-  }
 
   Future<void> Function(int, dynamic)
   encode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
@@ -1708,15 +1627,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  FutureOr<Uint8List?> Function(Uint8List)
-  dco_decode_DartFn_Inputs_list_prim_u_8_strict_Output_opt_list_prim_u_8_strict_AnyhowException(
-    dynamic raw,
-  ) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    throw UnimplementedError('');
-  }
-
-  @protected
   FutureOr<TransportOutcome> Function(TransportRequest)
   dco_decode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
     dynamic raw,
@@ -1818,9 +1728,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransportFailure dco_decode_box_autoadd_transport_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_transport_failure(raw);
+  }
+
+  @protected
   TransportResponse dco_decode_box_autoadd_transport_response(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_transport_response(raw);
+  }
+
+  @protected
+  int dco_decode_box_autoadd_u_16(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -1963,11 +1885,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransportFailure? dco_decode_opt_box_autoadd_transport_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_transport_failure(raw);
+  }
+
+  @protected
   TransportResponse? dco_decode_opt_box_autoadd_transport_response(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_transport_response(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_16(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_16(raw);
   }
 
   @protected
@@ -1980,12 +1914,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
-  }
-
-  @protected
-  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
   }
 
   @protected
@@ -2041,6 +1969,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransportFailure dco_decode_transport_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return TransportFailure(
+      message: dco_decode_String(arr[0]),
+      status: dco_decode_opt_box_autoadd_u_16(arr[1]),
+    );
+  }
+
+  @protected
   TransportOutcome dco_decode_transport_outcome(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2048,7 +1988,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
     return TransportOutcome(
       response: dco_decode_opt_box_autoadd_transport_response(arr[0]),
-      failure: dco_decode_opt_String(arr[1]),
+      failure: dco_decode_opt_box_autoadd_transport_failure(arr[1]),
     );
   }
 
@@ -2072,11 +2012,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TransportResponse dco_decode_transport_response(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
     return TransportResponse(
       status: dco_decode_u_16(arr[0]),
-      body: dco_decode_list_prim_u_8_strict(arr[1]),
+      headers: dco_decode_Map_String_String_None(arr[1]),
+      body: dco_decode_list_prim_u_8_strict(arr[2]),
     );
   }
 
@@ -2120,15 +2061,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   WalletConfig dco_decode_wallet_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return WalletConfig(
       rpcUrl: dco_decode_String(arr[0]),
       indexerUrl: dco_decode_String(arr[1]),
       provingKeyDir: dco_decode_String(arr[2]),
       provingKeyUrl: dco_decode_opt_String(arr[3]),
       proving: dco_decode_opt_box_autoadd_proving(arr[4]),
-      mints: dco_decode_list_mint_config(arr[5]),
+      proverUrl: dco_decode_opt_String(arr[5]),
+      mints: dco_decode_list_mint_config(arr[6]),
     );
   }
 
@@ -2201,33 +2143,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 19:
         return WalletError_RemoteProverMissing();
       case 20:
-        return WalletError_RemoteProverFailed();
-      case 21:
         return WalletError_ProofMalformed();
-      case 22:
+      case 21:
         return WalletError_ProofInvalid();
-      case 23:
+      case 22:
         return WalletError_ProofFailed();
-      case 24:
+      case 23:
         return WalletError_ProverBusy();
-      case 25:
+      case 24:
         return WalletError_ProverClosed();
-      case 26:
+      case 25:
         return WalletError_ProverUnavailable();
-      case 27:
+      case 26:
         return WalletError_ProverInitFailed();
-      case 28:
+      case 27:
         return WalletError_ProverLoadFailed();
-      case 29:
+      case 28:
         return WalletError_UnsupportedCircuit();
-      case 30:
+      case 29:
         return WalletError_RpcUrlInsecure(url: dco_decode_String(raw[1]));
-      case 31:
+      case 30:
         return WalletError_IndexerUrlInsecure(url: dco_decode_String(raw[1]));
-      case 32:
+      case 31:
         return WalletError_ProvingKeyUrlInsecure(
           url: dco_decode_String(raw[1]),
         );
+      case 32:
+        return WalletError_ProverUrlInsecure(url: dco_decode_String(raw[1]));
       case 33:
         return WalletError_ProvingKeyUnknown(name: dco_decode_String(raw[1]));
       case 34:
@@ -2471,11 +2413,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransportFailure sse_decode_box_autoadd_transport_failure(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_transport_failure(deserializer));
+  }
+
+  @protected
   TransportResponse sse_decode_box_autoadd_transport_response(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_transport_response(deserializer));
+  }
+
+  @protected
+  int sse_decode_box_autoadd_u_16(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_16(deserializer));
   }
 
   @protected
@@ -2680,6 +2636,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransportFailure? sse_decode_opt_box_autoadd_transport_failure(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_transport_failure(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   TransportResponse? sse_decode_opt_box_autoadd_transport_response(
     SseDeserializer deserializer,
   ) {
@@ -2687,6 +2656,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_transport_response(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_16(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_16(deserializer));
     } else {
       return null;
     }
@@ -2709,17 +2689,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_u_64(deserializer));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
-  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_list_prim_u_8_strict(deserializer));
     } else {
       return null;
     }
@@ -2779,12 +2748,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransportFailure sse_decode_transport_failure(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_message = sse_decode_String(deserializer);
+    var var_status = sse_decode_opt_box_autoadd_u_16(deserializer);
+    return TransportFailure(message: var_message, status: var_status);
+  }
+
+  @protected
   TransportOutcome sse_decode_transport_outcome(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_response = sse_decode_opt_box_autoadd_transport_response(
       deserializer,
     );
-    var var_failure = sse_decode_opt_String(deserializer);
+    var var_failure = sse_decode_opt_box_autoadd_transport_failure(
+      deserializer,
+    );
     return TransportOutcome(response: var_response, failure: var_failure);
   }
 
@@ -2813,8 +2792,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_status = sse_decode_u_16(deserializer);
+    var var_headers = sse_decode_Map_String_String_None(deserializer);
     var var_body = sse_decode_list_prim_u_8_strict(deserializer);
-    return TransportResponse(status: var_status, body: var_body);
+    return TransportResponse(
+      status: var_status,
+      headers: var_headers,
+      body: var_body,
+    );
   }
 
   @protected
@@ -2860,6 +2844,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_provingKeyDir = sse_decode_String(deserializer);
     var var_provingKeyUrl = sse_decode_opt_String(deserializer);
     var var_proving = sse_decode_opt_box_autoadd_proving(deserializer);
+    var var_proverUrl = sse_decode_opt_String(deserializer);
     var var_mints = sse_decode_list_mint_config(deserializer);
     return WalletConfig(
       rpcUrl: var_rpcUrl,
@@ -2867,6 +2852,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       provingKeyDir: var_provingKeyDir,
       provingKeyUrl: var_provingKeyUrl,
       proving: var_proving,
+      proverUrl: var_proverUrl,
       mints: var_mints,
     );
   }
@@ -2957,34 +2943,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 19:
         return WalletError_RemoteProverMissing();
       case 20:
-        return WalletError_RemoteProverFailed();
-      case 21:
         return WalletError_ProofMalformed();
-      case 22:
+      case 21:
         return WalletError_ProofInvalid();
-      case 23:
+      case 22:
         return WalletError_ProofFailed();
-      case 24:
+      case 23:
         return WalletError_ProverBusy();
-      case 25:
+      case 24:
         return WalletError_ProverClosed();
-      case 26:
+      case 25:
         return WalletError_ProverUnavailable();
-      case 27:
+      case 26:
         return WalletError_ProverInitFailed();
-      case 28:
+      case 27:
         return WalletError_ProverLoadFailed();
-      case 29:
+      case 28:
         return WalletError_UnsupportedCircuit();
-      case 30:
+      case 29:
         var var_url = sse_decode_String(deserializer);
         return WalletError_RpcUrlInsecure(url: var_url);
-      case 31:
+      case 30:
         var var_url = sse_decode_String(deserializer);
         return WalletError_IndexerUrlInsecure(url: var_url);
-      case 32:
+      case 31:
         var var_url = sse_decode_String(deserializer);
         return WalletError_ProvingKeyUrlInsecure(url: var_url);
+      case 32:
+        var var_url = sse_decode_String(deserializer);
+        return WalletError_ProverUrlInsecure(url: var_url);
       case 33:
         var var_name = sse_decode_String(deserializer);
         return WalletError_ProvingKeyUnknown(name: var_name);
@@ -3136,21 +3123,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_DartFn_Inputs_list_prim_u_8_strict_Output_opt_list_prim_u_8_strict_AnyhowException(
-    FutureOr<Uint8List?> Function(Uint8List) self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_DartOpaque(
-      encode_DartFn_Inputs_list_prim_u_8_strict_Output_opt_list_prim_u_8_strict_AnyhowException(
-        self,
-      ),
-      serializer,
-    );
-  }
-
-  @protected
-  void
   sse_encode_DartFn_Inputs_transport_request_Output_transport_outcome_AnyhowException(
     FutureOr<TransportOutcome> Function(TransportRequest) self,
     SseSerializer serializer,
@@ -3278,12 +3250,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_transport_failure(
+    TransportFailure self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_transport_failure(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_transport_response(
     TransportResponse self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_transport_response(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_16(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_16(self, serializer);
   }
 
   @protected
@@ -3483,6 +3470,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_transport_failure(
+    TransportFailure? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_transport_failure(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_transport_response(
     TransportResponse? self,
     SseSerializer serializer,
@@ -3492,6 +3492,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_transport_response(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_16(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_16(self, serializer);
     }
   }
 
@@ -3512,19 +3522,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_u_64(self, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_opt_list_prim_u_8_strict(
-    Uint8List? self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_list_prim_u_8_strict(self, serializer);
     }
   }
 
@@ -3580,13 +3577,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_transport_failure(
+    TransportFailure self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.message, serializer);
+    sse_encode_opt_box_autoadd_u_16(self.status, serializer);
+  }
+
+  @protected
   void sse_encode_transport_outcome(
     TransportOutcome self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_opt_box_autoadd_transport_response(self.response, serializer);
-    sse_encode_opt_String(self.failure, serializer);
+    sse_encode_opt_box_autoadd_transport_failure(self.failure, serializer);
   }
 
   @protected
@@ -3610,6 +3617,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_16(self.status, serializer);
+    sse_encode_Map_String_String_None(self.headers, serializer);
     sse_encode_list_prim_u_8_strict(self.body, serializer);
   }
 
@@ -3656,6 +3664,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.provingKeyDir, serializer);
     sse_encode_opt_String(self.provingKeyUrl, serializer);
     sse_encode_opt_box_autoadd_proving(self.proving, serializer);
+    sse_encode_opt_String(self.proverUrl, serializer);
     sse_encode_list_mint_config(self.mints, serializer);
   }
 
@@ -3742,33 +3751,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(signature, serializer);
       case WalletError_RemoteProverMissing():
         sse_encode_i_32(19, serializer);
-      case WalletError_RemoteProverFailed():
-        sse_encode_i_32(20, serializer);
       case WalletError_ProofMalformed():
-        sse_encode_i_32(21, serializer);
+        sse_encode_i_32(20, serializer);
       case WalletError_ProofInvalid():
-        sse_encode_i_32(22, serializer);
+        sse_encode_i_32(21, serializer);
       case WalletError_ProofFailed():
-        sse_encode_i_32(23, serializer);
+        sse_encode_i_32(22, serializer);
       case WalletError_ProverBusy():
-        sse_encode_i_32(24, serializer);
+        sse_encode_i_32(23, serializer);
       case WalletError_ProverClosed():
-        sse_encode_i_32(25, serializer);
+        sse_encode_i_32(24, serializer);
       case WalletError_ProverUnavailable():
-        sse_encode_i_32(26, serializer);
+        sse_encode_i_32(25, serializer);
       case WalletError_ProverInitFailed():
-        sse_encode_i_32(27, serializer);
+        sse_encode_i_32(26, serializer);
       case WalletError_ProverLoadFailed():
-        sse_encode_i_32(28, serializer);
+        sse_encode_i_32(27, serializer);
       case WalletError_UnsupportedCircuit():
-        sse_encode_i_32(29, serializer);
+        sse_encode_i_32(28, serializer);
       case WalletError_RpcUrlInsecure(url: final url):
-        sse_encode_i_32(30, serializer);
+        sse_encode_i_32(29, serializer);
         sse_encode_String(url, serializer);
       case WalletError_IndexerUrlInsecure(url: final url):
-        sse_encode_i_32(31, serializer);
+        sse_encode_i_32(30, serializer);
         sse_encode_String(url, serializer);
       case WalletError_ProvingKeyUrlInsecure(url: final url):
+        sse_encode_i_32(31, serializer);
+        sse_encode_String(url, serializer);
+      case WalletError_ProverUrlInsecure(url: final url):
         sse_encode_i_32(32, serializer);
         sse_encode_String(url, serializer);
       case WalletError_ProvingKeyUnknown(name: final name):
@@ -3907,8 +3917,12 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// first, before this account.
   ///
   /// `proving` says where it is proved, [`WalletConfig::proving`] when
-  /// `None`. Remote proving without [`Self::set_remote_prover`] fails with
-  /// [`WalletError::RemoteProverMissing`].
+  /// `None`. Remote proving without [`WalletConfig::prover_url`] fails with
+  /// [`WalletError::RemoteProverMissing`]. The client verifies a remote
+  /// proof against the pinned verifying key and the public input it computed
+  /// itself before the message is built: a response that is not a proof of
+  /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
+  /// does not verify with [`WalletError::ProofInvalid`].
   Future<PendingTransaction> prepareTransfer({
     required String recipient,
     String? mint,
@@ -3980,23 +3994,6 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
       .instance
       .api
       .zolanaMobileMobileWalletRelease(that: this, pending: pending);
-
-  /// Prove the spends that ask for [`Proving::Remote`] with `prove`, the
-  /// application's backend. It receives the `/prove` request body the Zolana
-  /// SDK's prover client sends and returns its prover's proof: the gnark
-  /// proof JSON, alone or as the `proof` of the prover's response. `None`
-  /// fails the spend with [`WalletError::RemoteProverFailed`].
-  ///
-  /// The client verifies the proof against the pinned verifying key and the
-  /// public input it computed itself, before the message is built. A proof
-  /// that does not parse fails with [`WalletError::ProofMalformed`], one
-  /// that does not verify with [`WalletError::ProofInvalid`].
-  Future<void> setRemoteProver({
-    required FutureOr<Uint8List?> Function(Uint8List) prove,
-  }) => RustLib.instance.api.zolanaMobileMobileWalletSetRemoteProver(
-    that: this,
-    prove: prove,
-  );
 
   Future<String> shieldedAddress() =>
       RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this);
