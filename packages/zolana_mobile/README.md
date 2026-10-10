@@ -185,6 +185,7 @@ Every failure is a `ZolanaWalletException` whose `error` is one of these
 | `amountZero` | | the amount of a spend is zero |
 | `nothingToMerge` | `mint` | fewer than two notes of the mint are free to merge on any one tree |
 | `mergingDisabled` | | the account's record does not enable merging |
+| `indexerBehind` | `indexerSlot`, `rpcSlot` | the indexer did not reach the RPC's confirmed slot within about ten seconds |
 | `notesAlreadySpent` | | the chain already spent a note the transaction spends: the indexer was behind when it was prepared |
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
@@ -318,9 +319,14 @@ sends through the wallet's RPC instead.
   blockhash expires before it reports a failure. An application that sends
   itself does the same: after any send error that is not the chain's
   verdict, call `waitForTransaction(signature)` before showing a failure.
-- When the indexer is behind, a spend can select a note the chain has
-  already spent. It fails with `WalletError.notesAlreadySpent`, before or
-  after sending; prepare it again once the indexer has caught up.
+- Balances, activity and every spend first wait for the indexer to reach
+  the RPC's confirmed slot, so a spend made moments ago, in this session or
+  another, is read. An indexer still behind after about ten seconds fails
+  with `WalletError.indexerBehind`; try again once it catches up.
+- A spend can still select a note the chain has already spent, when the
+  spend landed after that slot. It fails with
+  `WalletError.notesAlreadySpent`, before or after sending; prepare it
+  again once the indexer has the spend.
 
 ### Backend proving
 

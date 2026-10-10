@@ -44,8 +44,9 @@ use zolana_client::{
         resolved_address_from_record, set_merging_enabled_instruction,
         try_resolve_registered_address,
     },
-    ClientError, ComputeBudgetConfig, IndexerPollConfig, MergeSubmission, ProverClient, Rpc,
-    SignedPrivateTransaction, SolanaRpc, SpendableUtxos, Submission, ZolanaClient,
+    ClientError, ComputeBudgetConfig, IndexerPollConfig, IndexerRpcConfig, MergeSubmission,
+    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos, Submission,
+    ZolanaClient,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -574,8 +575,9 @@ impl MobileWallet {
     /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
     pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, WalletError> {
+        let indexed = self.indexed()?;
         let assets = self.assets.registry(&self.client)?;
-        Ok(activity::fetch(&self.keys, assets, &self.client)?)
+        Ok(activity::fetch(&self.keys, assets, &self.client, indexed)?)
     }
 
     /// Build and prove a private transfer to a registered wallet.
@@ -798,11 +800,25 @@ impl MobileWallet {
         self.assets.resolve(&self.client, mint.as_deref())
     }
 
-    /// The wallet's spendable notes as the indexer has them now, in SOL and
-    /// every configured mint.
+    /// The wallet's spendable notes, in SOL and every configured mint, once
+    /// the indexer has caught up with the RPC.
     fn spendable(&mut self) -> Result<SpendableDecryptionResult, WalletError> {
+        let indexed = self.indexed()?;
         let assets = self.assets.registry(&self.client)?;
-        Ok(SpendableUtxos::new(&self.keys, assets).fetch(&self.client)?)
+        Ok(SpendableUtxos::new(&self.keys, assets)
+            .with_indexer_config(indexed)
+            .fetch(&self.client)?)
+    }
+
+    /// Indexer reads wait for the RPC's confirmed slot, the commitment Photon
+    /// indexes at: a spend that slot holds, from this session or another, is
+    /// read rather than selected again. An indexer still behind after
+    /// [`INDEXER_CATCH_UP`] fails with [`WalletError::IndexerBehind`].
+    fn indexed(&self) -> Result<IndexerRpcConfig, WalletError> {
+        Ok(IndexerRpcConfig {
+            poll: INDEXER_CATCH_UP,
+            require_slot: Some(self.client.get_slot()?),
+        })
     }
 
     /// Encrypt and prove `transaction` where `proving` says, and build the
@@ -997,6 +1013,14 @@ fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
 /// How long a merge proof can be sent. Anyone who holds it can send it, and
 /// the program refuses it after this.
 const MERGE_LIFETIME: Duration = Duration::from_secs(600);
+
+/// About ten seconds for the indexer to reach the RPC's slot: a few slots of
+/// lag pass, a stalled indexer fails fast.
+const INDEXER_CATCH_UP: IndexerPollConfig = IndexerPollConfig {
+    num_retries: 5,
+    delay_ms: 400,
+    max_delay_ms: 4_000,
+};
 
 /// The unix time a merge prepared now expires at.
 fn merge_expiry() -> u64 {
@@ -1215,6 +1239,43 @@ mod tests {
             matches!(&error, WalletError::Client { message } if message.contains("Internal error")),
             "{error:?}"
         );
+    }
+
+    /// The notes and history wait for the indexer to reach the RPC's slot,
+    /// and a stalled indexer fails as `IndexerBehind` instead of answering
+    /// with notes another session may have spent.
+    #[test]
+    fn notes_are_read_once_the_indexer_has_the_rpcs_slot() {
+        let signer = Keypair::new();
+        let at_slot = |indexed: u64| {
+            move |method: &str| match method {
+                "getSlot" => serde_json::json!({"result": 100}),
+                _ => serde_json::json!({"result": {
+                    "context": {"blockTime": 0, "slot": indexed},
+                    "transactions": [],
+                    "matches": [],
+                    "nextCursor": null,
+                }}),
+            }
+        };
+
+        let (mut wallet, _) = rpc_wallet(&signer, at_slot(100));
+        assert!(wallet.balances().expect("caught up").is_empty());
+        assert!(wallet.activity().expect("caught up").is_empty());
+
+        let (mut wallet, asked) = rpc_wallet(&signer, at_slot(90));
+        let behind = WalletError::IndexerBehind {
+            indexer_slot: 90,
+            rpc_slot: 100,
+        };
+        assert_eq!(wallet.balances().unwrap_err(), behind);
+        let reads = asked
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|method| *method == "getShieldedTransactionsByTags")
+            .count();
+        assert_eq!(reads, INDEXER_CATCH_UP.num_retries as usize + 1);
     }
 
     /// A spend of a note the chain already spent fails as such, at once: the
