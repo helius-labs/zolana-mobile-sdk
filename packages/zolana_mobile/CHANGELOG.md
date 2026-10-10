@@ -8,8 +8,12 @@ Unreleased.
 * The wallet keeps no chain state: `balances()`, `privateBalance()`,
   `activity()` and every spend read the indexer when they run.
   `WalletConfig.mints` lists the SPL mints `balances()` reports. A spend takes
-  at most 5 notes on one tree and fails with `merge_required` beyond that.
-* `activity()`: the wallet's history, newest first.
+  the largest notes first, at most 40 from at most two trees, as the Zolana
+  SDK selects them, and fails with `merge_required` beyond that and with
+  `amount_zero` for a zero amount.
+* `activity()`: the wallet's history, newest first, as the Zolana SDK
+  classifies it: `deposit`, `received`, `sent`, `withdrawal` or
+  `selfTransfer`.
 * `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
   `prepareWithdrawal`, `prepareTokenAccount`, `submit` and `confirm` for
   applications that sign and send transactions themselves. `feePayer` lets

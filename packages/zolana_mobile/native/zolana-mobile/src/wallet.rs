@@ -24,7 +24,6 @@
 //! the message.
 
 use std::{
-    cmp::Reverse,
     collections::{HashMap, HashSet},
     str::FromStr,
     sync::{Arc, Mutex, PoisonError},
@@ -54,8 +53,8 @@ use zolana_program::instruction::{
     TransactInterfaceTransferAccounts, TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
 };
 use zolana_transaction::{
-    instructions::transact::{auto_shapes, ConfidentialTransaction},
-    AssetRegistry, LocalShieldedKeys, SpendableDecryptionResult, WalletUtxo,
+    instructions::transact::ConfidentialTransaction, select_spend_excluding, AssetRegistry,
+    LocalShieldedKeys, SpendableDecryptionResult, TransactionError, WalletUtxo,
 };
 
 use crate::{
@@ -473,7 +472,7 @@ impl MobileWallet {
     /// [`Self::balances`] reports.
     ///
     /// The indexer does not say which spends were withdrawals: a spend whose
-    /// outputs are all this wallet's own is listed as unshielded, one with
+    /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
     pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, String> {
         self.resolve_mints()?;
@@ -698,7 +697,8 @@ impl MobileWallet {
                 .flat_map(|(spends, _)| spends.iter().copied())
                 .collect()
         };
-        select_notes(&spendable, asset, amount, &reserved)
+        select_spend_excluding(spendable.utxos(), asset.mint, amount, &reserved)
+            .map_err(selection_error)
     }
 
     /// `pending` with a new blockhash and the same proof, for an approval that
@@ -859,68 +859,21 @@ impl MobileWallet {
     }
 }
 
-/// A ring-bound note's commitment covers its ring; the default-ring circuit
-/// does not.
-fn is_default_ring_spendable(entry: &WalletUtxo) -> bool {
-    entry.utxo.ring_program_id.is_none() && entry.ring_data_hash.is_none()
-}
-
-/// The notes a spend of `amount` takes, as the Zolana CLI selects them:
-/// largest first, all on one tree, at most as many as the widest automatic
-/// shape has inputs. A balance spread over trees, or needing more notes, has
-/// to be merged first.
-fn select_notes(
-    spendable: &SpendableDecryptionResult,
-    asset: Asset,
-    amount: u64,
-    reserved: &HashSet<[u8; 32]>,
-) -> Result<Vec<WalletUtxo>, String> {
-    let eligible: Vec<&WalletUtxo> = spendable
-        .utxos()
-        .filter(|entry| entry.utxo.asset.asset == asset.mint && is_default_ring_spendable(entry))
-        .collect();
-    let free = eligible
-        .iter()
-        .copied()
-        .filter(|entry| !reserved.contains(&entry.nullifier))
-        .collect();
-    match pick(free, amount) {
-        Ok(selected) => Ok(selected),
-        // The notes it needs are reserved by a prepared spend.
-        Err(_) if pick(eligible, amount).is_ok() => Err("notes_reserved".to_string()),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-fn pick(mut candidates: Vec<&WalletUtxo>, amount: u64) -> Result<Vec<WalletUtxo>, &'static str> {
-    let mut trees: Vec<_> = candidates.iter().map(|entry| entry.tree_id()).collect();
-    trees.sort();
-    trees.dedup();
-    match trees.len() {
-        0 => return Err("insufficient_private_balance"),
-        1 => {}
-        _ => return Err("merge_required"),
-    }
-    let max_inputs = auto_shapes()
-        .map(|shape| shape.n_inputs())
-        .max()
-        .unwrap_or(0);
-    candidates.sort_by_key(|entry| Reverse(entry.utxo.amount));
-    let total: u64 = candidates.iter().map(|entry| entry.utxo.amount).sum();
-    let mut selected = Vec::new();
-    let mut covered = 0u64;
-    for entry in candidates.into_iter().take(max_inputs) {
-        covered += entry.utxo.amount;
-        selected.push(entry.clone());
-        if covered >= amount {
-            return Ok(selected);
+/// The error codes the application sees when the free notes cannot cover a
+/// spend.
+fn selection_error(failure: TransactionError) -> String {
+    match failure {
+        TransactionError::NoSpendableBalance { .. }
+        | TransactionError::InsufficientBalance { .. } => {
+            "insufficient_private_balance".to_string()
         }
+        TransactionError::SpendNeedsMerge { .. } | TransactionError::TooManyInputTrees { .. } => {
+            "merge_required".to_string()
+        }
+        TransactionError::SpendNeedsExcludedUtxos { .. } => "notes_reserved".to_string(),
+        TransactionError::ZeroSpendAmount => "amount_zero".to_string(),
+        failure => error(failure),
     }
-    Err(if total >= amount {
-        "merge_required"
-    } else {
-        "insufficient_private_balance"
-    })
 }
 
 fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
@@ -1120,8 +1073,9 @@ mod tests {
         }
     }
 
-    /// A SOL note of `amount` whose nullifier is `[nullifier; 32]`.
-    fn note(amount: u64, nullifier: u8) -> WalletUtxo {
+    /// A SOL note of `amount` on `tree_id` whose nullifier is
+    /// `[nullifier; 32]`.
+    fn note(amount: u64, nullifier: u8, tree_id: u16) -> WalletUtxo {
         WalletUtxo {
             utxo: zolana_transaction::Utxo {
                 owner: PublicKey::from_ed25519(&[1; 32]),
@@ -1139,7 +1093,7 @@ mod tests {
             nullifier: [nullifier; 32],
             data_hash: None,
             ring_data_hash: None,
-            tree_id: 0,
+            tree_id,
             leaf_index: 0,
             slot: 0,
             tx_signature: Signature::default(),
@@ -1147,31 +1101,50 @@ mod tests {
         }
     }
 
-    #[test]
-    fn spends_leave_out_the_notes_prepared_spends_reserve() {
-        let utxos = vec![note(50, 1), note(30, 2), note(20, 3)];
-        let notes = SpendableDecryptionResult {
+    fn spendable(utxos: Vec<WalletUtxo>) -> SpendableDecryptionResult {
+        SpendableDecryptionResult {
             balances: zolana_transaction::Balances {
                 assets: vec![zolana_transaction::AssetBalance {
                     asset_id: zolana_transaction::SOL_ASSET_ID,
                     mint: zolana_transaction::SOL_MINT,
-                    amount: 100,
+                    amount: utxos.iter().map(|note| note.utxo.amount).sum(),
                     utxos,
                 }],
             },
             ..Default::default()
-        };
-        let select = |amount, reserved: &[u8]| {
+        }
+    }
+
+    #[test]
+    fn selection_leaves_out_reserved_notes_and_fails_with_the_app_codes() {
+        let notes = spendable(vec![note(50, 1, 0), note(30, 2, 0), note(20, 3, 0)]);
+        let select = |notes: &SpendableDecryptionResult, mint, amount, reserved: &[u8]| {
             let reserved = reserved.iter().map(|&n| [n; 32]).collect();
-            select_notes(&notes, Asset::SOL, amount, &reserved).map(|picked| nullifiers(&picked))
+            select_spend_excluding(notes.utxos(), mint, amount, &reserved)
+                .map(|picked| nullifiers(&picked))
+                .map_err(selection_error)
         };
-        assert_eq!(select(40, &[]), Ok(vec![[1; 32]]));
+        let sol = zolana_transaction::SOL_MINT;
+        assert_eq!(select(&notes, sol, 40, &[]), Ok(vec![[1; 32]]));
         // The largest note is reserved: the others cover it.
-        assert_eq!(select(40, &[1]), Ok(vec![[2; 32], [3; 32]]));
-        assert_eq!(select(60, &[1]).unwrap_err(), "notes_reserved");
+        assert_eq!(select(&notes, sol, 40, &[1]), Ok(vec![[2; 32], [3; 32]]));
+        assert_eq!(select(&notes, sol, 60, &[1]).unwrap_err(), "notes_reserved");
         assert_eq!(
-            select(200, &[1]).unwrap_err(),
+            select(&notes, sol, 200, &[1]).unwrap_err(),
             "insufficient_private_balance"
+        );
+        assert_eq!(
+            select(&notes, Pubkey::new_unique(), 1, &[]).unwrap_err(),
+            "insufficient_private_balance"
+        );
+        assert_eq!(select(&notes, sol, 0, &[]).unwrap_err(), "amount_zero");
+        // A spend takes notes from two trees, not from three.
+        let two_trees = spendable(vec![note(50, 1, 0), note(30, 2, 1)]);
+        assert_eq!(select(&two_trees, sol, 70, &[]), Ok(vec![[1; 32], [2; 32]]));
+        let three_trees = spendable(vec![note(30, 1, 0), note(20, 2, 1), note(10, 3, 2)]);
+        assert_eq!(
+            select(&three_trees, sol, 55, &[]).unwrap_err(),
+            "merge_required"
         );
     }
 

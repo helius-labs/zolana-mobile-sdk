@@ -257,12 +257,7 @@ fn register_deposit_transfer_and_receive() {
     let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
     let deposit = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(private_sol(&mut sender_wallet), sender_before + DEPOSIT);
-    newest(
-        &mut sender_wallet,
-        &deposit,
-        ActivityKind::Shielded,
-        DEPOSIT,
-    );
+    newest(&mut sender_wallet, &deposit, ActivityKind::Deposit, DEPOSIT);
 
     // A second session of the sender, opened before the transfer spends its
     // notes from the keys the first one exported: the same account on another
@@ -334,7 +329,7 @@ fn register_deposit_transfer_and_receive() {
     newest(
         &mut stale,
         &withdrawal,
-        ActivityKind::Unshielded,
+        ActivityKind::Withdrawal,
         WITHDRAWAL,
     );
     assert_eq!(

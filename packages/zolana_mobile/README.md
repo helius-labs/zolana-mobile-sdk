@@ -123,10 +123,11 @@ await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(10000000
   `allowInsecureHttp` on `open`, which lets the default transport use a
   plaintext URL off loopback, is only for a local test cluster.
 - **History**: `activity()` lists the transactions that moved this wallet's
-  notes, newest first, as `shielded`, `unshielded`, `sent`, `received` or
-  `internal` (merges and transfers to itself), one entry per asset. The indexer
-  does not mark withdrawals: a spend whose outputs are all this wallet's own is
-  `unshielded`, one with another wallet's output `sent`.
+  notes, newest first, as `deposit`, `received`, `sent`, `withdrawal` or
+  `selfTransfer` (merges and transfers to itself), one entry per asset. The
+  Zolana SDK reads and classifies them. The indexer does not mark withdrawals:
+  a spend whose outputs are all this wallet's own is a `withdrawal`, one with
+  another wallet's output `sent`.
 - **Freshness**: the wallet keeps no chain state. `balances()`,
   `privateBalance()`, `activity()` and every spend read the wallet's notes from
   the indexer when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
@@ -271,9 +272,10 @@ await wallet.transfer(
 - The wallet, and `close()`, wait for `remoteProver`: give your backend call
   a timeout, and do not call the wallet from it.
 
-Current limits: notes are not merged, so a spend takes at most 5 notes on one
-tree and fails with `merge_required` beyond that; one prepared prover is
-loaded per process, so close a `LocalProver` before the wallet proves.
+Current limits: notes are not merged, so a spend takes at most 40 notes from
+at most two trees and fails with `merge_required` beyond that; one prepared
+prover is loaded per process, so close a `LocalProver` before the wallet
+proves. A spend of zero fails with `amount_zero`.
 
 ### Networking
 

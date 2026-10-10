@@ -50,7 +50,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// [`Self::balances`] reports.
   ///
   /// The indexer does not say which spends were withdrawals: a spend whose
-  /// outputs are all this wallet's own is listed as unshielded, one with
+  /// outputs are all this wallet's own is listed as a withdrawal, one with
   /// another wallet's output as sent.
   Future<List<ActivityEntry>> activity();
 
@@ -248,8 +248,9 @@ abstract class Transport implements RustOpaqueInterface {
 }
 
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit
-/// otherwise. `mint` is `None` for SOL. Sent and unshielded amounts are what
-/// left the private balance, change excluded.
+/// otherwise. `mint` is `None` for SOL. Sent and withdrawn amounts are what
+/// left the private balance, change excluded; a self transfer's is what it
+/// spent.
 class ActivityEntry {
   final ActivityKind kind;
   final String? mint;
@@ -288,15 +289,19 @@ class ActivityEntry {
 /// What a history entry did, from this wallet's side.
 enum ActivityKind {
   /// Public funds moved into the private balance.
-  shielded,
+  deposit,
 
-  /// Private funds moved to a public account.
-  unshielded,
-  sent,
+  /// A transfer from another wallet.
   received,
 
-  /// Notes rearranged within this wallet: a merge, or a transfer to itself.
-  internal,
+  /// A transfer to another wallet.
+  sent,
+
+  /// Private funds moved to a public account.
+  withdrawal,
+
+  /// Notes moved within this wallet: a merge, or a transfer to itself.
+  selfTransfer,
 }
 
 class LocalProofResult {
