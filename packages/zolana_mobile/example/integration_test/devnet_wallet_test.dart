@@ -1,8 +1,3 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,9 +10,9 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
 /// device or simulator running the test, with A reopened from its exported
 /// keys and the transfer signed by the test after a blockhash refresh, as an
-/// application that signs itself does; one proved by a backend that forwards
-/// the request to the Helius prover. In both, A sends every request through
-/// the application's own transport (`package:http`, logged), as an
+/// application that signs itself does; one proved remotely by the Helius
+/// prover, asked through the transport. In both, A sends every request
+/// through the application's own transport (`package:http`, logged), as an
 /// application with its own networking does; B uses the package's default
 /// transport. Opt in, since it spends devnet SOL and needs A funded and a
 /// Helius key for devnet:
@@ -26,64 +21,24 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 /// flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
 ///   --dart-define=ZOLANA_E2E=true --dart-define=ZOLANA_API_KEY=...
 /// ```
+///
+/// `--dart-define=ZOLANA_E2E_PROVER_URL=...` proves remotely with another
+/// prover than the Helius gateway.
 const _enabled = bool.fromEnvironment('ZOLANA_E2E');
 const _apiKey = String.fromEnvironment('ZOLANA_API_KEY');
-
-/// An application's backend: it forwards each request to the Helius prover as
-/// the Zolana SDK's prover client does, and returns the proof.
-Future<Uint8List> heliusProver(Uint8List request) async {
-  final base = Uri.parse(Network.devnet.indexerUrl);
-  Uri at(String path, [Map<String, String> query = const {}]) => base.replace(
-    path: '${base.path}/$path',
-    queryParameters: {...base.queryParameters, ...query},
-  );
-  final http = HttpClient();
-  Future<Map<String, Object?>> json(HttpClientRequest call) async {
-    final response = await call.close();
-    final body = await utf8.decodeStream(response);
-    if (response.statusCode >= 300) {
-      throw HttpException('prover status ${response.statusCode}');
-    }
-    return jsonDecode(body) as Map<String, Object?>;
-  }
-
-  try {
-    final post = await http.postUrl(at('prove'));
-    post.headers
-      ..contentType = ContentType.json
-      ..set('X-Sync', 'true');
-    post.add(request);
-    var response = await json(post);
-    final job = response['jobId'];
-    if (job is! String) return utf8.encode(jsonEncode(response));
-    for (var poll = 0; poll < 240; poll++) {
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      response = await json(
-        await http.getUrl(at('prove/status', {'jobId': job})),
-      );
-      switch (response['status']) {
-        case 'completed':
-          return utf8.encode(jsonEncode(response['result']));
-        case 'failed':
-          throw StateError('the prover failed');
-      }
-    }
-    throw TimeoutException('the proof is not ready');
-  } finally {
-    http.close();
-  }
-}
+const _proverUrl = String.fromEnvironment('ZOLANA_E2E_PROVER_URL');
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(initZolanaMobile);
 
-  Future<WalletConfig> config() async => WalletConfig(
+  Future<WalletConfig> config({String? proverUrl}) async => WalletConfig(
     rpcUrl: Network.devnet.rpcUrl,
     indexerUrl: Network.devnet.indexerUrl,
     provingKeyDir:
         '${(await getApplicationSupportDirectory()).path}/proving-keys',
+    proverUrl: proverUrl,
     mints: const [],
   );
 
@@ -157,27 +112,19 @@ void main() {
     expect(transport.sent, contains('POST /v1/zolana/getMerkleProofs'));
   }, skip: !_enabled);
 
-  testWidgets('sends privately from A to B, proved by the backend', (
-    tester,
-  ) async {
+  testWidgets('sends privately from A to B, proved remotely', (tester) async {
     final lamports = BigInt.from(1000000);
-    RemoteProver backend = (_) => throw const SocketException('unreachable');
     final transport = AppTransport();
     addTearDown(transport.close);
-    final sender = await ZolanaWallet.open(
+    Future<ZolanaWallet> sender({String? proverUrl}) async => ZolanaWallet.open(
       signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),
-      config: await config(),
-      remoteProver: (request) => backend(request),
+      config: await config(proverUrl: proverUrl),
       transport: transport.send,
     );
-    addTearDown(sender.close);
-    final recipient = await open(demoAccounts[1]);
-    addTearDown(recipient.close);
-    final senderBefore = await sender.privateBalance();
-    final recipientBefore = await recipient.privateBalance();
-
+    final local = await sender();
+    addTearDown(local.close);
     await expectLater(
-      sender.prepareTransfer(
+      local.prepareTransfer(
         recipient: demoAccounts[1].publicKey,
         amount: lamports,
         proving: Proving.remote,
@@ -186,13 +133,23 @@ void main() {
         isA<ZolanaWalletException>().having(
           (e) => e.error,
           'error',
-          const WalletError.remoteProverFailed(),
+          const WalletError.remoteProverMissing(),
         ),
       ),
     );
-    backend = heliusProver;
+    await local.close();
+    // By default the Helius gateway, whose base URL is the indexer's.
+    final remote = await sender(
+      proverUrl: _proverUrl.isEmpty ? Network.devnet.indexerUrl : _proverUrl,
+    );
+    addTearDown(remote.close);
+    final recipient = await open(demoAccounts[1]);
+    addTearDown(recipient.close);
+    final senderBefore = await remote.privateBalance();
+    final recipientBefore = await recipient.privateBalance();
+
     final started = DateTime.now();
-    final signature = await sender.transfer(
+    final signature = await remote.transfer(
       recipient: demoAccounts[1].publicKey,
       amount: lamports,
       proving: Proving.remote,
@@ -200,14 +157,29 @@ void main() {
     // ignore: avoid_print
     print(
       'sent $signature in ${DateTime.now().difference(started).inMilliseconds} ms '
-      '(backend proof, verification, signing, confirmation)',
+      '(remote proof, verification, signing, confirmation)',
     );
-    expect(await sender.privateBalance(), senderBefore - lamports);
+    expect(await remote.privateBalance(), senderBefore - lamports);
     expect(await recipient.privateBalance(), recipientBefore + lamports);
     // ignore: avoid_print
-    print('the sender sent ${transport.sent.length} requests through Dart');
+    print(
+      'the sender sent ${transport.sent.length} requests through Dart, '
+      'proofs: ${transport.sent.where(_isProof)}',
+    );
     expect(transport.sent, contains('POST /'));
     expect(transport.sent, contains('POST /v1/zolana/getMerkleProofs'));
-    expect(transport.sent.where((r) => r.startsWith('GET ')), isEmpty);
+    expect(
+      transport.sent.where((r) => r.startsWith('POST ') && _isProof(r)),
+      hasLength(1),
+    );
+    expect(
+      transport.sent.where((r) => r.startsWith('GET ') && !_isProof(r)),
+      isEmpty,
+    );
   }, skip: !_enabled);
 }
+
+/// A proof request or status poll: `/prove/<key>` on a prover, the key-less
+/// `/prove` on the Helius gateway.
+bool _isProof(String request) =>
+    RegExp(r'/prove(/|$)').hasMatch(request.split(' ').last);

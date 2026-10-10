@@ -1,6 +1,6 @@
 //! The application's HTTP client, the wallet's only network path. Solana RPC
-//! and indexer calls and proving-key downloads all go through it; the wallet
-//! opens no connection of its own.
+//! and indexer calls, proving-key downloads and backend proofs all go through
+//! it; the wallet opens no connection of its own.
 
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
@@ -13,40 +13,57 @@ use solana_rpc_client::{
     rpc_client::{RpcClient, RpcClientConfig},
 };
 use zolana_api::{ApiError, BlockingHttpClient, BlockingZolanaApi, HttpRequest, HttpResponse};
-use zolana_client::{SolanaRpc, ZolanaIndexer};
+use zolana_client::{ProverClient, SolanaRpc, ZolanaIndexer};
 
 use crate::error::WalletError;
 
 /// One HTTP request of the wallet.
 pub struct TransportRequest {
-    /// `POST` for Solana RPC and indexer calls, `GET` for proving keys.
+    /// `POST` for Solana RPC and indexer calls and proof requests, `GET` for
+    /// proving keys and the status of a queued proof.
     pub method: String,
     pub url: String,
-    /// The content type of a `POST`; nothing else.
+    /// The content type of a `POST`, and `x-sync` or `x-async` on a proof
+    /// request; nothing else.
     pub headers: HashMap<String, String>,
-    /// Empty for a `GET`.
+    /// Empty for a `GET`. A proof request's body is the transaction's
+    /// witness, the wallet's nullifier secret included.
     pub body: Vec<u8>,
     /// The most bytes the response body may hold, for a proving-key download
     /// (the key's size in the lockfile). A transport stops reading and fails
     /// past it; the wallet refuses a longer body either way.
     pub max_response_bytes: Option<u32>,
-    /// The caller's bound on the request, in milliseconds, when it has one;
-    /// otherwise the transport's own applies.
+    /// The caller's bound on the request, in milliseconds, when it has one
+    /// (600 s for a proof request, 30 s for a status poll); otherwise the
+    /// transport's own applies.
     pub timeout_ms: Option<u32>,
 }
 
 /// The server's response, whatever its status.
 pub struct TransportResponse {
     pub status: u16,
+    /// The response's headers as they arrived. A prover inside a TEE says in
+    /// them that its body is encrypted; a TEE call fails without them.
+    pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
 }
 
 /// What the application's transport answered: the server's response, or the
-/// message of the failure that left none. The package's Dart side builds it
-/// and never throws, so no Dart stack trace reaches the wallet.
+/// failure that left none. The package's Dart side builds it and never
+/// throws, so no Dart stack trace reaches the wallet.
 pub struct TransportOutcome {
     pub response: Option<TransportResponse>,
-    pub failure: Option<String>,
+    pub failure: Option<TransportFailure>,
+}
+
+/// Why the application's transport has no response.
+#[derive(Debug)]
+pub struct TransportFailure {
+    pub message: String,
+    /// The response's status, when it arrived and its body could not be read.
+    /// The server got the request and may have acted on it, so the wallet does
+    /// not send it again: a prover would prove the spend twice.
+    pub status: Option<u16>,
 }
 
 /// Sends the wallet's requests through the application.
@@ -69,9 +86,12 @@ impl Transport {
 
     async fn send(&self, request: TransportRequest) -> Result<TransportResponse, TransportFailed> {
         let outcome = (self.callback)(request).await;
-        outcome
-            .response
-            .ok_or_else(|| TransportFailed(outcome.failure.unwrap_or_default()))
+        outcome.response.ok_or_else(|| {
+            TransportFailed(outcome.failure.unwrap_or(TransportFailure {
+                message: String::new(),
+                status: None,
+            }))
+        })
     }
 
     /// Blocks until the application answers. The wallet's methods run on a
@@ -107,15 +127,27 @@ impl Transport {
     pub(crate) fn indexer(&self, url: &str) -> ZolanaIndexer {
         ZolanaIndexer::with_api(BlockingZolanaApi::with_client(url, Sender(self.clone())))
     }
+
+    /// The SDK's prover client of the prover at `url`, through this transport.
+    pub(crate) fn prover(&self, url: String) -> ProverClient {
+        ProverClient::with_client(url, Sender(self.clone()))
+    }
 }
 
 /// The application's transport failed without a response.
 #[derive(Debug)]
-pub(crate) struct TransportFailed(String);
+pub(crate) struct TransportFailed(TransportFailure);
 
 impl fmt::Display for TransportFailed {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "transport failed: {}", self.0)
+        let TransportFailure { message, status } = &self.0;
+        match status {
+            Some(status) => write!(
+                formatter,
+                "transport failed after status {status}: {message}"
+            ),
+            None => write!(formatter, "transport failed: {message}"),
+        }
     }
 }
 
@@ -137,6 +169,15 @@ fn header_map(headers: &HeaderMap) -> HashMap<String, String> {
 
 fn millis(timeout: Duration) -> u32 {
     u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX)
+}
+
+/// How long a transport waits for an SDK request in all. The SDK gives up at
+/// `timeout` and counts the request as unanswered, which it sends again; the
+/// transport stops a second earlier, so it can still say whether the status
+/// arrived ([`ApiError::ResponseLost`], which the SDK does not resend).
+fn transport_deadline(timeout: Duration) -> Duration {
+    const MARGIN: Duration = Duration::from_secs(1);
+    timeout.saturating_sub(MARGIN).max(timeout / 2)
 }
 
 impl fmt::Debug for Sender {
@@ -172,18 +213,19 @@ impl Middleware for Sender {
             })
             .await
             .map_err(reqwest_middleware::Error::middleware)?;
-        let response = http::Response::builder()
-            .status(response.status)
-            .url(url)
+        let mut builder = http::Response::builder().status(response.status).url(url);
+        if let Some(headers) = builder.headers_mut() {
+            *headers = response_headers(response.headers);
+        }
+        let response = builder
             .body(response.body)
             .map_err(reqwest_middleware::Error::middleware)?;
         Ok(response.into())
     }
 }
 
-/// A failure is always [`ApiError::HttpClient`]: the transport does not say
-/// whether the status arrived before it failed ([`ApiError::ResponseLost`]).
-/// The indexer, the one client on this path, retries both alike.
+/// A failure after the status arrived is [`ApiError::ResponseLost`], which the
+/// prover client does not retry; any other is [`ApiError::HttpClient`].
 impl BlockingHttpClient for Sender {
     fn send(&self, request: HttpRequest) -> Result<HttpResponse, ApiError> {
         let HttpRequest {
@@ -201,20 +243,36 @@ impl BlockingHttpClient for Sender {
             // Moved, not copied: the bridge hands it to the application.
             body: std::mem::take(&mut *body),
             max_response_bytes: body_limit.map(|limit| u32::try_from(limit).unwrap_or(u32::MAX)),
-            timeout_ms: timeout.map(millis),
+            timeout_ms: timeout.map(|timeout| millis(transport_deadline(timeout))),
         };
-        let response = self
-            .0
-            .send_blocking(request)
-            .map_err(|error| ApiError::HttpClient(Box::new(error)))?;
+        let response = self.0.send_blocking(request).map_err(|error| {
+            if error.0.status.is_some() {
+                ApiError::ResponseLost(Box::new(error))
+            } else {
+                ApiError::HttpClient(Box::new(error))
+            }
+        })?;
         let status = StatusCode::from_u16(response.status)
             .map_err(|error| ApiError::HttpClient(Box::new(error)))?;
         Ok(HttpResponse {
             status,
-            headers: HeaderMap::new(),
+            headers: response_headers(response.headers),
             body: response.body,
         })
     }
+}
+
+/// The headers a transport returned, without any that are not valid HTTP.
+fn response_headers(headers: HashMap<String, String>) -> HeaderMap {
+    headers
+        .into_iter()
+        .filter_map(|(name, value)| {
+            Some((
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()).ok()?,
+                reqwest::header::HeaderValue::from_str(&value).ok()?,
+            ))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -230,9 +288,12 @@ pub(crate) mod tests {
     pub(crate) type Requests = Arc<Mutex<Vec<TransportRequest>>>;
 
     /// A transport that answers each request with `answer`, a response or a
-    /// failure message, and records it.
+    /// failure, and records it.
     pub(crate) fn fake(
-        answer: impl Fn(&TransportRequest) -> Result<TransportResponse, String> + Send + Sync + 'static,
+        answer: impl Fn(&TransportRequest) -> Result<TransportResponse, TransportFailure>
+            + Send
+            + Sync
+            + 'static,
     ) -> (Transport, Requests) {
         let requests = Requests::default();
         let recorded = requests.clone();
@@ -250,12 +311,21 @@ pub(crate) mod tests {
     /// A transport with no network: every request fails as a refused
     /// connection does, naming the URL as the application's exception would.
     pub(crate) fn unreachable() -> Transport {
-        fake(|request| Err(format!("connection refused ({})", request.url))).0
+        fake(|request| refused(format!("connection refused ({})", request.url))).0
     }
 
-    pub(crate) fn ok(body: &str) -> Result<TransportResponse, String> {
+    /// A failure before any response.
+    pub(crate) fn refused(message: String) -> Result<TransportResponse, TransportFailure> {
+        Err(TransportFailure {
+            message,
+            status: None,
+        })
+    }
+
+    pub(crate) fn ok(body: &str) -> Result<TransportResponse, TransportFailure> {
         Ok(TransportResponse {
             status: 200,
+            headers: Default::default(),
             body: body.as_bytes().to_vec(),
         })
     }
@@ -270,6 +340,7 @@ pub(crate) mod tests {
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
             proving: None,
+            prover_url: None,
             mints: Vec::new(),
         };
         let pubkey = signer.pubkey().to_string();
@@ -323,7 +394,16 @@ pub(crate) mod tests {
 
     #[test]
     fn sends_the_sdk_request_as_it_is() {
-        let (transport, requests) = fake(|_| ok("{}"));
+        let (transport, requests) = fake(|_| {
+            Ok(TransportResponse {
+                status: 200,
+                headers: HashMap::from([
+                    ("x-tee-encrypted".to_string(), "1".to_string()),
+                    ("bad header".to_string(), "dropped".to_string()),
+                ]),
+                body: b"{}".to_vec(),
+            })
+        });
         let request = HttpRequest::post_json("https://indexer.example/m", b"{}".to_vec())
             .with_header(
                 "x-request".parse().unwrap(),
@@ -335,6 +415,9 @@ pub(crate) mod tests {
             (response.status.as_u16(), response.body.as_slice()),
             (200, &b"{}"[..])
         );
+        // The response headers reach the SDK, without any that are not HTTP.
+        assert_eq!(response.headers.len(), 1);
+        assert_eq!(response.headers["x-tee-encrypted"], "1");
         let sent = requests.lock().unwrap().pop().unwrap();
         assert_eq!(
             (sent.method.as_str(), sent.url.as_str()),
@@ -344,17 +427,49 @@ pub(crate) mod tests {
         headers.insert("x-request".into(), "1".into());
         assert_eq!(sent.headers, headers);
         assert_eq!(sent.body, b"{}");
+        // A second inside the SDK's bound, so the transport reports first.
         assert_eq!(
             (sent.max_response_bytes, sent.timeout_ms),
-            (None, Some(2500))
+            (None, Some(1500))
         );
+        assert_eq!(
+            transport_deadline(Duration::from_secs(600)),
+            Duration::from_secs(599)
+        );
+        assert_eq!(
+            transport_deadline(Duration::from_millis(1200)),
+            Duration::from_millis(600)
+        );
+    }
+
+    #[test]
+    fn a_failure_after_the_status_is_a_lost_response() {
+        let send = |status| {
+            let (transport, _) = fake(move |_| {
+                Err(TransportFailure {
+                    message: "connection reset".to_string(),
+                    status,
+                })
+            });
+            Sender(transport).send(HttpRequest::get("https://prover.example/status"))
+        };
+        assert!(matches!(
+            send(Some(200)),
+            Err(ApiError::ResponseLost(error))
+                if error.to_string() == "transport failed after status 200: connection reset"
+        ));
+        assert!(matches!(
+            send(None),
+            Err(ApiError::HttpClient(error))
+                if error.to_string() == "transport failed: connection reset"
+        ));
     }
 
     #[test]
     fn transport_failures_surface_without_secrets() {
         // The package hands over the exception message, which can name the URL.
         let (transport, _) = fake(|request| {
-            Err(format!(
+            refused(format!(
                 "SocketException: connection refused ({})",
                 request.url
             ))
@@ -378,6 +493,7 @@ pub(crate) mod tests {
         let (transport, _) = fake(|_| {
             Ok(TransportResponse {
                 status: 401,
+                headers: Default::default(),
                 body: b"unauthorized".to_vec(),
             })
         });

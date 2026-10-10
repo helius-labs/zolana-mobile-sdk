@@ -27,8 +27,8 @@ pub enum WalletError {
     /// `recipient` has not registered a shielded address. A withdrawal pays
     /// it publicly.
     RecipientNotRegistered { recipient: String },
-    /// `recipient` has no associated token account for `mint`.
-    /// `prepare_token_account` creates it.
+    /// `recipient` has no associated token account for `mint`. The
+    /// application's Solana client creates it.
     RecipientTokenAccountMissing { recipient: String, mint: String },
     /// The user registry holds other keys for `owner`. The wallet never
     /// replaces them.
@@ -45,8 +45,6 @@ pub enum WalletError {
     InvalidTokenProgram { mint: String, token_program: String },
     /// `value` is not a base58 public key.
     InvalidPubkey { value: String },
-    /// The data of `account` is not a token account's.
-    InvalidTokenAccount { account: String },
     /// The derivation signature is not the account's signature over the
     /// derivation message.
     InvalidDerivationSignature,
@@ -61,11 +59,10 @@ pub enum WalletError {
     SignatureCountMismatch { expected: u64, got: u64 },
     /// Solana did not confirm the transaction within the wait.
     TransactionNotConfirmed { signature: String },
-    /// The spend asked for remote proving and no remote prover is set.
+    /// The spend asked for remote proving and `WalletConfig.prover_url` is
+    /// not set.
     RemoteProverMissing,
-    /// The remote prover returned no proof.
-    RemoteProverFailed,
-    /// The remote prover's response is not a gnark proof.
+    /// The remote prover's response is not a proof of the pinned proving key.
     ProofMalformed,
     /// The proof does not verify against the pinned verifying key.
     ProofInvalid,
@@ -91,6 +88,8 @@ pub enum WalletError {
     IndexerUrlInsecure { url: String },
     /// As [`Self::RpcUrlInsecure`], for the proving key host.
     ProvingKeyUrlInsecure { url: String },
+    /// As [`Self::RpcUrlInsecure`], for the remote prover.
+    ProverUrlInsecure { url: String },
     /// The lockfile pins no key named `name`.
     ProvingKeyUnknown { name: String },
     /// The lockfile pins another sha256 for `name` than the verifying key
@@ -127,7 +126,12 @@ impl From<ClientError> for WalletError {
             ClientError::UserRegistryKeysMismatch { owner } => Self::RegistrationConflict {
                 owner: owner.to_string(),
             },
-            ClientError::ProofVerification(_) => Self::ProofInvalid,
+            ClientError::ProofVerification(_) | ClientError::ProvingKeyMismatch { .. } => {
+                Self::ProofInvalid
+            }
+            ClientError::ProofParse(_) | ClientError::MissingProvingKeySha256 { .. } => {
+                Self::ProofMalformed
+            }
             failure => Self::Client {
                 message: client_message(&failure),
             },

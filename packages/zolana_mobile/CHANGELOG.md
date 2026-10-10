@@ -17,9 +17,9 @@ Unreleased.
   classifies it: `deposit`, `received`, `sent`, `withdrawal` or
   `selfTransfer`.
 * `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
-  `prepareWithdrawal`, `prepareTokenAccount`, `submit` and `confirm` for
-  applications that sign and send transactions themselves. `feePayer` lets
-  another account pay the network fee of a transfer or withdrawal.
+  `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
+  send transactions themselves. `feePayer` lets another account pay the
+  network fee of a transfer or withdrawal.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
 * Prepared spends reserve their notes, so the next spend selects others;
@@ -35,18 +35,22 @@ Unreleased.
 * `close()` for lock and account switch: it rejects queued operations and a
   `prepare` call that is proving at the time, never signs or submits after the
   call, and releases the native wallet once the running step ends.
-* Backend proving: a `remoteProver` given at open receives a spend's `/prove`
-  request as the Zolana SDK's prover client sends it, for the application's
-  backend to prove. The device verifies the returned proof against the pinned
-  verifying key before it builds the message. `WalletConfig.proving` sets the
-  default; `proving` on `prepareTransfer`, `prepareWithdrawal`, `transfer` and
-  `withdraw` chooses per call.
+* Backend proving: `Proving.remote` proves a spend with the Zolana SDK's
+  prover client at `WalletConfig.proverUrl` (the application's backend, which
+  proxies the prover's `/prove/<key>` routes, or a Zolana prover), through the
+  wallet's transport. The device verifies the returned proof against the
+  pinned verifying key before it builds the message. `WalletConfig.proving`
+  sets the default; `proving` on `prepareTransfer`, `prepareWithdrawal`,
+  `transfer` and `withdraw` chooses per call.
 * The wallet never opens a connection: every request (Solana RPC, indexer,
-  proving-key downloads) goes through a transport in Dart, the package's own
-  on `package:http` by default, or the application's networking passed as
-  `transport` to `ZolanaWallet.open` and `ZolanaWallet.openWithKeys`. With
-  the default transport, `open` refuses plaintext URLs off loopback unless
-  `allowInsecureHttp` is passed.
+  proving-key downloads, remote proofs) goes through a transport in Dart, the
+  package's own on `package:http` by default, or the application's networking
+  passed as `transport` to `ZolanaWallet.open` and
+  `ZolanaWallet.openWithKeys`. With the default transport, `open` refuses
+  plaintext URLs off loopback unless `allowInsecureHttp` is passed. A
+  transport returns each response with its headers, and throws
+  `TransportResponseLost` when a body fails after its status arrived, so a
+  proof request is not sent twice.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile. With the default transport, a download that receives no data for
   30 s fails with `WalletError.provingKeyDownloadFailed`, and the next call downloads

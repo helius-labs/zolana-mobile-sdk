@@ -1,12 +1,11 @@
-//! The [`Prover`] the wallet hands to `ZolanaClient::with_prover`: the
-//! device's own, or the application's backend for a spend that asks for it.
+//! Where the wallet proves a spend: on the device with its own [`Prover`], or
+//! with the Zolana SDK's prover client through the application's transport.
 
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, Mutex, MutexGuard, PoisonError,
+    Arc, Mutex, PoisonError,
 };
 
-use flutter_rust_bridge::DartFnFuture;
 use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
 
 use crate::{error::WalletError, init_gnark, keys, Loaded, PREPARED};
@@ -17,117 +16,50 @@ pub enum Proving {
     /// On the device, with the pinned proving key for its shape. The witness
     /// stays in this process.
     Local,
-    /// By the application's backend, given with
-    /// [`MobileWallet::set_remote_prover`](crate::MobileWallet::set_remote_prover).
-    /// The backend receives the witness, the wallet's nullifier secret
-    /// included.
+    /// By the prover at [`WalletConfig::prover_url`](crate::WalletConfig::prover_url),
+    /// through the application's transport. The prover receives the witness,
+    /// the wallet's nullifier secret included.
     Remote,
-}
-
-/// The `/prove` request body in, the prover's proof out, `None` when it failed.
-type ProveRemotely = dyn Fn(Vec<u8>) -> DartFnFuture<Option<Vec<u8>>> + Send + Sync;
-
-/// The application's backend. It receives the `/prove` request body the Zolana
-/// SDK's prover client sends and returns its prover's proof. The client
-/// verifies the proof against the pinned verifying key and the public input it
-/// computed itself before the wallet builds the message.
-pub(crate) struct RemoteProver(Box<ProveRemotely>);
-
-impl RemoteProver {
-    pub(crate) fn new(
-        prove: impl Fn(Vec<u8>) -> DartFnFuture<Option<Vec<u8>>> + Send + Sync + 'static,
-    ) -> Self {
-        Self(Box::new(prove))
-    }
-
-    /// Waits in the calling thread, a flutter_rust_bridge worker, while the
-    /// Dart thread runs the callback.
-    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, WalletError> {
-        let body = request.body()?;
-        let response = futures_executor::block_on((self.0)(body.as_bytes().to_vec()))
-            .ok_or(WalletError::RemoteProverFailed)?;
-        proof_from_response(&response).ok_or(WalletError::ProofMalformed)
-    }
-}
-
-/// The gnark proof JSON in a prover's response, alone or as its `proof`, as
-/// the SDK's prover client reads it.
-fn proof_from_response(response: &[u8]) -> Option<Proof> {
-    let response: serde_json::Value = serde_json::from_slice(response).ok()?;
-    let proof = response.get("proof").unwrap_or(&response);
-    Proof::from_gnark_json(&proof.to_string()).ok()
-}
-
-/// What the wallet tells its client's prover for the current spend, and what
-/// the prover tells back. The wallet sets `remote` for each spend; the client
-/// owns the [`WalletProver`] that reads it. `failure` is why the last proof
-/// failed, which the `ClientError` the client sees cannot carry.
-#[derive(Default)]
-pub(crate) struct ProverSlot {
-    /// The backend proving the current spend, or `None` to prove it on the
-    /// device.
-    pub(crate) remote: Option<Arc<RemoteProver>>,
-    pub(crate) failure: Option<WalletError>,
-}
-
-pub(crate) type SpendProver = Arc<Mutex<ProverSlot>>;
-
-/// The prover the wallet's client holds.
-pub(crate) struct WalletProver {
-    pub(crate) native: NativeProver,
-    pub(crate) slot: SpendProver,
-}
-
-impl WalletProver {
-    fn slot(&self) -> MutexGuard<'_, ProverSlot> {
-        self.slot.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-}
-
-impl Prover for WalletProver {
-    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
-        let remote = self.slot().remote.clone();
-        let proved = match remote {
-            Some(remote) => remote.prove(request),
-            None => self.native.prove(request),
-        };
-        proved.map_err(|failure| {
-            let message = format!("{failure:?}");
-            self.slot().failure = Some(failure);
-            ClientError::Prover(message)
-        })
-    }
 }
 
 /// Proves each `/prove` body with the key the client names for it, loading
 /// that key into the shared prepared slot when it changes. Request bodies
-/// carry nullifier secrets and never leave the process.
-pub(crate) struct NativeProver {
+/// carry nullifier secrets and never leave the process. Clones share one
+/// prover: the wallet keeps one to read [`Self::take_failure`] after a spend
+/// its client proved with another.
+#[derive(Clone)]
+pub(crate) struct NativeProver(Arc<Native>);
+
+struct Native {
     keys: keys::KeyStore,
     /// Id of the prepared system this prover loaded last; 0 before the first.
     loaded: AtomicU64,
+    /// Why the last proof failed, which the `ClientError` the client sees
+    /// cannot carry.
+    failure: Mutex<Option<WalletError>>,
 }
 
 impl NativeProver {
     pub(crate) fn new(keys: keys::KeyStore) -> Self {
-        Self {
+        Self(Arc::new(Native {
             keys,
             loaded: AtomicU64::new(0),
-        }
+            failure: Mutex::default(),
+        }))
     }
 
-    /// Proves in the calling thread, so [`ProveRequest::delivery`] does not
-    /// apply.
-    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, WalletError> {
-        let body = request.body()?;
-        let key = request.proving_key()?;
-        let proof_json = self.prove_json(&body, &key)?;
-        Ok(Proof::from_gnark_json(&proof_json)?)
+    /// Why the last proof on the device failed, once.
+    pub(crate) fn take_failure(&self) -> Option<WalletError> {
+        self.0
+            .failure
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
     }
 
     fn prove_json(&self, body: &str, key: &ExpectedProvingKey) -> Result<String, WalletError> {
         let name = key.name.as_str();
-        let path = self.keys.ensure(key)?;
+        let path = self.0.keys.ensure(key)?;
         let mut state = PREPARED
             .lock()
             .map_err(|_| WalletError::ProverUnavailable)?;
@@ -143,7 +75,7 @@ impl NativeProver {
             let prover = rust_gnark::PreparedProver::load_key(&path.display().to_string())
                 .map_err(|_| WalletError::ProverLoadFailed)?;
             let id = state.next_id()?;
-            self.loaded.store(id, Ordering::Relaxed);
+            self.0.loaded.store(id, Ordering::Relaxed);
             state.loaded = Some(Loaded {
                 id,
                 key: Some(name.to_string()),
@@ -161,7 +93,7 @@ impl NativeProver {
 
 /// A closed wallet releases the proving key it loaded, unless another prover
 /// has replaced it since.
-impl Drop for NativeProver {
+impl Drop for Native {
     fn drop(&mut self) {
         let id = *self.loaded.get_mut();
         let Ok(mut state) = PREPARED.lock() else {
@@ -173,18 +105,37 @@ impl Drop for NativeProver {
     }
 }
 
+/// Proves in the calling thread, so [`ProveRequest::delivery`] does not apply.
+impl Prover for NativeProver {
+    fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
+        let body = request.body()?;
+        let key = request.proving_key()?;
+        let proof_json = self.prove_json(&body, &key).map_err(|failure| {
+            let message = format!("{failure:?}");
+            *self
+                .0
+                .failure
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = Some(failure);
+            ClientError::Prover(message)
+        })?;
+        Proof::from_gnark_json(&proof_json)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
-        io::{BufRead, BufReader, Read, Write},
-        net::TcpListener,
+        collections::HashMap,
+        sync::atomic::{AtomicU64, Ordering},
     };
 
     use solana_address::Address;
     use zeroize::Zeroizing;
     use zolana_client::{
-        assemble, prover::verify_proof_statement, AssembledTransfer, MerkleContext, MerkleProof,
-        NonInclusionProof, ProverClient, SpendProof, NULLIFIER_TREE_HEIGHT, STATE_TREE_HEIGHT,
+        assemble, prover::verify_proof_statement, AssembledTransfer, Delivery, MerkleContext,
+        MerkleProof, NonInclusionProof, ProverClient, SpendProof, NULLIFIER_TREE_HEIGHT,
+        STATE_TREE_HEIGHT,
     };
     use zolana_interface::{pda, verifying_keys::CircuitId, N_PUBLIC_SLOTS};
     use zolana_keypair::ShieldedKeypair;
@@ -194,30 +145,42 @@ mod tests {
     };
 
     use super::*;
+    use crate::transport::{
+        tests::{fake, ok, Requests},
+        TransportFailure, TransportRequest, TransportResponse,
+    };
 
     const REQUEST: &str = include_str!("../../../../../fixtures/prove-request-2x2.json");
     /// The Helius prover's proof of [`REQUEST`].
     const RESPONSE: &[u8] = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
+    const PROVER_URL: &str = "https://prover.example/v1/zolana?api-key=secret";
+    const PROVE_URL: &str =
+        "https://prover.example/v1/zolana/prove/transfer_confidential_2_2?api-key=secret";
+    const STATUS_URL: &str = "https://prover.example/v1/zolana/prove/transfer_confidential_2_2/status?api-key=secret&jobId=job-1";
 
-    /// A backend that answers every request with `response`, and the last
-    /// request it received.
-    fn backend(response: Option<&'static [u8]>) -> (RemoteProver, Arc<Mutex<Vec<u8>>>) {
-        let received = Arc::new(Mutex::new(Vec::new()));
-        let sink = Arc::clone(&received);
-        let prover = RemoteProver::new(move |request| {
-            *sink.lock().unwrap() = request;
-            Box::pin(async move { response.map(<[u8]>::to_vec) })
-        });
-        (prover, received)
+    /// The SDK's prover client of [`PROVER_URL`], through a transport that
+    /// answers each request with `answer`.
+    fn remote(
+        answer: impl Fn(&TransportRequest) -> Result<TransportResponse, TransportFailure>
+            + Send
+            + Sync
+            + 'static,
+    ) -> (ProverClient, Requests) {
+        let (transport, requests) = fake(answer);
+        (transport.prover(PROVER_URL.to_string()), requests)
     }
 
-    #[test]
-    fn a_backend_receives_the_client_request_and_fails_by_name() {
-        let request = Captured(transfer_2_2_key());
-        let (prover, received) = backend(Some(RESPONSE));
-        let proof = prover.prove(&request).expect("the prover's proof");
-        assert_eq!(*received.lock().unwrap(), REQUEST.as_bytes());
-        // The fixture is a real proof of its request.
+    fn sent(requests: &Requests) -> Vec<(String, String)> {
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| (request.method.clone(), request.url.clone()))
+            .collect()
+    }
+
+    /// `proof` is a proof of [`REQUEST`], the fixture's own.
+    fn assert_proves_request(proof: &Proof) {
         let request: serde_json::Value = serde_json::from_str(REQUEST).unwrap();
         let public_input = request["publicInputHash"].as_str().unwrap();
         let public_input = format!("{:0>64}", public_input.trim_start_matches("0x"));
@@ -227,31 +190,134 @@ mod tests {
             .collect();
         let circuit = CircuitId::ConfidentialEddsa(2, 2, N_PUBLIC_SLOTS as u8);
         verify_proof_statement(
-            &proof,
+            proof,
             public_input.try_into().unwrap(),
             circuit.verifying_key().unwrap(),
         )
-        .expect("the fixture proof verifies");
+        .expect("the proof verifies");
+    }
 
-        let request = Captured(transfer_2_2_key());
-        for (response, failure) in [
-            (None, WalletError::RemoteProverFailed),
-            (Some(&b"not json"[..]), WalletError::ProofMalformed),
-            (
-                Some(&br#"{"proof":{"ar":["0x1"]}}"#[..]),
-                WalletError::ProofMalformed,
-            ),
-        ] {
-            let (prover, _) = backend(response);
-            assert_eq!(prover.prove(&request).unwrap_err(), failure);
+    #[test]
+    fn a_remote_proof_comes_in_the_response() {
+        let (prover, requests) = remote(|_| {
+            Ok(TransportResponse {
+                status: 200,
+                headers: Default::default(),
+                body: RESPONSE.to_vec(),
+            })
+        });
+        let proof = prover
+            .prove(&Captured(transfer_2_2_key()))
+            .expect("the prover's proof");
+        assert_proves_request(&proof);
+
+        let request = requests.lock().unwrap().pop().unwrap();
+        assert_eq!(
+            (request.method.as_str(), request.url.as_str()),
+            ("POST", PROVE_URL)
+        );
+        let headers = HashMap::from([
+            ("content-type".to_string(), "application/json".to_string()),
+            ("x-sync".to_string(), "true".to_string()),
+        ]);
+        assert_eq!(request.headers, headers);
+        assert_eq!(request.body, REQUEST.as_bytes());
+        // A synchronous proof is not cut at the transport's 30 s.
+        assert_eq!(
+            (request.max_response_bytes, request.timeout_ms),
+            (None, Some(599_000))
+        );
+        assert!(requests.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_queued_remote_proof_is_polled_until_it_completes() {
+        let polls = AtomicU64::new(0);
+        let completed = format!(
+            r#"{{"jobId":"job-1","status":"completed","result":{}}}"#,
+            std::str::from_utf8(RESPONSE).unwrap()
+        );
+        let (prover, requests) = remote(move |request| match request.method.as_str() {
+            "POST" => ok(r#"{"jobId":"job-1","status":"queued"}"#),
+            _ if polls.fetch_add(1, Ordering::Relaxed) == 0 => {
+                ok(r#"{"jobId":"job-1","status":"processing"}"#)
+            }
+            _ => ok(&completed),
+        });
+        let proof = prover
+            .prove(&Captured(transfer_2_2_key()))
+            .expect("the queued proof");
+        assert_proves_request(&proof);
+
+        let get = |url: &str| ("GET".to_string(), url.to_string());
+        assert_eq!(
+            sent(&requests),
+            [
+                ("POST".to_string(), PROVE_URL.to_string()),
+                get(STATUS_URL),
+                get(STATUS_URL)
+            ]
+        );
+        for poll in &requests.lock().unwrap()[1..] {
+            assert!(poll.headers.is_empty() && poll.body.is_empty());
+            assert_eq!(poll.timeout_ms, Some(29_000));
         }
     }
 
-    /// The client verifies a backend's proof in `AssembledTransfer::prove`,
-    /// which `finish_submission_unsigned_sync` calls before it fetches a
+    /// A proof response whose body is still arriving at the SDK's deadline:
+    /// the transport gives up a second earlier, with the status, so the SDK
+    /// does not send the request again.
+    #[test]
+    fn a_slow_body_at_the_deadline_is_not_sent_again() {
+        let (transport, requests) = fake(|request| {
+            // The status arrived; the body drips until the transport's own
+            // deadline, as the default transport counts it.
+            let deadline = request.timeout_ms.expect("a proof request has a deadline");
+            std::thread::sleep(std::time::Duration::from_millis(deadline.into()));
+            Err(TransportFailure {
+                message: "TimeoutException: body".to_string(),
+                status: Some(200),
+            })
+        });
+        let prover = transport
+            .prover(PROVER_URL.to_string())
+            .with_proof_timeout(std::time::Duration::from_secs(2));
+        assert!(prover.prove(&Captured(transfer_2_2_key())).is_err());
+        assert_eq!(
+            sent(&requests),
+            [("POST".to_string(), PROVE_URL.to_string())]
+        );
+    }
+
+    #[test]
+    fn a_proof_request_whose_response_is_lost_is_not_sent_again() {
+        let (prover, requests) = remote(|_| {
+            Err(TransportFailure {
+                message: "connection reset".to_string(),
+                status: Some(200),
+            })
+        });
+        let error = WalletError::from(prover.prove(&Captured(transfer_2_2_key())).unwrap_err());
+        let WalletError::Client { message: error } = error else {
+            panic!("{error:?}");
+        };
+        assert!(
+            error.contains("transport failed after status 200: connection reset"),
+            "{error}"
+        );
+        assert!(!error.contains("secret"), "{error}");
+        // The prover may be proving it: one POST, never a second.
+        assert_eq!(
+            sent(&requests),
+            [("POST".to_string(), PROVE_URL.to_string())]
+        );
+    }
+
+    /// The client verifies a remote proof in `AssembledTransfer::prove`, which
+    /// `finish_submission_unsigned_sync_with_prover` calls before it fetches a
     /// blockhash and builds the message.
     #[test]
-    fn a_backend_proof_is_verified_against_the_transaction() {
+    fn a_remote_proof_that_does_not_verify_fails_the_spend() {
         let sender = ShieldedKeypair::new_ed25519().unwrap();
         let mut assembled = assembled_transfer(&sender);
         let shape = (
@@ -259,33 +325,36 @@ mod tests {
             assembled.prover_inputs.outputs.len(),
         );
         assert_eq!(shape, (2, 2), "the shape of the fixture proof");
-        let sent = prover_client_body(&mut assembled, &sender);
+        let mut unparsable: serde_json::Value = serde_json::from_slice(RESPONSE).unwrap();
+        unparsable["proof"]["ar"] = serde_json::json!(["0x1"]);
 
         for (response, failure) in [
             // A real proof, of another transaction.
-            (RESPONSE, WalletError::ProofInvalid),
-            (&b"{}"[..], WalletError::ProofMalformed),
+            (RESPONSE.to_vec(), WalletError::ProofInvalid),
+            (b"not json".to_vec(), WalletError::ProofMalformed),
+            (
+                unparsable.to_string().into_bytes(),
+                WalletError::ProofMalformed,
+            ),
+            // No `provingKeySha256`: the key it came from is unknown.
+            (
+                br#"{"proof":{"ar":["0x1"]}}"#.to_vec(),
+                WalletError::ProofMalformed,
+            ),
         ] {
-            let (backend, received) = backend(Some(response));
-            let prover = WalletProver {
-                native: NativeProver::new(keys::KeyStore::new(
-                    std::env::temp_dir().display().to_string(),
-                    None,
-                    crate::transport::tests::unreachable(),
-                )),
-                slot: Arc::new(Mutex::new(ProverSlot {
-                    remote: Some(Arc::new(backend)),
-                    failure: None,
-                })),
-            };
-            let error = assembled.prove(&prover, &sender).unwrap_err();
-            let reported = prover.slot().failure.take().unwrap_or_else(|| error.into());
-            assert_eq!(reported, failure);
-            assert_eq!(
-                *received.lock().unwrap(),
-                sent,
-                "the backend receives what the SDK's prover client sends"
-            );
+            let (prover, requests) = remote(move |_| {
+                Ok(TransportResponse {
+                    status: 200,
+                    headers: Default::default(),
+                    body: response.clone(),
+                })
+            });
+            let error = WalletError::from(assembled.prove(&prover, &sender).unwrap_err());
+            assert_eq!(error, failure);
+            let request = requests.lock().unwrap().pop().unwrap();
+            assert_eq!(request.url, PROVE_URL);
+            assert_eq!(request.headers["x-sync"], "true");
+            assert_eq!(request.timeout_ms, Some(599_000));
         }
     }
 
@@ -366,37 +435,8 @@ mod tests {
         assemble(proof_inputs, &[spend], &dummies).unwrap()
     }
 
-    /// The body the SDK's prover client posts for `assembled`, to a prover that
-    /// answers with an error.
-    fn prover_client_body(assembled: &mut AssembledTransfer, sender: &ShieldedKeypair) -> Vec<u8> {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let client = ProverClient::new(format!("http://{}", listener.local_addr().unwrap()));
-        let server = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut length = 0;
-            loop {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                if line == "\r\n" {
-                    break;
-                }
-                if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
-                    length = value.trim().parse().unwrap();
-                }
-            }
-            let mut body = vec![0; length];
-            reader.read_exact(&mut body).unwrap();
-            stream
-                .write_all(b"HTTP/1.1 500 Internal Server Error\r\ncontent-length: 0\r\n\r\n")
-                .unwrap();
-            body
-        });
-        assert!(assembled.prove(&client, sender).is_err());
-        server.join().unwrap()
-    }
-
-    /// The captured 2→2 client body, with the key it asks for.
+    /// The captured 2→2 client body, with the key it asks for, asked for in
+    /// the response as the SDK asks for a transfer proof.
     struct Captured(ExpectedProvingKey);
 
     impl ProveRequest for Captured {
@@ -406,6 +446,10 @@ mod tests {
 
         fn proving_key(&self) -> Result<ExpectedProvingKey, ClientError> {
             Ok(self.0.clone())
+        }
+
+        fn delivery(&self) -> Delivery {
+            Delivery::InResponse
         }
     }
 

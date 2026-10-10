@@ -118,17 +118,6 @@ fn parse_mint(mint: &str) -> Result<Pubkey, WalletError> {
     Pubkey::from_str(mint).map_err(|_| WalletError::InvalidMint { mint: mint.into() })
 }
 
-/// The token amount of an SPL Token or Token-2022 account; both put it at
-/// bytes 64..72.
-pub(crate) fn token_account_amount(account: Pubkey, data: &[u8]) -> Result<u64, WalletError> {
-    data.get(64..72)
-        .and_then(|bytes| bytes.try_into().ok())
-        .map(u64::from_le_bytes)
-        .ok_or_else(|| WalletError::InvalidTokenAccount {
-            account: account.to_string(),
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
@@ -251,18 +240,5 @@ mod tests {
             vec![1, 2, 3],
         );
         assert_eq!(resolve(&invalid), unsupported);
-    }
-
-    #[test]
-    fn reads_token_account_amounts() {
-        let mut data = vec![0; 165];
-        data[64..72].copy_from_slice(&42u64.to_le_bytes());
-        assert_eq!(token_account_amount(MINT, &data).unwrap(), 42);
-        assert_eq!(
-            token_account_amount(MINT, &data[..70]).unwrap_err(),
-            WalletError::InvalidTokenAccount {
-                account: MINT.to_string()
-            }
-        );
     }
 }

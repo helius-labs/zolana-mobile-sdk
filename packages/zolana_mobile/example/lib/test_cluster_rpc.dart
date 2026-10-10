@@ -1,12 +1,22 @@
 import 'dart:convert';
 import 'dart:io';
 
-/// The devnet airdrop that funds a demo account; everything else goes through
-/// the Zolana wallet.
+/// The plain Solana calls the demo makes with its own RPC client: the public
+/// balance and the devnet airdrop that funds a demo account. Everything else
+/// goes through the Zolana wallet.
 class TestClusterRpc {
   TestClusterRpc(this.url);
 
   final String url;
+
+  /// Lamports of [publicKey], at the commitment the wallet confirms at.
+  Future<BigInt> balance(String publicKey) async {
+    final result = await _call('getBalance', [
+      publicKey,
+      {'commitment': 'confirmed'},
+    ]);
+    return BigInt.from((result as Map)['value'] as int);
+  }
 
   /// Request [lamports] and wait until the airdrop is confirmed.
   Future<void> airdrop(String publicKey, BigInt lamports) async {
@@ -44,6 +54,9 @@ class TestClusterRpc {
         throw StateError('$method failed: ${body['error']['message']}');
       }
       return body['result'];
+    } on IOException {
+      // Its message can name the URL, and with it the API key.
+      throw StateError('$method failed: the Solana RPC is unreachable');
     } finally {
       client.close();
     }

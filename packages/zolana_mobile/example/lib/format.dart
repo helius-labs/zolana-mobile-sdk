@@ -51,7 +51,6 @@ String approvalText(PreparedTransaction tx) {
     PendingTransactionKind.deposit => 'Shield $amount',
     PendingTransactionKind.transfer => 'Send $amount privately to $to',
     PendingTransactionKind.withdrawal => 'Unshield $amount to $to',
-    PendingTransactionKind.tokenAccount => 'Create a token account for $to',
   };
 }
 
