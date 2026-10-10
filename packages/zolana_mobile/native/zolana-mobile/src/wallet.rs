@@ -366,11 +366,6 @@ impl MobileWallet {
     /// with `registration_conflict` when it holds other keys: this wallet
     /// never replaces them.
     pub fn prepare_registration(&self) -> Result<Option<PendingTransaction>, String> {
-        match self.registration_status()? {
-            RegistrationStatus::Registered => return Ok(None),
-            RegistrationStatus::Conflict => return Err("registration_conflict".to_string()),
-            RegistrationStatus::NotRegistered => {}
-        }
         let message = build_registration_transaction_sync(
             &self.client,
             self.owner,
@@ -378,7 +373,7 @@ impl MobileWallet {
             None,
             None,
         )
-        .map_err(error)?;
+        .map_err(registration_error)?;
         message
             .map(|message| {
                 self.pending(
@@ -934,6 +929,15 @@ fn registration_status_of<E>(
     }
 }
 
+/// `registration_conflict` when the registry holds other keys for this
+/// account.
+fn registration_error(failure: ClientError) -> String {
+    match failure {
+        ClientError::UserRegistryKeysMismatch { .. } => "registration_conflict".to_string(),
+        failure => error(failure),
+    }
+}
+
 /// Whether `signature` is `signer`'s Ed25519 signature over `message`.
 fn signed_by(signer: &Pubkey, message: &[u8], signature: &[u8; 64]) -> bool {
     PublicKey::from_ed25519(&signer.to_bytes()).verify_message(message, signature)
@@ -1296,6 +1300,14 @@ mod tests {
         assert_eq!(status(Some(Ok(identity))), RegistrationStatus::Registered);
         assert_eq!(status(Some(Ok(other))), RegistrationStatus::Conflict);
         assert_eq!(status(Some(Err(()))), RegistrationStatus::Conflict);
+        let owner = Pubkey::new_unique();
+        assert_eq!(
+            registration_error(ClientError::UserRegistryKeysMismatch { owner }),
+            "registration_conflict"
+        );
+        let record = Pubkey::new_unique();
+        let missing = || ClientError::UserRegistryRecordNotFound { owner, record };
+        assert_eq!(registration_error(missing()), error(missing()));
     }
 
     #[test]
