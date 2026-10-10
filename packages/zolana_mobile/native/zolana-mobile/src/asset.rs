@@ -7,7 +7,7 @@ use zolana_client::Rpc;
 use zolana_interface::{pda, state::SplAssetRegistry};
 use zolana_transaction::{AssetRegistry, SOL_MINT};
 
-use crate::wallet::error;
+use crate::error::WalletError;
 
 /// An asset the wallet can hold. `token_program` is `None` for SOL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,24 +28,24 @@ impl Asset {
         rpc: &impl Rpc,
         registry: &mut AssetRegistry,
         mint: Option<&str>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, WalletError> {
         let Some(mint) = mint else {
             return Ok(Self::SOL);
         };
-        let mint = parse_mint(mint)?;
+        let name = mint;
+        let mint = parse_mint(name)?;
         let token_program = rpc
-            .get_account(mint)
-            .map_err(error)?
-            .ok_or("mint_not_found")?
+            .get_account(mint)?
+            .ok_or_else(|| WalletError::MintNotFound { mint: name.into() })?
             .owner;
         if token_program != pda::spl_token_program_id()
             && token_program != pda::spl_token_2022_program_id()
         {
-            return Err("mint_invalid".to_string());
+            return Err(WalletError::InvalidMint { mint: name.into() });
         }
         if registry.asset_id(&mint).is_err() {
             let asset_id = registered_asset_id(rpc, mint)?;
-            registry.insert(asset_id, mint).map_err(error)?;
+            registry.insert(asset_id, mint)?;
         }
         Ok(Self {
             mint,
@@ -74,26 +74,29 @@ pub(crate) fn mint_name(mint: &Pubkey) -> Option<String> {
     (*mint != SOL_MINT).then(|| mint.to_string())
 }
 
-fn parse_mint(mint: &str) -> Result<Pubkey, String> {
-    Pubkey::from_str(mint).map_err(|_| "mint_invalid".to_string())
+fn parse_mint(mint: &str) -> Result<Pubkey, WalletError> {
+    Pubkey::from_str(mint).map_err(|_| WalletError::InvalidMint { mint: mint.into() })
 }
 
 /// The token amount of an SPL Token or Token-2022 account; both put it at
 /// bytes 64..72.
-pub(crate) fn token_account_amount(data: &[u8]) -> Result<u64, String> {
+pub(crate) fn token_account_amount(account: Pubkey, data: &[u8]) -> Result<u64, WalletError> {
     data.get(64..72)
         .and_then(|bytes| bytes.try_into().ok())
         .map(u64::from_le_bytes)
-        .ok_or_else(|| "token_account_invalid".to_string())
+        .ok_or_else(|| WalletError::InvalidTokenAccount {
+            account: account.to_string(),
+        })
 }
 
 /// The asset id the shielded pool assigned to `mint`, read from its registry
 /// account. A mint without one cannot enter the pool.
-fn registered_asset_id(rpc: &impl Rpc, mint: Pubkey) -> Result<u64, String> {
-    let unsupported = || "asset_not_supported".to_string();
+fn registered_asset_id(rpc: &impl Rpc, mint: Pubkey) -> Result<u64, WalletError> {
+    let unsupported = || WalletError::AssetNotSupported {
+        mint: mint.to_string(),
+    };
     let account = rpc
-        .get_account(pda::spl_asset_registry(&mint))
-        .map_err(error)?
+        .get_account(pda::spl_asset_registry(&mint))?
         .ok_or_else(unsupported)?;
     if account.owner != pda::shielded_pool_program_id() {
         return Err(unsupported());
@@ -170,28 +173,37 @@ mod tests {
         let resolve = |rpc: &Accounts| {
             Asset::resolve(rpc, &mut AssetRegistry::default(), Some(&mint)).unwrap_err()
         };
-        assert_eq!(resolve(&Accounts::default()), "mint_not_found");
+        assert_eq!(
+            resolve(&Accounts::default()),
+            WalletError::MintNotFound { mint: mint.clone() }
+        );
         let not_a_mint = Accounts::default().with(MINT, Pubkey::new_from_array([9; 32]), vec![]);
-        assert_eq!(resolve(&not_a_mint), "mint_invalid");
+        assert_eq!(
+            resolve(&not_a_mint),
+            WalletError::InvalidMint { mint: mint.clone() }
+        );
         let unregistered =
             Accounts::default().with(MINT, pda::spl_token_2022_program_id(), vec![0; 82]);
-        assert_eq!(resolve(&unregistered), "asset_not_supported");
+        let unsupported = WalletError::AssetNotSupported { mint: mint.clone() };
+        assert_eq!(resolve(&unregistered), unsupported);
         let forged = registered(2).with(
             pda::spl_asset_registry(&MINT),
             Pubkey::new_from_array([9; 32]),
             SplAssetRegistry::account_bytes(MINT, 2).to_vec(),
         );
-        assert_eq!(resolve(&forged), "asset_not_supported");
+        assert_eq!(resolve(&forged), unsupported);
     }
 
     #[test]
     fn reads_token_account_amounts() {
         let mut data = vec![0; 165];
         data[64..72].copy_from_slice(&42u64.to_le_bytes());
-        assert_eq!(token_account_amount(&data).unwrap(), 42);
+        assert_eq!(token_account_amount(MINT, &data).unwrap(), 42);
         assert_eq!(
-            token_account_amount(&data[..70]).unwrap_err(),
-            "token_account_invalid"
+            token_account_amount(MINT, &data[..70]).unwrap_err(),
+            WalletError::InvalidTokenAccount {
+                account: MINT.to_string()
+            }
         );
     }
 }

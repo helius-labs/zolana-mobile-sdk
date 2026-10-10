@@ -187,9 +187,9 @@ void main() {
       ),
       throwsA(
         isA<ZolanaWalletException>().having(
-          (e) => e.message,
-          'message',
-          'remote_prover_failed',
+          (e) => e.error,
+          'error',
+          const WalletError.remoteProverFailed(),
         ),
       ),
     );

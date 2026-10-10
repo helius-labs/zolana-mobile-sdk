@@ -162,7 +162,8 @@ class FakeWallet implements MobileWallet {
     await holdRegistration?.future;
     return switch (status) {
       RegistrationStatus.registered => null,
-      RegistrationStatus.conflict => throw 'registration_conflict',
+      RegistrationStatus.conflict =>
+        throw const WalletError.registrationConflict(owner: owner),
       RegistrationStatus.notRegistered => FakePending(Uint8List.fromList([3])),
     };
   }
@@ -286,8 +287,8 @@ openWallet() async {
   return (wallet, native, signer, backend);
 }
 
-Matcher throwsWalletError(String code) => throwsA(
-  isA<ZolanaWalletException>().having((e) => e.message, 'message', code),
+Matcher throwsWalletError(WalletError error) => throwsA(
+  isA<ZolanaWalletException>().having((e) => e.error, 'error', error),
 );
 
 void main() {
@@ -414,15 +415,23 @@ void main() {
           mints: const [],
         );
     const plaintext = 'http://10.0.2.2:8899/?api-key=secret';
-    for (final (insecure, code) in [
-      (withUrls(rpc: plaintext), 'rpc_url_insecure'),
-      (withUrls(indexer: plaintext), 'indexer_url_insecure'),
-      (withUrls(keys: plaintext), 'proving_key_url_insecure'),
+    // The error names the URL without its key.
+    const reported = 'http://10.0.2.2:8899/?api-key=redacted';
+    for (final (insecure, error) in [
+      (withUrls(rpc: plaintext), WalletError.rpcUrlInsecure(url: reported)),
+      (
+        withUrls(indexer: plaintext),
+        WalletError.indexerUrlInsecure(url: reported),
+      ),
+      (
+        withUrls(keys: plaintext),
+        WalletError.provingKeyUrlInsecure(url: reported),
+      ),
     ]) {
       final signer = RecordingSigner();
       await expectLater(
         open(insecure, signer: signer),
-        throwsWalletError(code),
+        throwsWalletError(error),
       );
       // Before the signer is asked or the native wallet opens.
       expect(signer.requests, isEmpty);
@@ -441,7 +450,7 @@ void main() {
         keys: savedKeys,
         backend: FakeBackend(FakeWallet()),
       ),
-      throwsWalletError('indexer_url_insecure'),
+      throwsWalletError(WalletError.indexerUrlInsecure(url: reported)),
     );
     await open(
       withUrls(
@@ -669,7 +678,7 @@ void main() {
     expect(prepared.signers, [owner]);
     await expectLater(
       wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
-      throwsWalletError('signer_missing'),
+      throwsWalletError(const WalletError.signerMissing()),
     );
     expect(native.submitted, isEmpty);
   });
@@ -695,7 +704,9 @@ void main() {
         signer: signer,
         backend: FakeBackend(FakeWallet()),
       ),
-      throwsWalletError('signer_mismatch'),
+      throwsWalletError(
+        const WalletError.signerMismatch(wallet: 'Other', signer: owner),
+      ),
     );
   });
 
@@ -746,7 +757,7 @@ void main() {
     await wallet.close();
     await expectLater(
       wallet.refresh(prepared),
-      throwsWalletError('wallet_closed'),
+      throwsWalletError(const WalletError.walletClosed()),
     );
   });
 
@@ -882,7 +893,9 @@ void main() {
 
     await expectLater(
       wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
-      throwsWalletError('unexpected_signers'),
+      throwsWalletError(
+        const WalletError.unexpectedSigners(signers: [owner, 'SomeoneElse']),
+      ),
     );
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
     expect(native.submitted, isEmpty);
@@ -890,11 +903,14 @@ void main() {
 
   test('surfaces native failures as wallet exceptions', () async {
     final (wallet, native, _, _) = await openWallet();
-    native.transferError = 'recipient_not_registered';
+    const unregistered = WalletError.recipientNotRegistered(
+      recipient: 'Recipient',
+    );
+    native.transferError = unregistered;
 
     await expectLater(
       wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
-      throwsWalletError('recipient_not_registered'),
+      throwsWalletError(unregistered),
     );
   });
 
@@ -912,7 +928,7 @@ void main() {
     expect(await wallet.registrationStatus(), RegistrationStatus.conflict);
     await expectLater(
       wallet.register(),
-      throwsWalletError('registration_conflict'),
+      throwsWalletError(const WalletError.registrationConflict(owner: owner)),
     );
     expect(native.submitted, hasLength(1));
   });
@@ -939,7 +955,10 @@ void main() {
       native.holdTransfer!.complete();
       native.holdRegistration!.complete();
 
-      await expectLater(prepared, throwsWalletError('wallet_closed'));
+      await expectLater(
+        prepared,
+        throwsWalletError(const WalletError.walletClosed()),
+      );
       await closed;
       expect(native.disposed, isTrue);
     }
@@ -958,8 +977,14 @@ void main() {
     expect(native.disposed, isFalse, reason: 'the proof is still running');
 
     native.holdTransfer!.complete();
-    await expectLater(transfer, throwsWalletError('wallet_closed'));
-    await expectLater(queued, throwsWalletError('wallet_closed'));
+    await expectLater(
+      transfer,
+      throwsWalletError(const WalletError.walletClosed()),
+    );
+    await expectLater(
+      queued,
+      throwsWalletError(const WalletError.walletClosed()),
+    );
     await closed;
     expect(native.events, ['transfer SOL', 'dispose']);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
@@ -967,7 +992,7 @@ void main() {
 
     await expectLater(
       wallet.deposit(BigInt.one),
-      throwsWalletError('wallet_closed'),
+      throwsWalletError(const WalletError.walletClosed()),
     );
     expect(identical(wallet.close(), closed), isTrue);
   });
@@ -975,7 +1000,7 @@ void main() {
   test('runs operations one at a time and survives a failure', () async {
     final (wallet, native, _, _) = await openWallet();
     native.holdBalances = Completer();
-    native.transferError = 'proof_failed';
+    native.transferError = const WalletError.proofFailed();
 
     final balances = wallet.balances();
     final transfer = wallet.transfer(recipient: 'R', amount: BigInt.one);

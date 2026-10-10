@@ -34,7 +34,7 @@ use zolana_client::{Rpc, SolanaRpc};
 use zolana_mobile::{
     derivation_message, ActivityKind, MobileWallet, PendingTransaction, Proving,
     RegistrationStatus, Transport, TransportOutcome, TransportRequest, TransportResponse,
-    WalletConfig,
+    WalletConfig, WalletError,
 };
 
 const FUNDING: u64 = 1_000_000_000;
@@ -363,9 +363,9 @@ fn register_deposit_transfer_and_receive() {
     // A backend proof the pinned verifying key rejects fails the spend before
     // a message is built: here a real proof of another transaction.
     let replayed = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
-    for (response, code) in [
-        (&replayed[..], "proof_invalid"),
-        (b"garbage", "proof_malformed"),
+    for (response, failure) in [
+        (&replayed[..], WalletError::ProofInvalid),
+        (b"garbage", WalletError::ProofMalformed),
     ] {
         sender_wallet.set_remote_prover(move |_| Box::pin(async move { Some(response.to_vec()) }));
         let error = sender_wallet
@@ -377,7 +377,7 @@ fn register_deposit_transfer_and_receive() {
                 Some(Proving::Remote),
             )
             .err();
-        assert_eq!(error.as_deref(), Some(code));
+        assert_eq!(error, Some(failure));
     }
     // A transfer the backend proves lands like one proved on the device.
     sender_wallet.set_remote_prover(backend());

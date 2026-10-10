@@ -43,7 +43,7 @@ use zolana_client::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, try_resolve_registered_address,
     },
-    ClientError, ComputeBudgetConfig, IndexerPollConfig, Rpc, SignedPrivateTransaction, SolanaRpc,
+    ComputeBudgetConfig, IndexerPollConfig, Rpc, SignedPrivateTransaction, SolanaRpc,
     SpendableUtxos, Submission, ZolanaClient,
 };
 use zolana_interface::pda;
@@ -60,8 +60,9 @@ use zolana_transaction::{
 use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, token_account_amount, Asset},
+    error::WalletError,
     keys::KeyStore,
-    prover::{proving_error, NativeProver, Proving, RemoteProver, SpendProver, WalletProver},
+    prover::{NativeProver, Proving, RemoteProver, SpendProver, WalletProver},
     transport::Transport,
 };
 
@@ -85,7 +86,7 @@ pub struct WalletConfig {
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
-pub fn derivation_message(solana_pubkey: String) -> Result<Vec<u8>, String> {
+pub fn derivation_message(solana_pubkey: String) -> Result<Vec<u8>, WalletError> {
     let owner = parse_pubkey(&solana_pubkey)?;
     Ok(derivation::ed25519_derivation_message(&owner.to_bytes()))
 }
@@ -229,47 +230,49 @@ impl MobileWallet {
         solana_pubkey: String,
         derivation_signature: Vec<u8>,
         transport: Transport,
-    ) -> Result<MobileWallet, String> {
+    ) -> Result<MobileWallet, WalletError> {
         let owner = parse_pubkey(&solana_pubkey)?;
-        let seed: [u8; derivation::ED25519_SEED_LEN] = derivation_signature
-            .as_slice()
-            .try_into()
-            .map_err(derivation_invalid)?;
+        let seed: [u8; derivation::ED25519_SEED_LEN] =
+            derivation_signature
+                .as_slice()
+                .try_into()
+                .map_err(|_| WalletError::InvalidDerivationSignature)?;
         let signing_pubkey = PublicKey::from_ed25519(&owner.to_bytes());
         let message = derivation::ed25519_derivation_message(&owner.to_bytes());
         if !signing_pubkey.verify_message(&message, &seed) {
-            return Err("derivation_signature_invalid".to_string());
+            return Err(WalletError::InvalidDerivationSignature);
         }
-        let (nullifier_key, viewing_key) =
-            derivation::expand_roles(&seed, Curve::Ed25519).map_err(derivation_invalid)?;
+        let (nullifier_key, viewing_key) = derivation::expand_roles(&seed, Curve::Ed25519)
+            .map_err(|_| WalletError::InvalidDerivationSignature)?;
         Self::from_keys(config, owner, nullifier_key, viewing_key, transport)
     }
 
     /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
-    /// returned. Fails with `wallet_keys_invalid` unless each private key
-    /// yields its public key. `transport` works as in [`Self::open`].
+    /// returned. Fails with [`WalletError::InvalidWalletKeys`] unless each
+    /// private key yields its public key. `transport` works as in
+    /// [`Self::open`].
     pub fn open_with_keys(
         config: WalletConfig,
         solana_pubkey: String,
         keys: WalletKeys,
         transport: Transport,
-    ) -> Result<MobileWallet, String> {
+    ) -> Result<MobileWallet, WalletError> {
         let owner = parse_pubkey(&solana_pubkey)?;
         let viewing_secret = Zeroizing::new(keys.viewing_private_key);
         let nullifier_secret = Zeroizing::new(keys.nullifier_private_key);
         let viewing_key =
-            ViewingKey::from_bytes(viewing_secret.as_slice().try_into().map_err(keys_invalid)?)
-                .map_err(keys_invalid)?;
+            ViewingKey::from_bytes(viewing_secret.as_slice().try_into().map_err(invalid_keys)?)
+                .map_err(invalid_keys)?;
         let nullifier_key = NullifierKey::from_secret(
             nullifier_secret
                 .as_slice()
                 .try_into()
-                .map_err(keys_invalid)?,
+                .map_err(invalid_keys)?,
         );
         if viewing_key.pubkey().as_bytes().as_slice() != keys.viewing_public_key
-            || nullifier_key.pubkey().map_err(keys_invalid)?.as_slice() != keys.nullifier_public_key
+            || nullifier_key.pubkey().map_err(invalid_keys)?.as_slice() != keys.nullifier_public_key
         {
-            return Err(keys_invalid(()));
+            return Err(WalletError::InvalidWalletKeys);
         }
         Self::from_keys(config, owner, nullifier_key, viewing_key, transport)
     }
@@ -280,15 +283,14 @@ impl MobileWallet {
         nullifier_key: NullifierKey,
         viewing_key: ViewingKey,
         transport: Transport,
-    ) -> Result<MobileWallet, String> {
+    ) -> Result<MobileWallet, WalletError> {
         let address = ShieldedAddress {
             signing_pubkey: PublicKey::from_ed25519(&owner.to_bytes()),
-            nullifier_pubkey: nullifier_key.pubkey().map_err(keys_invalid)?,
+            nullifier_pubkey: nullifier_key.pubkey().map_err(invalid_keys)?,
             viewing_pubkey: viewing_key.pubkey(),
         };
         let keys =
-            LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())
-                .map_err(error)?;
+            LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())?;
         let proving_keys = KeyStore::new(
             config.proving_key_dir,
             config.proving_key_url,
@@ -302,7 +304,7 @@ impl MobileWallet {
             transport.indexer(&config.indexer_url),
             WalletProver {
                 native: NativeProver::new(proving_keys),
-                remote: Arc::clone(&spend_prover),
+                slot: Arc::clone(&spend_prover),
             },
         );
         Ok(MobileWallet {
@@ -325,12 +327,12 @@ impl MobileWallet {
     /// application's backend. It receives the `/prove` request body the Zolana
     /// SDK's prover client sends and returns its prover's proof: the gnark
     /// proof JSON, alone or as the `proof` of the prover's response. `None`
-    /// fails the spend with `remote_prover_failed`.
+    /// fails the spend with [`WalletError::RemoteProverFailed`].
     ///
     /// The client verifies the proof against the pinned verifying key and the
     /// public input it computed itself, before the message is built. A proof
-    /// that does not parse fails with `proof_malformed`, one that does not
-    /// verify with `proof_invalid`.
+    /// that does not parse fails with [`WalletError::ProofMalformed`], one
+    /// that does not verify with [`WalletError::ProofInvalid`].
     pub fn set_remote_prover(
         &mut self,
         prove: impl Fn(Vec<u8>) -> DartFnFuture<Option<Vec<u8>>> + Send + Sync + 'static,
@@ -354,8 +356,8 @@ impl MobileWallet {
 
     /// Whether the user registry publishes this wallet's shielded address.
     /// Others can only send to a registered wallet.
-    pub fn registration_status(&self) -> Result<RegistrationStatus, String> {
-        let record = fetch_user_record_optional_checked(&self.client, self.owner).map_err(error)?;
+    pub fn registration_status(&self) -> Result<RegistrationStatus, WalletError> {
+        let record = fetch_user_record_optional_checked(&self.client, self.owner)?;
         let published = record.map(|record| {
             resolved_address_from_record(self.owner, &record).map(|resolved| resolved.address)
         });
@@ -363,17 +365,16 @@ impl MobileWallet {
     }
 
     /// `None` when the registry already holds this wallet's address. Fails
-    /// with `registration_conflict` when it holds other keys: this wallet
-    /// never replaces them.
-    pub fn prepare_registration(&self) -> Result<Option<PendingTransaction>, String> {
+    /// with [`WalletError::RegistrationConflict`] when it holds other keys:
+    /// this wallet never replaces them.
+    pub fn prepare_registration(&self) -> Result<Option<PendingTransaction>, WalletError> {
         let message = build_registration_transaction_sync(
             &self.client,
             self.owner,
             &self.address,
             None,
             None,
-        )
-        .map_err(registration_error)?;
+        )?;
         message
             .map(|message| {
                 self.pending(
@@ -391,13 +392,15 @@ impl MobileWallet {
         &mut self,
         mint: Option<String>,
         amount: u64,
-    ) -> Result<PendingTransaction, String> {
+    ) -> Result<PendingTransaction, WalletError> {
         let asset = self.asset(mint)?;
         let deposit_asset = match asset.token_program {
             None => DepositAsset::Sol,
             Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
                 mint: asset.mint,
-                user_token: asset.token_account(&self.owner).ok_or("mint_invalid")?,
+                user_token: asset
+                    .token_account(&self.owner)
+                    .ok_or_else(|| invalid_mint(asset))?,
                 token_program,
             }),
         };
@@ -409,13 +412,12 @@ impl MobileWallet {
             deposits: vec![AssetDeposit {
                 asset: deposit_asset,
                 view_tag: self.address.viewing_pubkey.x(),
-                owner: self.address.owner_hash().map_err(error)?,
+                owner: self.address.owner_hash()?,
                 amount,
                 memo: None,
             }],
         }
-        .instruction()
-        .map_err(error)?;
+        .instruction()?;
         self.pending(
             PendingTransactionKind::Deposit,
             self.message(deposit)?,
@@ -425,20 +427,20 @@ impl MobileWallet {
 
     /// Public balance of this account, read from the RPC now: lamports, or
     /// the amount in its associated token account for `mint` (0 without one).
-    pub fn public_balance(&mut self, mint: Option<String>) -> Result<u64, String> {
+    pub fn public_balance(&mut self, mint: Option<String>) -> Result<u64, WalletError> {
         let asset = self.asset(mint)?;
         let Some(token_account) = asset.token_account(&self.owner) else {
-            return self.client.get_balance(self.owner).map_err(error);
+            return Ok(self.client.get_balance(self.owner)?);
         };
-        match self.client.get_account(token_account).map_err(error)? {
-            Some(account) => token_account_amount(&account.data),
+        match self.client.get_account(token_account)? {
+            Some(account) => token_account_amount(token_account, &account.data),
             None => Ok(0),
         }
     }
 
     /// Spendable private balances, read from the indexer now: one per asset
     /// held in SOL, the configured mints and the mints named so far.
-    pub fn balances(&mut self) -> Result<Vec<TokenBalance>, String> {
+    pub fn balances(&mut self) -> Result<Vec<TokenBalance>, WalletError> {
         Ok(self
             .spendable()?
             .balances
@@ -453,7 +455,7 @@ impl MobileWallet {
 
     /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
     /// the indexer now.
-    pub fn private_balance(&mut self, mint: Option<String>) -> Result<u64, String> {
+    pub fn private_balance(&mut self, mint: Option<String>) -> Result<u64, WalletError> {
         let asset = self.asset(mint)?;
         Ok(self
             .spendable()?
@@ -469,9 +471,9 @@ impl MobileWallet {
     /// The indexer does not say which spends were withdrawals: a spend whose
     /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
-    pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, String> {
+    pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, WalletError> {
         self.resolve_mints()?;
-        activity::fetch(&self.keys, &self.assets, &self.client).map_err(error)
+        Ok(activity::fetch(&self.keys, &self.assets, &self.client)?)
     }
 
     /// Build and prove a private transfer to a registered wallet.
@@ -485,7 +487,7 @@ impl MobileWallet {
     ///
     /// `proving` says where it is proved, [`WalletConfig::proving`] when
     /// `None`. Remote proving without [`Self::set_remote_prover`] fails with
-    /// `remote_prover_missing`.
+    /// [`WalletError::RemoteProverMissing`].
     pub fn prepare_transfer(
         &mut self,
         recipient: String,
@@ -493,24 +495,23 @@ impl MobileWallet {
         amount: u64,
         fee_payer: Option<String>,
         proving: Option<Proving>,
-    ) -> Result<PendingTransaction, String> {
+    ) -> Result<PendingTransaction, WalletError> {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
         let remote = self.remote(proving)?;
         let asset = self.asset(mint)?;
-        let Some(registered) =
-            try_resolve_registered_address(&self.client, recipient).map_err(error)?
-        else {
-            return Err("recipient_not_registered".to_string());
+        let Some(registered) = try_resolve_registered_address(&self.client, recipient)? else {
+            return Err(WalletError::RecipientNotRegistered {
+                recipient: recipient.to_string(),
+            });
         };
         let inputs = self.select_notes(asset, amount)?;
         let spends = nullifiers(&inputs);
-        let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
+        let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         match asset.token_program {
             None => transaction.transfer_sol(&registered.address, amount),
             Some(_) => transaction.transfer(&registered.address, asset.mint, amount),
-        }
-        .map_err(error)?;
+        }?;
         let pending = self.pending(
             PendingTransactionKind::Transfer,
             self.prove(transaction, Vec::new(), payer, remote)?,
@@ -531,24 +532,22 @@ impl MobileWallet {
         amount: u64,
         fee_payer: Option<String>,
         proving: Option<Proving>,
-    ) -> Result<PendingTransaction, String> {
+    ) -> Result<PendingTransaction, WalletError> {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
         let remote = self.remote(proving)?;
         let asset = self.asset(mint)?;
         if let Some(token_account) = asset.token_account(&recipient) {
-            if self
-                .client
-                .get_account(token_account)
-                .map_err(error)?
-                .is_none()
-            {
-                return Err("recipient_token_account_missing".to_string());
+            if self.client.get_account(token_account)?.is_none() {
+                return Err(WalletError::RecipientTokenAccountMissing {
+                    recipient: recipient.to_string(),
+                    mint: asset.mint.to_string(),
+                });
             }
         }
         let inputs = self.select_notes(asset, amount)?;
         let spends = nullifiers(&inputs);
-        let mut transaction = ConfidentialTransaction::new(inputs, payer).map_err(error)?;
+        let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         let settlement = withdraw_to(&mut transaction, recipient, asset, amount)?;
         let pending = self.pending(
             PendingTransactionKind::Withdrawal,
@@ -567,22 +566,17 @@ impl MobileWallet {
         &mut self,
         owner: String,
         mint: String,
-    ) -> Result<Option<PendingTransaction>, String> {
+    ) -> Result<Option<PendingTransaction>, WalletError> {
         let owner = parse_pubkey(&owner)?;
         let asset = self.asset(Some(mint))?;
-        let token_program = asset.token_program.ok_or("mint_invalid")?;
+        let token_program = asset.token_program.ok_or_else(|| invalid_mint(asset))?;
         let create = CreateAssociatedTokenAccount {
             payer: self.owner,
             owner,
             mint: asset.mint,
             token_program,
         };
-        if self
-            .client
-            .get_account(create.address())
-            .map_err(error)?
-            .is_some()
-        {
+        if self.client.get_account(create.address())?.is_some() {
             return Ok(None);
         }
         self.pending(
@@ -593,32 +587,31 @@ impl MobileWallet {
         .map(Some)
     }
 
-    fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, String> {
+    fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, WalletError> {
         fee_payer.as_deref().map_or(Ok(self.owner), parse_pubkey)
     }
 
     /// The backend that proves a spend, or `None` to prove it on the device.
-    fn remote(&self, proving: Option<Proving>) -> Result<Option<Arc<RemoteProver>>, String> {
+    fn remote(&self, proving: Option<Proving>) -> Result<Option<Arc<RemoteProver>>, WalletError> {
         match proving.unwrap_or(self.proving) {
             Proving::Local => Ok(None),
             Proving::Remote => self
                 .remote_prover
                 .clone()
                 .map(Some)
-                .ok_or_else(|| "remote_prover_missing".to_string()),
+                .ok_or(WalletError::RemoteProverMissing),
         }
     }
 
     /// A message with `instruction` alone, paid by this account. Its blockhash
     /// is set by [`Self::pending`].
-    fn message(&self, instruction: Instruction) -> Result<VersionedMessage, String> {
-        compile_message(
+    fn message(&self, instruction: Instruction) -> Result<VersionedMessage, WalletError> {
+        Ok(compile_message(
             &self.owner,
             &[instruction],
             Default::default(),
             ComputeBudgetConfig::for_instruction_count(1),
-        )
-        .map_err(error)
+        )?)
     }
 
     /// `message` with the latest blockhash, set last so that it is as young
@@ -628,9 +621,8 @@ impl MobileWallet {
         kind: PendingTransactionKind,
         mut message: VersionedMessage,
         summary: String,
-    ) -> Result<PendingTransaction, String> {
-        let (blockhash, last_valid_block_height) =
-            self.client.get_latest_blockhash().map_err(error)?;
+    ) -> Result<PendingTransaction, WalletError> {
+        let (blockhash, last_valid_block_height) = self.client.get_latest_blockhash()?;
         message.set_recent_blockhash(blockhash);
         let mut reservations = self.reservations();
         let id = reservations.next_id;
@@ -676,12 +668,12 @@ impl MobileWallet {
     /// The notes a spend of `amount` takes, other than those prepared spends
     /// reserve. Reservations past their last valid block height are dropped:
     /// those spends can no longer land.
-    fn select_notes(&mut self, asset: Asset, amount: u64) -> Result<Vec<WalletUtxo>, String> {
+    fn select_notes(&mut self, asset: Asset, amount: u64) -> Result<Vec<WalletUtxo>, WalletError> {
         let spendable = self.spendable()?;
         let reserved = if self.reservations().reserved.is_empty() {
             HashSet::new()
         } else {
-            let height = self.client.get_block_height().map_err(error)?;
+            let height = self.client.get_block_height()?;
             let mut reservations = self.reservations();
             reservations
                 .reserved
@@ -693,7 +685,7 @@ impl MobileWallet {
                 .collect()
         };
         select_spend_excluding(spendable.utxos(), asset.mint, amount, &reserved)
-            .map_err(selection_error)
+            .map_err(|failure| spend_failure(amount, failure))
     }
 
     /// `pending` with a new blockhash and the same proof, for an approval that
@@ -707,7 +699,7 @@ impl MobileWallet {
     ///
     /// A refreshed spend reserves its notes again until its new last valid
     /// block height.
-    pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, String> {
+    pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, WalletError> {
         let refreshed = self.pending(
             pending.kind,
             pending.message.clone(),
@@ -723,22 +715,20 @@ impl MobileWallet {
 
     /// SOL for `None`; a mint is added to the wallet's registry the first
     /// time it is used.
-    fn asset(&mut self, mint: Option<String>) -> Result<Asset, String> {
+    fn asset(&mut self, mint: Option<String>) -> Result<Asset, WalletError> {
         Asset::resolve(&self.client, &mut self.assets, mint.as_deref())
     }
 
     /// The wallet's spendable notes as the indexer has them now, in SOL and
     /// every mint in the registry.
-    fn spendable(&mut self) -> Result<SpendableDecryptionResult, String> {
+    fn spendable(&mut self) -> Result<SpendableDecryptionResult, WalletError> {
         self.resolve_mints()?;
-        SpendableUtxos::new(&self.keys, &self.assets)
-            .fetch(&self.client)
-            .map_err(error)
+        Ok(SpendableUtxos::new(&self.keys, &self.assets).fetch(&self.client)?)
     }
 
     /// Resolve the configured mints once each; one that fails stays for the
     /// next call.
-    fn resolve_mints(&mut self) -> Result<(), String> {
+    fn resolve_mints(&mut self) -> Result<(), WalletError> {
         while let Some(mint) = self.mints.last().cloned() {
             self.asset(Some(mint))?;
             self.mints.pop();
@@ -754,18 +744,24 @@ impl MobileWallet {
         settlement_transfers: Vec<TransactInterfaceTransferAccounts>,
         payer: Pubkey,
         remote: Option<Arc<RemoteProver>>,
-    ) -> Result<VersionedMessage, String> {
+    ) -> Result<VersionedMessage, WalletError> {
         let signed = SignedPrivateTransaction {
-            transaction: transaction.encrypt(&self.keys).map_err(error)?,
+            transaction: transaction.encrypt(&self.keys)?,
             settlement_transfers,
         };
-        *self
-            .spend_prover
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = remote;
+        let slot = || {
+            self.spend_prover
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        };
+        {
+            let mut slot = slot();
+            slot.remote = remote;
+            slot.failure = None;
+        }
         Submission::new(&signed, payer, &self.nullifier_key)
             .finish_unsigned_sync(&self.client)
-            .map_err(proving_error)
+            .map_err(|failure| slot().failure.take().unwrap_or_else(|| failure.into()))
     }
 
     /// Attach the signatures, send, and wait as [`Self::confirm`] does.
@@ -777,11 +773,14 @@ impl MobileWallet {
         &self,
         pending: &PendingTransaction,
         signatures: Vec<Vec<u8>>,
-    ) -> Result<String, String> {
+    ) -> Result<String, WalletError> {
         let message_bytes = pending.message_bytes();
         let required = usize::from(pending.message.header().num_required_signatures);
         if signatures.len() != required {
-            return Err("signature_count_mismatch".to_string());
+            return Err(WalletError::SignatureCountMismatch {
+                expected: required as u64,
+                got: signatures.len() as u64,
+            });
         }
         let mut transaction_signatures = Vec::with_capacity(required);
         for (signer, signature) in pending.message.static_account_keys()[..required]
@@ -791,9 +790,9 @@ impl MobileWallet {
             let signature: [u8; 64] = signature
                 .as_slice()
                 .try_into()
-                .map_err(|_| "signature_invalid".to_string())?;
+                .map_err(|_| WalletError::SignatureInvalid)?;
             if !signed_by(signer, &message_bytes, &signature) {
-                return Err("signature_invalid".to_string());
+                return Err(WalletError::SignatureInvalid);
             }
             transaction_signatures.push(Signature::from(signature));
         }
@@ -801,10 +800,7 @@ impl MobileWallet {
             signatures: transaction_signatures,
             message: pending.message.clone(),
         };
-        let signature = self
-            .client
-            .process_transaction(transaction)
-            .map_err(error)?;
+        let signature = self.client.process_transaction(transaction)?;
         self.settle(pending, signature)?;
         Ok(signature.to_string())
     }
@@ -816,12 +812,16 @@ impl MobileWallet {
     ///
     /// `signature` is the transaction signature, the fee payer's; it is
     /// checked against `pending` before anything is asked.
-    pub fn confirm(&self, pending: &PendingTransaction, signature: String) -> Result<(), String> {
+    pub fn confirm(
+        &self,
+        pending: &PendingTransaction,
+        signature: String,
+    ) -> Result<(), WalletError> {
         let signature =
-            Signature::from_str(&signature).map_err(|_| "signature_invalid".to_string())?;
+            Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
         let fee_payer = &pending.message.static_account_keys()[0];
         if !signed_by(fee_payer, &pending.message_bytes(), signature.as_array()) {
-            return Err("signature_invalid".to_string());
+            return Err(WalletError::SignatureInvalid);
         }
         self.settle(pending, signature)
     }
@@ -830,44 +830,45 @@ impl MobileWallet {
     /// sent before the application restarted: until Solana confirms it and the
     /// indexer has it, so the next balance reads its notes. A transaction that
     /// failed on chain fails here with the chain's error.
-    pub fn wait_for_transaction(&self, signature: String) -> Result<(), String> {
+    pub fn wait_for_transaction(&self, signature: String) -> Result<(), WalletError> {
         let signature =
-            Signature::from_str(&signature).map_err(|_| "signature_invalid".to_string())?;
-        self.client
-            .confirm_private_transaction_sync(signature)
-            .map_err(error)
+            Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
+        Ok(self.client.confirm_private_transaction_sync(signature)?)
     }
 
     /// Once it settles, a spend's notes are spent and no longer reserved.
-    fn settle(&self, pending: &PendingTransaction, signature: Signature) -> Result<(), String> {
+    fn settle(
+        &self,
+        pending: &PendingTransaction,
+        signature: Signature,
+    ) -> Result<(), WalletError> {
         if matches!(
             pending.kind,
             PendingTransactionKind::Registration | PendingTransactionKind::TokenAccount
         ) {
             return wait_for_confirmation(&self.client, signature);
         }
-        self.client
-            .confirm_private_transaction_sync(signature)
-            .map_err(error)?;
+        self.client.confirm_private_transaction_sync(signature)?;
         self.release(pending);
         Ok(())
     }
 }
 
-/// The error codes the application sees when the free notes cannot cover a
-/// spend.
-fn selection_error(failure: TransactionError) -> String {
+/// A spend of `amount` the free notes cannot cover. The SDK reports an asset
+/// without spendable notes by its mint alone; the wallet reports the amounts.
+fn spend_failure(amount: u64, failure: TransactionError) -> WalletError {
     match failure {
-        TransactionError::NoSpendableBalance { .. }
-        | TransactionError::InsufficientBalance { .. } => {
-            "insufficient_private_balance".to_string()
-        }
-        TransactionError::SpendNeedsMerge { .. } | TransactionError::TooManyInputTrees { .. } => {
-            "merge_required".to_string()
-        }
-        TransactionError::SpendNeedsExcludedUtxos { .. } => "notes_reserved".to_string(),
-        TransactionError::ZeroSpendAmount => "amount_zero".to_string(),
-        failure => error(failure),
+        TransactionError::NoSpendableBalance { .. } => WalletError::InsufficientPrivateBalance {
+            requested: amount,
+            available: 0,
+        },
+        failure => failure.into(),
+    }
+}
+
+fn invalid_mint(asset: Asset) -> WalletError {
+    WalletError::InvalidMint {
+        mint: asset.mint.to_string(),
     }
 }
 
@@ -882,18 +883,16 @@ fn withdraw_to(
     recipient: Pubkey,
     asset: Asset,
     amount: u64,
-) -> Result<TransactInterfaceTransferAccounts, String> {
+) -> Result<TransactInterfaceTransferAccounts, WalletError> {
     let (Some(token_program), Some(user_token_account)) =
         (asset.token_program, asset.token_account(&recipient))
     else {
-        transaction.withdraw_sol(amount, recipient).map_err(error)?;
+        transaction.withdraw_sol(amount, recipient)?;
         return Ok(TransactInterfaceTransferAccounts::Sol(
             TransactSolTransferAccounts { recipient },
         ));
     };
-    transaction
-        .withdraw(asset.mint, amount, user_token_account)
-        .map_err(error)?;
+    transaction.withdraw(asset.mint, amount, user_token_account)?;
     Ok(TransactInterfaceTransferAccounts::SplWithdrawal(
         TransactSplWithdrawalAccounts {
             mint: asset.mint,
@@ -905,15 +904,17 @@ fn withdraw_to(
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
-fn wait_for_confirmation(rpc: &impl Rpc, signature: Signature) -> Result<(), String> {
+fn wait_for_confirmation(rpc: &impl Rpc, signature: Signature) -> Result<(), WalletError> {
     let poll = IndexerPollConfig::default();
     for delay in std::iter::once(Default::default()).chain(poll.backoff()) {
         sleep(delay);
-        if rpc.confirm_transaction(signature).map_err(error)? {
+        if rpc.confirm_transaction(signature)? {
             return Ok(());
         }
     }
-    Err("transaction_not_confirmed".to_string())
+    Err(WalletError::TransactionNotConfirmed {
+        signature: signature.to_string(),
+    })
 }
 
 /// A record that does not parse is someone else's keys as much as a record
@@ -929,75 +930,27 @@ fn registration_status_of<E>(
     }
 }
 
-/// `registration_conflict` when the registry holds other keys for this
-/// account.
-fn registration_error(failure: ClientError) -> String {
-    match failure {
-        ClientError::UserRegistryKeysMismatch { .. } => "registration_conflict".to_string(),
-        failure => error(failure),
-    }
-}
-
 /// Whether `signature` is `signer`'s Ed25519 signature over `message`.
 fn signed_by(signer: &Pubkey, message: &[u8], signature: &[u8; 64]) -> bool {
     PublicKey::from_ed25519(&signer.to_bytes()).verify_message(message, signature)
 }
 
 /// Saved keys that are malformed or do not match their public keys.
-fn keys_invalid<E>(_: E) -> String {
-    "wallet_keys_invalid".to_string()
+fn invalid_keys<E>(_: E) -> WalletError {
+    WalletError::InvalidWalletKeys
 }
 
-/// A derivation signature that does not yield the wallet's keys.
-fn derivation_invalid<E>(_: E) -> String {
-    "derivation_signature_invalid".to_string()
-}
-
-fn parse_pubkey(value: &str) -> Result<Pubkey, String> {
-    Pubkey::from_str(value).map_err(|_| "pubkey_invalid".to_string())
-}
-
-/// Errors reach Dart as text: the error and its causes, so a failed request
-/// says why it failed (DNS, connection, TLS). Client and transaction errors
-/// describe what failed without key material; keep it that way when adding
-/// variants. Request errors name their URL, so `api-key` values are masked.
-pub(crate) fn error(error: impl Into<ClientError>) -> String {
-    let error = error.into();
-    let mut message = error.to_string();
-    let mut source = std::error::Error::source(&error);
-    while let Some(cause) = source {
-        let cause_message = cause.to_string();
-        if !message.contains(&cause_message) {
-            message.push_str(": ");
-            message.push_str(&cause_message);
-        }
-        source = cause.source();
-    }
-    redact_api_keys(&message)
-}
-
-fn redact_api_keys(message: &str) -> String {
-    const PARAMETER: &str = "api-key=";
-    let mut redacted = String::with_capacity(message.len());
-    let mut rest = message;
-    while let Some(start) = rest.find(PARAMETER) {
-        let (head, tail) = rest.split_at(start + PARAMETER.len());
-        redacted.push_str(head);
-        redacted.push_str("redacted");
-        let end = tail
-            .find(|c: char| c == '&' || c == ')' || c == '"' || c.is_whitespace())
-            .unwrap_or(tail.len());
-        rest = &tail[end..];
-    }
-    redacted.push_str(rest);
-    redacted
+fn parse_pubkey(value: &str) -> Result<Pubkey, WalletError> {
+    Pubkey::from_str(value).map_err(|_| WalletError::InvalidPubkey {
+        value: value.to_string(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use solana_keypair::Keypair;
     use solana_signer::Signer;
-    use zolana_client::{compile_message, ComputeBudgetConfig};
+    use zolana_client::{compile_message, ClientError, ComputeBudgetConfig};
 
     use super::*;
     use crate::transport::tests::unreachable;
@@ -1013,13 +966,13 @@ mod tests {
         }
     }
 
-    fn open(signer: &Keypair) -> Result<MobileWallet, String> {
+    fn open(signer: &Keypair) -> Result<MobileWallet, WalletError> {
         open_with(signer, config())
     }
 
     /// A wallet whose transport reaches nothing: a request fails as a
     /// refused connection does.
-    fn open_with(signer: &Keypair, config: WalletConfig) -> Result<MobileWallet, String> {
+    fn open_with(signer: &Keypair, config: WalletConfig) -> Result<MobileWallet, WalletError> {
         let pubkey = signer.pubkey().to_string();
         let message = derivation_message(pubkey.clone())?;
         let signature = signer.sign_message(&message);
@@ -1047,10 +1000,8 @@ mod tests {
             vec![0; 63],
         ] {
             assert_eq!(
-                MobileWallet::open(config(), pubkey.clone(), signature, unreachable())
-                    .err()
-                    .as_deref(),
-                Some("derivation_signature_invalid")
+                MobileWallet::open(config(), pubkey.clone(), signature, unreachable()).err(),
+                Some(WalletError::InvalidDerivationSignature)
             );
         }
     }
@@ -1120,35 +1071,58 @@ mod tests {
     }
 
     #[test]
-    fn selection_leaves_out_reserved_notes_and_fails_with_the_app_codes() {
+    fn selection_leaves_out_reserved_notes_and_reports_what_it_lacks() {
         let notes = spendable(vec![note(50, 1, 0), note(30, 2, 0), note(20, 3, 0)]);
         let select = |notes: &SpendableDecryptionResult, mint, amount, reserved: &[u8]| {
             let reserved = reserved.iter().map(|&n| [n; 32]).collect();
             select_spend_excluding(notes.utxos(), mint, amount, &reserved)
                 .map(|picked| nullifiers(&picked))
-                .map_err(selection_error)
+                .map_err(|failure| spend_failure(amount, failure))
         };
         let sol = zolana_transaction::SOL_MINT;
         assert_eq!(select(&notes, sol, 40, &[]), Ok(vec![[1; 32]]));
         // The largest note is reserved: the others cover it.
         assert_eq!(select(&notes, sol, 40, &[1]), Ok(vec![[2; 32], [3; 32]]));
-        assert_eq!(select(&notes, sol, 60, &[1]).unwrap_err(), "notes_reserved");
+        assert_eq!(
+            select(&notes, sol, 60, &[1]).unwrap_err(),
+            WalletError::NotesReserved { amount: 60 }
+        );
         assert_eq!(
             select(&notes, sol, 200, &[1]).unwrap_err(),
-            "insufficient_private_balance"
+            WalletError::InsufficientPrivateBalance {
+                requested: 200,
+                available: 50
+            }
         );
         assert_eq!(
             select(&notes, Pubkey::new_unique(), 1, &[]).unwrap_err(),
-            "insufficient_private_balance"
+            WalletError::InsufficientPrivateBalance {
+                requested: 1,
+                available: 0
+            }
         );
-        assert_eq!(select(&notes, sol, 0, &[]).unwrap_err(), "amount_zero");
+        assert_eq!(
+            select(&notes, sol, 0, &[]).unwrap_err(),
+            WalletError::AmountZero
+        );
         // A spend takes notes from two trees, not from three.
         let two_trees = spendable(vec![note(50, 1, 0), note(30, 2, 1)]);
         assert_eq!(select(&two_trees, sol, 70, &[]), Ok(vec![[1; 32], [2; 32]]));
         let three_trees = spendable(vec![note(30, 1, 0), note(20, 2, 1), note(10, 3, 2)]);
         assert_eq!(
             select(&three_trees, sol, 55, &[]).unwrap_err(),
-            "merge_required"
+            WalletError::TooManyInputTrees {
+                trees: 3,
+                max_trees: 2
+            }
+        );
+        let many = spendable((1..=41).map(|n| note(10, n, 0)).collect());
+        assert_eq!(
+            select(&many, sol, 410, &[]).unwrap_err(),
+            WalletError::MergeRequired {
+                amount: 410,
+                max_inputs: 40
+            }
         );
     }
 
@@ -1160,22 +1134,26 @@ mod tests {
         assert_eq!(pending().signers(), vec![signer.pubkey().to_string()]);
         let valid = signer.sign_message(&pending().message_bytes());
         let wrong_signer = Keypair::new().sign_message(&pending().message_bytes());
+        let count = |got| WalletError::SignatureCountMismatch { expected: 1, got };
         for (signatures, expected) in [
-            (vec![], "signature_count_mismatch"),
-            (vec![valid.as_ref().to_vec(); 2], "signature_count_mismatch"),
-            (vec![wrong_signer.as_ref().to_vec()], "signature_invalid"),
-            (vec![valid.as_ref()[..63].to_vec()], "signature_invalid"),
+            (vec![], count(0)),
+            (vec![valid.as_ref().to_vec(); 2], count(2)),
+            (
+                vec![wrong_signer.as_ref().to_vec()],
+                WalletError::SignatureInvalid,
+            ),
+            (
+                vec![valid.as_ref()[..63].to_vec()],
+                WalletError::SignatureInvalid,
+            ),
         ] {
-            assert_eq!(
-                wallet.submit(&pending(), signatures).err().as_deref(),
-                Some(expected)
-            );
+            assert_eq!(wallet.submit(&pending(), signatures).err(), Some(expected));
         }
         // A valid signature gets as far as the transport.
         let error = wallet
             .submit(&pending(), vec![valid.as_ref().to_vec()])
             .unwrap_err();
-        assert!(!error.starts_with("signature_"), "{error}");
+        assert!(matches!(error, WalletError::Client { .. }), "{error:?}");
     }
 
     #[test]
@@ -1186,14 +1164,14 @@ mod tests {
         let other = Keypair::new().sign_message(&pending.message_bytes());
         for signature in ["not-a-signature".to_string(), other.to_string()] {
             assert_eq!(
-                wallet.confirm(&pending, signature).err().as_deref(),
-                Some("signature_invalid")
+                wallet.confirm(&pending, signature).err(),
+                Some(WalletError::SignatureInvalid)
             );
         }
         // The fee payer's signature gets as far as the transport.
         let signature = signer.sign_message(&pending.message_bytes()).to_string();
         let error = wallet.confirm(&pending, signature).unwrap_err();
-        assert_ne!(error, "signature_invalid");
+        assert_ne!(error, WalletError::SignatureInvalid);
     }
 
     #[test]
@@ -1203,13 +1181,13 @@ mod tests {
             wallet
                 .wait_for_transaction("not-a-signature".to_string())
                 .unwrap_err(),
-            "signature_invalid"
+            WalletError::SignatureInvalid
         );
         // A real signature gets as far as the transport.
         let error = wallet
             .wait_for_transaction(Signature::default().to_string())
             .unwrap_err();
-        assert_ne!(error, "signature_invalid");
+        assert_ne!(error, WalletError::SignatureInvalid);
     }
 
     #[test]
@@ -1224,13 +1202,12 @@ mod tests {
             wallet.public_balance(None).unwrap_err(),
             wallet.private_balance(None).unwrap_err(),
         ] {
-            assert!(error.contains("api-key=redacted"), "{error}");
-            assert!(!error.contains("secret"), "{error}");
+            let WalletError::Client { message } = &error else {
+                panic!("{error:?}");
+            };
+            assert!(message.contains("api-key=redacted"), "{message}");
+            assert!(!message.contains("secret"), "{message}");
         }
-        assert_eq!(
-            redact_api_keys("url (https://h/?a=1&api-key=k&b=2) and api-key=k"),
-            "url (https://h/?a=1&api-key=redacted&b=2) and api-key=redacted"
-        );
     }
 
     #[test]
@@ -1283,8 +1260,8 @@ mod tests {
         broken.push(zero);
         for keys in broken {
             assert_eq!(
-                reopen(signer.pubkey().to_string(), keys).err().as_deref(),
-                Some("wallet_keys_invalid")
+                reopen(signer.pubkey().to_string(), keys).err(),
+                Some(WalletError::InvalidWalletKeys)
             );
         }
     }
@@ -1302,12 +1279,11 @@ mod tests {
         assert_eq!(status(Some(Err(()))), RegistrationStatus::Conflict);
         let owner = Pubkey::new_unique();
         assert_eq!(
-            registration_error(ClientError::UserRegistryKeysMismatch { owner }),
-            "registration_conflict"
+            WalletError::from(ClientError::UserRegistryKeysMismatch { owner }),
+            WalletError::RegistrationConflict {
+                owner: owner.to_string()
+            }
         );
-        let record = Pubkey::new_unique();
-        let missing = || ClientError::UserRegistryRecordNotFound { owner, record };
-        assert_eq!(registration_error(missing()), error(missing()));
     }
 
     #[test]
@@ -1319,7 +1295,7 @@ mod tests {
                 wallet.prepare_transfer(recipient.clone(), None, 1, None, proving),
                 wallet.prepare_withdrawal(recipient.clone(), None, 1, None, proving),
             ]
-            .map(|result| result.err().as_deref() == Some("remote_prover_missing"))
+            .map(|result| result.err() == Some(WalletError::RemoteProverMissing))
         };
 
         let mut local = open(&signer).unwrap();
@@ -1342,19 +1318,19 @@ mod tests {
         let mut wallet = open(&Keypair::new()).unwrap();
         let recipient = Keypair::new().pubkey().to_string();
         let bad = "not-a-pubkey".to_string();
-        let error = |result: Result<PendingTransaction, String>| result.err();
+        let invalid = Some(WalletError::InvalidPubkey { value: bad.clone() });
+        let error = |result: Result<PendingTransaction, WalletError>| result.err();
         assert_eq!(
-            error(wallet.prepare_transfer(bad.clone(), None, 1, None, None)).as_deref(),
-            Some("pubkey_invalid")
+            error(wallet.prepare_transfer(bad.clone(), None, 1, None, None)),
+            invalid
         );
         assert_eq!(
-            error(wallet.prepare_transfer(recipient.clone(), None, 1, Some(bad.clone()), None))
-                .as_deref(),
-            Some("pubkey_invalid")
+            error(wallet.prepare_transfer(recipient.clone(), None, 1, Some(bad.clone()), None)),
+            invalid
         );
         assert_eq!(
-            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad), None)).as_deref(),
-            Some("pubkey_invalid")
+            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad), None)),
+            invalid
         );
     }
 }

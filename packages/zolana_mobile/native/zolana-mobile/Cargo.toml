@@ -57,3 +57,8 @@ solana-signer = "3.0"
 name = "flutter"
 path = "src/bin/flutter.rs"
 required-features = ["flutter"]
+
+# The frb attribute macro leaves a `cfg(frb_expand)` behind.
+[lints.rust.unexpected_cfgs]
+check-cfg = ["cfg(frb_expand)"]
+level = "warn"

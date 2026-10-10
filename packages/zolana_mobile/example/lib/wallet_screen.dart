@@ -129,7 +129,9 @@ class _WalletScreenState extends State<WalletScreen> {
       final registration = await wallet.registrationStatus();
       if (!_current(generation)) return;
       if (registration == RegistrationStatus.conflict) {
-        throw const ZolanaWalletException('registration_conflict');
+        throw ZolanaWalletException(
+          WalletError.registrationConflict(owner: wallet.solanaPublicKey),
+        );
       }
       if (registration == RegistrationStatus.notRegistered) {
         if (public < _setupMinimum) {

@@ -6,6 +6,8 @@
 import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
+part 'zolana_mobile.freezed.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Loaded`, `ProverState`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
@@ -89,8 +91,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   );
 
   /// Open the wallet of `solana_pubkey` from keys [`Self::export_keys`]
-  /// returned. Fails with `wallet_keys_invalid` unless each private key
-  /// yields its public key. `transport` works as in [`Self::open`].
+  /// returned. Fails with [`WalletError::InvalidWalletKeys`] unless each
+  /// private key yields its public key. `transport` works as in
+  /// [`Self::open`].
   static Future<MobileWallet> openWithKeys({
     required WalletConfig config,
     required String solanaPubkey,
@@ -111,8 +114,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   });
 
   /// `None` when the registry already holds this wallet's address. Fails
-  /// with `registration_conflict` when it holds other keys: this wallet
-  /// never replaces them.
+  /// with [`WalletError::RegistrationConflict`] when it holds other keys:
+  /// this wallet never replaces them.
   Future<PendingTransaction?> prepareRegistration();
 
   /// Create `owner`'s associated token account for `mint`, paid by this
@@ -133,7 +136,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   ///
   /// `proving` says where it is proved, [`WalletConfig::proving`] when
   /// `None`. Remote proving without [`Self::set_remote_prover`] fails with
-  /// `remote_prover_missing`.
+  /// [`WalletError::RemoteProverMissing`].
   Future<PendingTransaction> prepareTransfer({
     required String recipient,
     String? mint,
@@ -189,12 +192,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// application's backend. It receives the `/prove` request body the Zolana
   /// SDK's prover client sends and returns its prover's proof: the gnark
   /// proof JSON, alone or as the `proof` of the prover's response. `None`
-  /// fails the spend with `remote_prover_failed`.
+  /// fails the spend with [`WalletError::RemoteProverFailed`].
   ///
   /// The client verifies the proof against the pinned verifying key and the
   /// public input it computed itself, before the message is built. A proof
-  /// that does not parse fails with `proof_malformed`, one that does not
-  /// verify with `proof_invalid`.
+  /// that does not parse fails with [`WalletError::ProofMalformed`], one
+  /// that does not verify with [`WalletError::ProofInvalid`].
   Future<void> setRemoteProver({
     required FutureOr<Uint8List?> Function(Uint8List) prove,
   });
@@ -579,6 +582,208 @@ class WalletConfig {
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
           mints == other.mints;
+}
+
+@freezed
+sealed class WalletError with _$WalletError implements FrbException {
+  const WalletError._();
+
+  /// The spendable notes of the asset do not cover `requested`.
+  const factory WalletError.insufficientPrivateBalance({
+    required BigInt requested,
+    required BigInt available,
+  }) = WalletError_InsufficientPrivateBalance;
+
+  /// `amount` needs more than `max_inputs` notes, the most one spend
+  /// takes. Merge first.
+  const factory WalletError.mergeRequired({
+    required BigInt amount,
+    required BigInt maxInputs,
+  }) = WalletError_MergeRequired;
+
+  /// The notes that cover the amount are on `trees` trees, and a spend
+  /// takes notes from at most `max_trees`. Merge first.
+  const factory WalletError.tooManyInputTrees({
+    required BigInt trees,
+    required BigInt maxTrees,
+  }) = WalletError_TooManyInputTrees;
+
+  /// A spend of zero.
+  const factory WalletError.amountZero() = WalletError_AmountZero;
+
+  /// Only notes a prepared spend reserves would cover `amount`. Submit,
+  /// confirm or release that spend first.
+  const factory WalletError.notesReserved({required BigInt amount}) =
+      WalletError_NotesReserved;
+
+  /// `recipient` has not registered a shielded address. A withdrawal pays
+  /// it publicly.
+  const factory WalletError.recipientNotRegistered({
+    required String recipient,
+  }) = WalletError_RecipientNotRegistered;
+
+  /// `recipient` has no associated token account for `mint`.
+  /// `prepare_token_account` creates it.
+  const factory WalletError.recipientTokenAccountMissing({
+    required String recipient,
+    required String mint,
+  }) = WalletError_RecipientTokenAccountMissing;
+
+  /// The user registry holds other keys for `owner`. The wallet never
+  /// replaces them.
+  const factory WalletError.registrationConflict({required String owner}) =
+      WalletError_RegistrationConflict;
+
+  /// The shielded pool has not registered `mint`.
+  const factory WalletError.assetNotSupported({required String mint}) =
+      WalletError_AssetNotSupported;
+
+  /// No account exists at `mint`.
+  const factory WalletError.mintNotFound({required String mint}) =
+      WalletError_MintNotFound;
+
+  /// `mint` is not a base58 key, or its account is not owned by SPL Token
+  /// or Token-2022.
+  const factory WalletError.invalidMint({required String mint}) =
+      WalletError_InvalidMint;
+
+  /// `value` is not a base58 public key.
+  const factory WalletError.invalidPubkey({required String value}) =
+      WalletError_InvalidPubkey;
+
+  /// The data of `account` is not a token account's.
+  const factory WalletError.invalidTokenAccount({required String account}) =
+      WalletError_InvalidTokenAccount;
+
+  /// The derivation signature is not the account's signature over the
+  /// derivation message.
+  const factory WalletError.invalidDerivationSignature() =
+      WalletError_InvalidDerivationSignature;
+
+  /// The saved keys are malformed or do not match their public keys.
+  const factory WalletError.invalidWalletKeys() = WalletError_InvalidWalletKeys;
+
+  /// The Solana RPC client could not be built.
+  const factory WalletError.transportFailed({required String message}) =
+      WalletError_TransportFailed;
+
+  /// A signature is not 64 bytes, not base58, or not the signer's signature
+  /// over the message.
+  const factory WalletError.signatureInvalid() = WalletError_SignatureInvalid;
+
+  /// `submit` received `got` signatures for `expected` signers.
+  const factory WalletError.signatureCountMismatch({
+    required BigInt expected,
+    required BigInt got,
+  }) = WalletError_SignatureCountMismatch;
+
+  /// Solana did not confirm the transaction within the wait.
+  const factory WalletError.transactionNotConfirmed({
+    required String signature,
+  }) = WalletError_TransactionNotConfirmed;
+
+  /// The spend asked for remote proving and no remote prover is set.
+  const factory WalletError.remoteProverMissing() =
+      WalletError_RemoteProverMissing;
+
+  /// The remote prover returned no proof.
+  const factory WalletError.remoteProverFailed() =
+      WalletError_RemoteProverFailed;
+
+  /// The remote prover's response is not a gnark proof.
+  const factory WalletError.proofMalformed() = WalletError_ProofMalformed;
+
+  /// The proof does not verify against the pinned verifying key.
+  const factory WalletError.proofInvalid() = WalletError_ProofInvalid;
+
+  /// The device prover could not prove the request.
+  const factory WalletError.proofFailed() = WalletError_ProofFailed;
+
+  /// Another proof is running, or a `LocalProver` holds the prepared slot.
+  const factory WalletError.proverBusy() = WalletError_ProverBusy;
+
+  /// The prepared prover was released.
+  const factory WalletError.proverClosed() = WalletError_ProverClosed;
+
+  /// The prover state of this process is unusable.
+  const factory WalletError.proverUnavailable() = WalletError_ProverUnavailable;
+
+  /// gnark could not be initialized.
+  const factory WalletError.proverInitFailed() = WalletError_ProverInitFailed;
+
+  /// The proving key could not be loaded into gnark.
+  const factory WalletError.proverLoadFailed() = WalletError_ProverLoadFailed;
+
+  /// The prepared circuit's shape is not one the wallet proves.
+  const factory WalletError.unsupportedCircuit() =
+      WalletError_UnsupportedCircuit;
+
+  /// With the default transport, `open` refuses a plaintext Solana RPC URL
+  /// off loopback unless `allowInsecureHttp` is set. `api-key` values in
+  /// `url` are masked.
+  const factory WalletError.rpcUrlInsecure({required String url}) =
+      WalletError_RpcUrlInsecure;
+
+  /// As [`Self::RpcUrlInsecure`], for the indexer URL.
+  const factory WalletError.indexerUrlInsecure({required String url}) =
+      WalletError_IndexerUrlInsecure;
+
+  /// As [`Self::RpcUrlInsecure`], for the proving key host.
+  const factory WalletError.provingKeyUrlInsecure({required String url}) =
+      WalletError_ProvingKeyUrlInsecure;
+
+  /// The lockfile pins no key named `name`.
+  const factory WalletError.provingKeyUnknown({required String name}) =
+      WalletError_ProvingKeyUnknown;
+
+  /// The lockfile pins another sha256 for `name` than the verifying key
+  /// expects.
+  const factory WalletError.provingKeyMismatch({required String name}) =
+      WalletError_ProvingKeyMismatch;
+
+  /// The key `name` could not be downloaded.
+  const factory WalletError.provingKeyDownloadFailed({required String name}) =
+      WalletError_ProvingKeyDownloadFailed;
+
+  /// The downloaded key `name` does not hash to the pinned value.
+  const factory WalletError.provingKeyCorrupt({required String name}) =
+      WalletError_ProvingKeyCorrupt;
+
+  /// The key store could not read or write `path`.
+  const factory WalletError.provingKeyStoreFailed({required String path}) =
+      WalletError_ProvingKeyStoreFailed;
+
+  /// Poseidon takes 1 to 12 inputs.
+  const factory WalletError.poseidonInputCountInvalid({required BigInt count}) =
+      WalletError_PoseidonInputCountInvalid;
+
+  /// Poseidon input `index` has `length` bytes; each input is 32.
+  const factory WalletError.poseidonInputLengthInvalid({
+    required BigInt index,
+    required BigInt length,
+  }) = WalletError_PoseidonInputLengthInvalid;
+
+  /// The wallet was opened without a signer. The `prepare` methods work.
+  const factory WalletError.signerMissing() = WalletError_SignerMissing;
+
+  /// The signer signs for `signer`, not for `wallet`.
+  const factory WalletError.signerMismatch({
+    required String wallet,
+    required String signer,
+  }) = WalletError_SignerMismatch;
+
+  /// The transaction needs `signers`, not the wallet's account alone. Sign
+  /// it in the application.
+  const factory WalletError.unexpectedSigners({required List<String> signers}) =
+      WalletError_UnexpectedSigners;
+
+  /// The wallet was closed.
+  const factory WalletError.walletClosed() = WalletError_WalletClosed;
+
+  /// Any other failure of the Zolana client: the error and its causes,
+  /// without key material, with `api-key` values masked.
+  const factory WalletError.client({required String message}) =
+      WalletError_Client;
 }
 
 /// The wallet's derived keys, for the application's secure storage. They open

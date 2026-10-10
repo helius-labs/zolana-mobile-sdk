@@ -9,8 +9,9 @@ Unreleased.
   `activity()` and every spend read the indexer when they run.
   `WalletConfig.mints` lists the SPL mints `balances()` reports. A spend takes
   the largest notes first, at most 40 from at most two trees, as the Zolana
-  SDK selects them, and fails with `merge_required` beyond that and with
-  `amount_zero` for a zero amount.
+  SDK selects them, and fails with `WalletError.mergeRequired` or
+  `WalletError.tooManyInputTrees` beyond that and with
+  `WalletError.amountZero` for a zero amount.
 * `activity()`: the wallet's history, newest first, as the Zolana SDK
   classifies it: `deposit`, `received`, `sent`, `withdrawal` or
   `selfTransfer`.
@@ -45,9 +46,11 @@ Unreleased.
   `allowInsecureHttp` is passed.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile. With the default transport, a download that receives no data for
-  30 s fails with `proving_key_download_failed`, and the next call downloads
+  30 s fails with `WalletError.provingKeyDownloadFailed`, and the next call downloads
   the key again.
-* Errors carry no key material, and `api-key` values in them are masked.
+* Errors are `ZolanaWalletException`s whose `error` is a `WalletError` with
+  the data of what happened: amounts, accounts, mints. They carry no key
+  material, and `api-key` values in them are masked.
 * `LocalProver`: prepare a circuit once and prove structured Zolana requests
   repeatedly. `poseidonHash`.
 * `initZolanaMobile()` loads the native library on every platform.
