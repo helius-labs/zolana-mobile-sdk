@@ -368,11 +368,15 @@ pub(crate) mod tests {
     fn sends_rpc_and_indexer_requests_through_the_transport() {
         // An empty page of every indexer method the wallet reads.
         let (transport, requests) = fake(|request| {
-            ok(if request.url == RPC_URL {
-                r#"{"jsonrpc":"2.0","id":0,"result":{"context":{"slot":1},"value":null}}"#
-            } else {
-                r#"{"jsonrpc":"2.0","id":"test-account","result":{"context":{"blockTime":0,"slot":1},"matches":[],"transactions":[],"nextCursor":null}}"#
-            })
+            ok(
+                if request.url == RPC_URL && json(&request.body)["method"] == "getSlot" {
+                    r#"{"jsonrpc":"2.0","id":0,"result":1}"#
+                } else if request.url == RPC_URL {
+                    r#"{"jsonrpc":"2.0","id":0,"result":{"context":{"slot":1},"value":null}}"#
+                } else {
+                    r#"{"jsonrpc":"2.0","id":"test-account","result":{"context":{"blockTime":0,"slot":1},"matches":[],"transactions":[],"nextCursor":null}}"#
+                },
+            )
         });
         let mut wallet = open(&Keypair::new(), transport);
 
@@ -387,7 +391,12 @@ pub(crate) mod tests {
         assert_eq!(json(&rpc.body)["method"], "getAccountInfo");
 
         assert_eq!(wallet.private_balance(None), Ok(0));
-        let indexer = std::mem::take(&mut *requests.lock().unwrap());
+        let mut indexer = std::mem::take(&mut *requests.lock().unwrap());
+        let slot = indexer.remove(0);
+        assert_eq!(
+            (slot.url.as_str(), json(&slot.body)["method"].as_str()),
+            (RPC_URL, Some("getSlot"))
+        );
         assert!(!indexer.is_empty());
         for request in indexer {
             let method = json(&request.body)["method"].as_str().unwrap().to_string();

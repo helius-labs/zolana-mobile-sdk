@@ -724,6 +724,14 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// `prepare_merging(true)` turns it on.
   const factory WalletError.mergingDisabled() = WalletError_MergingDisabled;
 
+  /// The indexer has persisted only `indexer_slot`, behind the RPC's
+  /// confirmed `rpc_slot`, so the wallet's notes could include one already
+  /// spent. Try again once it catches up.
+  const factory WalletError.indexerBehind({
+    required BigInt indexerSlot,
+    required BigInt rpcSlot,
+  }) = WalletError_IndexerBehind;
+
   /// The chain already spent a note this transaction spends: the indexer
   /// was behind when it was prepared, or another session spent it. Prepare
   /// it again once the indexer has the spend.

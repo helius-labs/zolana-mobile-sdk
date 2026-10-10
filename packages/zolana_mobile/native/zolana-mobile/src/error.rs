@@ -30,6 +30,10 @@ pub enum WalletError {
     /// This account's user record does not enable merging:
     /// `prepare_merging(true)` turns it on.
     MergingDisabled,
+    /// The indexer has persisted only `indexer_slot`, behind the RPC's
+    /// confirmed `rpc_slot`, so the wallet's notes could include one already
+    /// spent. Try again once it catches up.
+    IndexerBehind { indexer_slot: u64, rpc_slot: u64 },
     /// The chain already spent a note this transaction spends: the indexer
     /// was behind when it was prepared, or another session spent it. Prepare
     /// it again once the indexer has the spend.
@@ -141,6 +145,12 @@ impl From<ClientError> for WalletError {
                 owner: owner.to_string(),
             },
             ClientError::MergeDisabled { .. } => Self::MergingDisabled,
+            ClientError::IndexerNotCaughtUp {
+                required, indexed, ..
+            } => Self::IndexerBehind {
+                indexer_slot: indexed,
+                rpc_slot: required,
+            },
             ClientError::SolanaRpcTransaction { ref source, .. }
                 if program_error(source.get_transaction_error().as_ref())
                     == Some(ShieldedPoolError::NullifierAlreadyQueued as u32) =>
@@ -282,6 +292,17 @@ mod tests {
         assert_eq!(
             WalletError::from(ClientError::ProofVerification("x".into())),
             WalletError::ProofInvalid
+        );
+        assert_eq!(
+            WalletError::from(ClientError::IndexerNotCaughtUp {
+                required: 100,
+                indexed: 90,
+                attempts: 6
+            }),
+            WalletError::IndexerBehind {
+                indexer_slot: 90,
+                rpc_slot: 100
+            }
         );
         let owner = solana_address::Address::new_unique();
         assert_eq!(
