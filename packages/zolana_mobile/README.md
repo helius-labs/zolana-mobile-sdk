@@ -459,6 +459,11 @@ final wallet = await ZolanaWallet.open(
 - A key download sets `maxResponseBytes`, the key's size in the lockfile.
   Stop reading and throw when the body exceeds it; the wallet refuses a longer
   body either way, but only after the whole of it arrived.
+- A key download also sets `downloadPath`: write the body to that file as it
+  arrives and return the response with an empty body. Keys reach hundreds of
+  MB, so holding one in memory can get the app killed. The wallet checks the
+  file against the lockfile and removes it when it is wrong. A transport that
+  returns the body instead still works, at that memory cost.
 - Return the response whatever its status, with its headers: a prover
   inside a TEE marks its encrypted body in them. Throw only when there is no
   response (no network, DNS, TLS, a timeout). The wallet then fails with a

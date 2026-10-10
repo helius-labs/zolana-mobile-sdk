@@ -24,6 +24,9 @@ Unreleased.
   chain's verdict, so a transaction that landed is not reported as failed.
   A spend of a note the chain already spent fails with
   `WalletError.notesAlreadySpent`.
+* Proving keys download straight to disk: a key download carries
+  `TransportRequest.downloadPath`, the default and example transports write
+  the body there as it arrives, and the wallet checks the file from disk.
 * `close()` aborts the default transport's requests in flight instead of
   waiting for them; the step they held fails with `WalletError.walletClosed`.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.

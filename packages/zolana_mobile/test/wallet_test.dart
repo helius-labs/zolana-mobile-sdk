@@ -621,6 +621,45 @@ void main() {
       expect(sent!.followRedirects, isTrue);
     });
 
+    test('writes a key download to its file, not to memory', () async {
+      final dir = await Directory.systemTemp.createTemp('zolana-key');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = '${dir.path}/k.key.partial';
+      final transport = HttpTransport(
+        client: MockClient.streaming(
+          (_, _) async => http.StreamedResponse(
+            Stream.fromIterable([
+              [1, 2, 3],
+              [4, 5],
+            ]),
+            200,
+          ),
+        ),
+      );
+      TransportRequest key(int max) => TransportRequest(
+        method: 'GET',
+        url: 'https://keys.example/k.key',
+        headers: const {},
+        body: Uint8List(0),
+        maxResponseBytes: max,
+        downloadPath: path,
+      );
+      final response = await transport.send(key(5));
+      expect(response.status, 200);
+      expect(response.body, isEmpty);
+      expect(await File(path).readAsBytes(), [1, 2, 3, 4, 5]);
+      await expectLater(
+        transport.send(key(4)),
+        throwsA(
+          isA<Exception>().having(
+            (e) => '$e',
+            'message',
+            'response body exceeds 4 bytes',
+          ),
+        ),
+      );
+    });
+
     test('stops reading a body past maxResponseBytes', () async {
       TransportRequest key(int? max) => TransportRequest(
         method: 'GET',

@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 import 'package:zolana_mobile/zolana_mobile.dart';
 
@@ -30,7 +33,18 @@ class AppTransport {
         )
         .timeout(timeout);
     try {
-      final body = http.ByteStream(response.stream.timeout(timeout)).toBytes();
+      final stream = response.stream.timeout(timeout);
+      final path = request.downloadPath;
+      if (path != null) {
+        // A proving key goes to the file the wallet names, never into memory.
+        await stream.pipe(File(path).openWrite());
+        return TransportResponse(
+          status: response.statusCode,
+          headers: response.headers,
+          body: Uint8List(0),
+        );
+      }
+      final body = http.ByteStream(stream).toBytes();
       return TransportResponse(
         status: response.statusCode,
         headers: response.headers,
