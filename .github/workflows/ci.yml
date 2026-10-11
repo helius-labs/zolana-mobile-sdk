@@ -41,10 +41,67 @@ jobs:
   # every consumer and example build compiles it from source. sccache keeps the
   # compiler outputs between steps and, with the Go build cache, between runs.
   # Its keys include the build paths, so the consumer builds run at a fixed path
-  # (ZOLANA_CONSUMER_DIR). The example builds run in jobs of their own, in
-  # parallel: what sccache cannot cache, such as the vendored OpenSSL build and
-  # the final link, still takes minutes per build.
+  # (ZOLANA_CONSUMER_DIR). The builds run in jobs of their own, in parallel:
+  # what sccache cannot cache, such as the vendored OpenSSL build and the final
+  # link, still takes minutes per build. The example jobs build release apps;
+  # the emulator jobs build and run the packaged consumer.
   android:
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2500M
+      SCCACHE_IDLE_TIMEOUT: "0"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - run: echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        id: native-cache
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: native-tests-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-tests-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+      - run: sccache --start-server
+      - run: ./scripts/stage-demo-assets.sh
+      - run: cargo test --workspace
+      # -count=1: the restored Go build cache must not replay a test result.
+      - run: go test -count=1 ./...
+        working-directory: packages/zolana_mobile/native/rust-gnark/go
+        env:
+          ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
+      - run: cargo test -p zolana-mobile proves_the_staged_request -- --ignored
+      - run: cargo test -p zolana-mobile proves_a_client_request_with_the_pinned_key -- --ignored
+        env:
+          ZOLANA_TEST_KEY_DIR: ${{ github.workspace }}/.cache/proving
+      - run: flutter pub get && flutter analyze && flutter test
+        working-directory: packages/zolana_mobile
+      - if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+
+  android-emulator:
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [35, 26]
     runs-on: ubuntu-latest
     env:
       RUSTC_WRAPPER: sccache
@@ -82,34 +139,18 @@ jobs:
           restore-keys: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
       - run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
-      - run: cargo test --workspace
-      # -count=1: the restored Go build cache must not replay a test result.
-      - run: go test -count=1 ./...
-        working-directory: packages/zolana_mobile/native/rust-gnark/go
-        env:
-          ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
-      - run: cargo test -p zolana-mobile proves_the_staged_request -- --ignored
-      - run: cargo test -p zolana-mobile proves_a_client_request_with_the_pinned_key -- --ignored
-        env:
-          ZOLANA_TEST_KEY_DIR: ${{ github.workspace }}/.cache/proving
-      - run: flutter pub get && flutter analyze && flutter test
-        working-directory: packages/zolana_mobile
-      - run: bash scripts/test-consumer.sh android
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run clean consumer on an API 35 emulator
-        # A green run takes 2-7 minutes; a hung emulator fails here, not
-        # after the job's 6 hours.
-        timeout-minutes: 15
+      - name: Run clean consumer on an API ${{ matrix.api-level }} emulator
+        # A green run takes 2-7 minutes after the build; a hung emulator fails
+        # here, not after the job's 6 hours.
+        timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           disable-animations: true
@@ -117,21 +158,8 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
-      - name: Run clean consumer on an API 26 emulator
-        # A green run takes 2-7 minutes; a hung emulator fails here, not
-        # after the job's 6 hours.
-        timeout-minutes: 15
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 26
-          arch: x86_64
-          target: google_apis
-          disable-animations: true
-          script: ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
-      - if: steps.native-cache.outputs.cache-hit != 'true'
+      # One job of the matrix saves the cache both restore.
+      - if: matrix.api-level == 35 && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
