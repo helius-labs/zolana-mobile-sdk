@@ -51,9 +51,12 @@ class _WalletScreenState extends State<WalletScreen> {
   _Phase _phase = _Phase.opening;
   String? _error;
   ZolanaWallet? _wallet;
-  BigInt? _public;
-  BigInt? _private;
-  List<ActivityEntry> _activity = const [];
+
+  /// Every asset's balances and history from the last refresh: switching
+  /// assets only filters them.
+  List<TokenBalance>? _balances;
+  Map<String?, BigInt> _publics = const {};
+  List<ActivityEntry> _history = const [];
   bool _refreshing = false;
   int _generation = 0;
 
@@ -77,9 +80,9 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() {
       _phase = _Phase.opening;
       _wallet = null;
-      _public = null;
-      _private = null;
-      _activity = const [];
+      _balances = null;
+      _publics = const {};
+      _history = const [];
       _refreshing = false;
     });
     try {
@@ -130,7 +133,7 @@ class _WalletScreenState extends State<WalletScreen> {
       // Registration is paid in SOL, whichever asset is shown.
       final public = await _publicBalance(wallet, sol);
       if (!_current(generation)) return;
-      if (_asset == sol) setState(() => _public = public);
+      setState(() => _publics = {..._publics, null: public});
       final registration = await wallet.registrationStatus();
       if (!_current(generation)) return;
       if (registration == RegistrationStatus.conflict) {
@@ -168,21 +171,20 @@ class _WalletScreenState extends State<WalletScreen> {
     final generation = _generation;
     setState(() => _refreshing = true);
     try {
-      final asset = _asset;
-      final private = await wallet.privateBalance(mint: asset.mint);
-      final public = await _publicBalance(wallet, asset);
-      final activity = await wallet.activity();
-      if (!_current(generation) || asset != _asset) return;
+      // One read of the notes and one of the history cover every asset.
+      final balances = await wallet.balances();
+      final history = await wallet.activity();
+      final publics = await Future.wait([
+        for (final asset in demoAssets) _publicBalance(wallet, asset),
+      ]);
+      if (!_current(generation)) return;
       setState(() {
-        _private = private;
-        _public = public;
-        _activity = activity
-            .where(
-              (entry) =>
-                  entry.mint == asset.mint &&
-                  entry.kind != ActivityKind.selfTransfer,
-            )
-            .toList();
+        _balances = balances;
+        _history = history;
+        _publics = {
+          for (final (index, asset) in demoAssets.indexed)
+            asset.mint: publics[index],
+        };
       });
     } catch (error) {
       if (_current(generation)) _snack(friendlyError(error, asset: _asset));
@@ -201,15 +203,23 @@ class _WalletScreenState extends State<WalletScreen> {
         : rpc.tokenBalance(wallet.solanaPublicKey, mint);
   }
 
-  Future<void> _select(DemoAsset asset) async {
-    setState(() {
-      _asset = asset;
-      _private = null;
-      _public = null;
-      _activity = const [];
-    });
-    await _refresh();
+  /// The selected asset's private balance; `null` until the first refresh.
+  BigInt? get _private {
+    final balances = _balances;
+    if (balances == null) return null;
+    for (final balance in balances) {
+      if (balance.mint == _asset.mint) return balance.amount;
+    }
+    return BigInt.zero;
   }
+
+  BigInt? get _public => _publics[_asset.mint];
+
+  List<ActivityEntry> get _activity => [
+    for (final entry in _history)
+      if (entry.mint == _asset.mint && entry.kind != ActivityKind.selfTransfer)
+        entry,
+  ];
 
   Future<void> _airdrop() async {
     final wallet = _wallet;
@@ -441,7 +451,8 @@ class _WalletScreenState extends State<WalletScreen> {
                       ButtonSegment(value: asset, label: Text(asset.symbol)),
                   ],
                   selected: {_asset},
-                  onSelectionChanged: (selected) => _select(selected.single),
+                  onSelectionChanged: (selected) =>
+                      setState(() => _asset = selected.single),
                 ),
               ),
               const SizedBox(height: 24),
