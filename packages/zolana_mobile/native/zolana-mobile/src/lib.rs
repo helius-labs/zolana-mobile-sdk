@@ -1,5 +1,8 @@
 use std::{
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, OnceLock, PoisonError,
+    },
     time::Instant,
 };
 
@@ -42,8 +45,8 @@ struct ProverState {
 struct Loaded {
     id: u64,
     /// The lockfile key [`prover::NativeProver`] loaded, or `None` for a system
-    /// the application loaded itself through [`load_prover`]. The native
-    /// prover switches keys only in the first case.
+    /// the application loaded itself as a [`LocalProver`]. The native prover
+    /// switches keys only in the first case.
     key: Option<String>,
     prover: rust_gnark::PreparedProver,
 }
@@ -54,12 +57,6 @@ impl ProverState {
         self.next_id = id.checked_add(1).ok_or(WalletError::ProverUnavailable)?;
         Ok(id)
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct PreparedProverInfo {
-    pub id: u64,
-    pub load_ms: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -100,73 +97,115 @@ pub fn poseidon_hash(inputs: Vec<Vec<u8>>) -> Result<Vec<u8>, WalletError> {
         .map_err(|failure| zolana_client::ClientError::from(failure).into())
 }
 
-pub fn load_prover(
-    r1cs_path: String,
-    proving_key_path: String,
-    verifying_key_path: String,
-) -> Result<PreparedProverInfo, WalletError> {
-    let started = Instant::now();
-    let mut state = PREPARED.try_lock().map_err(|_| WalletError::ProverBusy)?;
-    if state.loaded.is_some() {
-        return Err(WalletError::ProverBusy);
-    }
-    let id = state.next_id()?;
-    init_gnark()?;
-    let prover =
-        rust_gnark::PreparedProver::load(&r1cs_path, &proving_key_path, &verifying_key_path)
-            .map_err(|_| WalletError::ProverLoadFailed)?;
-    state.loaded = Some(Loaded {
-        id,
-        key: None,
-        prover,
-    });
-    Ok(PreparedProverInfo {
-        id,
-        load_ms: elapsed_ms(started),
-    })
+/// A circuit the application loaded from its r1cs and key files, to prove
+/// structured Zolana `/prove` requests with on the device, such as for a
+/// benchmark. gnark holds one prepared circuit at a time: while one is
+/// loaded, the wallet's own proofs fail with `prover_busy`, so close it before
+/// the wallet proves.
+pub struct LocalProver {
+    id: u64,
+    load_ms: u64,
+    closed: AtomicBool,
 }
 
-pub fn release_prover(id: u64) -> Result<(), WalletError> {
-    let mut state = PREPARED
-        .lock()
-        .map_err(|_| WalletError::ProverUnavailable)?;
-    match &state.loaded {
-        Some(loaded) if loaded.id == id => {
-            state.loaded = None;
-            Ok(())
+impl LocalProver {
+    /// Load the circuit from its compiled constraints (`circuit_path`, the
+    /// `.r1cs` file) and keys. Fails with `prover_busy` while another circuit
+    /// is loaded or proving.
+    pub fn load(
+        circuit_path: String,
+        proving_key_path: String,
+        verifying_key_path: String,
+    ) -> Result<LocalProver, WalletError> {
+        let started = Instant::now();
+        let mut state = PREPARED.try_lock().map_err(|_| WalletError::ProverBusy)?;
+        if state.loaded.is_some() {
+            return Err(WalletError::ProverBusy);
         }
-        _ => Err(WalletError::ProverClosed),
+        let id = state.next_id()?;
+        init_gnark()?;
+        let prover =
+            rust_gnark::PreparedProver::load(&circuit_path, &proving_key_path, &verifying_key_path)
+                .map_err(|_| WalletError::ProverLoadFailed)?;
+        state.loaded = Some(Loaded {
+            id,
+            key: None,
+            prover,
+        });
+        Ok(LocalProver {
+            id,
+            load_ms: elapsed_ms(started),
+            closed: AtomicBool::new(false),
+        })
+    }
+
+    /// How long loading the circuit took.
+    #[flutter_rust_bridge::frb(sync, getter)]
+    pub fn load_ms(&self) -> u64 {
+        self.load_ms
+    }
+
+    /// Prove `request_json`, a Zolana `/prove` request, and verify the proof.
+    /// One proof at a time: another fails with `prover_busy`. Fails with
+    /// `prover_closed` after `close`, also when the close came while this proof
+    /// ran.
+    pub fn prove(&self, request_json: String) -> Result<LocalProofResult, WalletError> {
+        let request_json = Zeroizing::new(request_json);
+        let started = Instant::now();
+        if self.closed.load(Ordering::Acquire) {
+            return Err(WalletError::ProverClosed);
+        }
+        let mut state = PREPARED.try_lock().map_err(|_| WalletError::ProverBusy)?;
+        let prover = &state
+            .loaded
+            .as_ref()
+            .filter(|loaded| loaded.id == self.id)
+            .ok_or(WalletError::ProverClosed)?
+            .prover;
+        let proof = prover.prove_request(&request_json);
+        if self.closed.load(Ordering::Acquire) {
+            state.loaded = None;
+            return Err(WalletError::ProverClosed);
+        }
+        let proof = proof.map_err(|_| WalletError::ProofFailed)?;
+        if !proof.shape_known {
+            return Err(WalletError::UnsupportedCircuit);
+        }
+        Ok(LocalProofResult {
+            proof_json: proof.proof_json,
+            verified: true,
+            inputs: proof.inputs,
+            outputs: proof.outputs,
+            proof_ms: proof.prove_ms,
+            witness_ms: proof.witness_ms,
+            verify_ms: proof.verify_ms,
+            total_ms: elapsed_ms(started),
+        })
+    }
+
+    /// Release the circuit, after the proof in progress, which then fails with
+    /// `prover_closed`. Later proofs fail the same way.
+    pub fn close(&self) {
+        self.closed.store(true, Ordering::Release);
+        self.release();
+    }
+
+    fn release(&self) {
+        let mut state = PREPARED.lock().unwrap_or_else(PoisonError::into_inner);
+        if state
+            .loaded
+            .as_ref()
+            .is_some_and(|loaded| loaded.id == self.id)
+        {
+            state.loaded = None;
+        }
     }
 }
 
-/// Prove a structured Zolana `/prove` request with the prepared prover `id`.
-pub fn prove_prepared(id: u64, input_json: String) -> Result<LocalProofResult, WalletError> {
-    let input_json = Zeroizing::new(input_json);
-    let started = Instant::now();
-    let state = PREPARED.try_lock().map_err(|_| WalletError::ProverBusy)?;
-    let prover = &state
-        .loaded
-        .as_ref()
-        .filter(|loaded| loaded.id == id)
-        .ok_or(WalletError::ProverClosed)?
-        .prover;
-    let proof = prover
-        .prove_request(&input_json)
-        .map_err(|_| WalletError::ProofFailed)?;
-    let proof_ms = proof.prove_ms;
-    if !proof.shape_known {
-        return Err(WalletError::UnsupportedCircuit);
+impl Drop for LocalProver {
+    fn drop(&mut self) {
+        self.release();
     }
-    Ok(LocalProofResult {
-        proof_json: proof.proof_json,
-        verified: true,
-        inputs: proof.inputs,
-        outputs: proof.outputs,
-        proof_ms,
-        witness_ms: proof.witness_ms,
-        verify_ms: proof.verify_ms,
-        total_ms: elapsed_ms(started),
-    })
 }
 
 fn init_gnark() -> Result<(), WalletError> {
@@ -201,12 +240,12 @@ mod tests {
                 .display()
                 .to_string()
         };
-        let load = || load_prover(asset("r1cs"), asset("pk"), asset("vk"));
-        let prepared = load().unwrap();
-        assert_eq!(load().unwrap_err(), WalletError::ProverBusy);
+        let load = || LocalProver::load(asset("r1cs"), asset("pk"), asset("vk"));
+        let prover = load().unwrap();
+        assert_eq!(load().err(), Some(WalletError::ProverBusy));
 
         let request = std::fs::read_to_string(assets.join("prove-request-2x2.json")).unwrap();
-        let proof = prove_prepared(prepared.id, request).unwrap();
+        let proof = prover.prove(request.clone()).unwrap();
         assert!(proof.verified);
         assert_eq!((proof.inputs, proof.outputs), (2, 2));
         let json: serde_json::Value = serde_json::from_str(&proof.proof_json).unwrap();
@@ -214,18 +253,23 @@ mod tests {
         assert!(json["bs"].is_array());
         assert!(json["krs"].is_array());
         // A failed proof says nothing about its input.
-        let error = prove_prepared(prepared.id, "{\"Secret\":\"private-sentinel\"}".to_string())
+        let error = prover
+            .prove("{\"Secret\":\"private-sentinel\"}".to_string())
             .unwrap_err();
         assert_eq!(error, WalletError::ProofFailed);
 
-        release_prover(prepared.id).unwrap();
-        assert_eq!(
-            prove_prepared(prepared.id, "{}".to_string()).unwrap_err(),
-            WalletError::ProverClosed
-        );
-        assert_eq!(
-            release_prover(prepared.id).unwrap_err(),
-            WalletError::ProverClosed
-        );
+        // A close during a proof fails that proof and frees the circuit.
+        std::thread::scope(|scope| {
+            let running = scope.spawn(|| prover.prove(request.clone()));
+            std::thread::sleep(std::time::Duration::from_millis(proof.proof_ms / 2));
+            prover.close();
+            assert_eq!(
+                running.join().unwrap().err(),
+                Some(WalletError::ProverClosed)
+            );
+        });
+        assert_eq!(prover.prove(request).err(), Some(WalletError::ProverClosed));
+        drop(prover);
+        load().unwrap().close();
     }
 }

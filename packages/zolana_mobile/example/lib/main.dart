@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
+import 'format.dart';
 import 'wallet_screen.dart';
 
 Future<void> main() async {
@@ -77,7 +78,7 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
       final vk = await _copyAsset('transfer_confidential_2_2.vk', directory);
       final pk = await _copyAsset('transfer_confidential_2_2.pk', directory);
       final prover = await LocalProver.load(
-        r1csPath: r1cs,
+        circuitPath: r1cs,
         provingKeyPath: pk,
         verifyingKeyPath: vk,
       );
@@ -172,7 +173,7 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
         'assets/proving/prove-request-2x2.json',
       );
       if (!mounted || epoch != _epoch || _locked) return;
-      final proof = await prover.proveRequest(request).result;
+      final proof = await prover.prove(requestJson: request);
       if (!mounted || epoch != _epoch || _locked) return;
       setState(() => _proof = proof);
     } catch (error) {
@@ -192,8 +193,8 @@ class _DemoScreenState extends State<DemoScreen> with WidgetsBindingObserver {
   void _showError(Object error) {
     if (!mounted) return;
     setState(
-      () => _error = error is ProverException
-          ? error.toString()
+      () => _error = error is WalletError
+          ? friendlyError(error)
           : 'The prover operation failed.',
     );
   }

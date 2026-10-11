@@ -88,10 +88,11 @@ Unreleased.
   lockfile. With the default transport, a part that receives no data for
   30 s fails with `WalletError.provingKeyDownloadFailed`.
 * Errors are `WalletError`s with the data of what happened: amounts,
-  accounts, mints. They carry no key
-  material, and `api-key` values in them are masked.
-* `LocalProver`: prepare a circuit once and prove structured Zolana requests
-  repeatedly. `poseidonHash`.
+  accounts, mints. They carry no key material, and `api-key` values in them
+  are masked.
+* `LocalProver`: load a circuit once and prove structured Zolana requests
+  repeatedly, one at a time; `close()` fails a proof in progress with
+  `WalletError.proverClosed`. `poseidonHash`.
 * `initZolanaMobile()` loads the native library on every platform.
 * Android native libraries are aligned for 16 KB memory pages.
 * Signed precompiled native libraries for Android (API 24+) and iOS (15+);
