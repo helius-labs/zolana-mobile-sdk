@@ -16,6 +16,8 @@ Unreleased.
 * `activity()`: the wallet's history, newest first, as the Zolana SDK
   classifies it: `deposit`, `received`, `sent`, `withdrawal` or
   `selfTransfer`.
+* `overview()`: the balances and the history from one read of the indexer,
+  for a screen that shows both.
 * `transfer` / `prepareTransfer` take `payments`, one or more `Payment`s of
   the same asset proved together, such as a payment and the application's
   fee.

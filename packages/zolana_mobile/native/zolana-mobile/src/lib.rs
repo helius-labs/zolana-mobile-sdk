@@ -27,7 +27,7 @@ pub use transport::{
 };
 pub use wallet::{
     derivation_message, MobileWallet, Operation, Payment, PreparedTransaction, RegistrationStatus,
-    TokenBalance, WalletConfig, WalletKeys,
+    TokenBalance, WalletConfig, WalletKeys, WalletOverview,
 };
 
 static GNARK_INIT: OnceLock<Result<(), WalletError>> = OnceLock::new();

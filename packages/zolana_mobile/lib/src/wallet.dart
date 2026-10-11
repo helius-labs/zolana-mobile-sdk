@@ -249,6 +249,10 @@ class ZolanaWallet {
   /// as sent; the indexer does not say which spends were withdrawals.
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
+  /// [balances] and [activity] from one read of the indexer, which each of
+  /// them makes on its own: a screen that shows both calls this once.
+  Future<native.WalletOverview> overview() => _serial(_wallet.overview);
+
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with [WalletError.registrationConflict]
   /// when the registry holds other keys; the wallet never replaces them.

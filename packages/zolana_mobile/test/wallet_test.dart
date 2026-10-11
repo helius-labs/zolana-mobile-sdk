@@ -275,6 +275,12 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<ProvingKeys> provingKeys() async => keys;
+
+  @override
+  Future<WalletOverview> overview() async {
+    events.add('overview');
+    return const WalletOverview(balances: [], activity: []);
+  }
 }
 
 /// Downloads three parts of one key, each once the test lets it go.

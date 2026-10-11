@@ -1,8 +1,7 @@
 //! The wallet's history as the Zolana SDK reads and classifies it, in the
 //! types the bindings carry.
 
-use zolana_client::{ClientError, IndexerRpcConfig, Rpc, SpendableUtxos};
-use zolana_transaction::{AssetRegistry, HistoryEntry, HistoryKind, ShieldedKeys};
+use zolana_transaction::{History, HistoryEntry, HistoryKind};
 
 use crate::asset::mint_name;
 
@@ -34,18 +33,9 @@ pub struct ActivityEntry {
     pub slot: u64,
 }
 
-/// The history of `keys`, newest first: one entry per asset a transaction
-/// moved, read as `config` says.
-pub(crate) fn fetch<K: ShieldedKeys + ?Sized, I: Rpc + ?Sized>(
-    keys: &K,
-    assets: &AssetRegistry,
-    indexer: &I,
-    config: IndexerRpcConfig,
-) -> Result<Vec<ActivityEntry>, ClientError> {
-    let history = SpendableUtxos::new(keys, assets)
-        .with_indexer_config(config)
-        .fetch_history(indexer)?;
-    Ok(history.entries().into_iter().map(activity_entry).collect())
+/// `history` newest first: one entry per asset a transaction moved.
+pub(crate) fn entries(history: &History) -> Vec<ActivityEntry> {
+    history.entries().into_iter().map(activity_entry).collect()
 }
 
 fn activity_entry(entry: HistoryEntry) -> ActivityEntry {

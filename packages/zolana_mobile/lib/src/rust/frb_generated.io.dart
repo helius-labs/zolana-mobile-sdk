@@ -327,6 +327,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   WalletKeys dco_decode_wallet_keys(dynamic raw);
 
   @protected
+  WalletOverview dco_decode_wallet_overview(dynamic raw);
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
@@ -626,6 +629,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WalletKeys sse_decode_wallet_keys(SseDeserializer deserializer);
+
+  @protected
+  WalletOverview sse_decode_wallet_overview(SseDeserializer deserializer);
 
   @protected
   void sse_encode_AnyhowException(
@@ -1011,6 +1017,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_wallet_keys(WalletKeys self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_wallet_overview(
+    WalletOverview self,
+    SseSerializer serializer,
+  );
 }
 
 // Section: wire_class

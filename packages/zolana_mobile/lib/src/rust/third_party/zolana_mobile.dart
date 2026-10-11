@@ -117,6 +117,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
     transport: transport,
   );
 
+  /// [`Self::balances`] and [`Self::activity`] from one read of the
+  /// indexer, which each of them makes on its own.
+  Future<WalletOverview> overview();
+
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
   Future<PreparedTransaction> prepareDeposit({
@@ -1103,4 +1107,23 @@ class WalletKeys {
           viewingPublicKey == other.viewingPublicKey &&
           nullifierPrivateKey == other.nullifierPrivateKey &&
           nullifierPublicKey == other.nullifierPublicKey;
+}
+
+/// The private balances, one per asset held, and the history, newest first.
+class WalletOverview {
+  final List<TokenBalance> balances;
+  final List<ActivityEntry> activity;
+
+  const WalletOverview({required this.balances, required this.activity});
+
+  @override
+  int get hashCode => balances.hashCode ^ activity.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WalletOverview &&
+          runtimeType == other.runtimeType &&
+          balances == other.balances &&
+          activity == other.activity;
 }
