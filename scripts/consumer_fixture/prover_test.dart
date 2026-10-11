@@ -26,51 +26,42 @@ void main() {
         }
         final basename = '${directory.path}/transfer_confidential_2_2';
         prover = await LocalProver.load(
-          r1csPath: '$basename.r1cs',
+          circuitPath: '$basename.r1cs',
           provingKeyPath: '$basename.pk',
           verifyingKeyPath: '$basename.vk',
         );
         final request = await rootBundle.loadString(
           'assets/proving/prove-request-2x2.json',
         );
-        final result = await prover.proveRequest(request).result;
+        final result = await prover.prove(requestJson: request);
         expect(result.verified, isTrue);
         expect((result.inputs, result.outputs), (2, 2));
         expect(
           jsonDecode(result.proofJson),
           containsPair('ar', isA<List<dynamic>>()),
         );
-        final malformed = prover.proveRequest('{"Secret": "private-sentinel"}');
         await expectLater(
-          malformed.result,
+          prover.prove(requestJson: '{"Secret": "private-sentinel"}'),
           throwsA(
-            isA<ProverException>().having(
+            isA<WalletError>().having(
               (error) => error.toString(),
               'message',
               isNot(contains('private-sentinel')),
             ),
           ),
         );
-        await malformed.done;
-        final warm = prover.proveRequest(request);
+        // Locking during a proof: the proof fails, the circuit is released.
+        final warm = prover.prove(requestJson: request);
         final rejected = expectLater(
-          warm.result,
-          throwsA(
-            isA<ProverException>().having(
-              (error) => error.code,
-              'code',
-              ProverErrorCode.discarded,
-            ),
-          ),
+          warm,
+          throwsA(const WalletError.proverClosed()),
         );
-        final draining = prover.close();
-        expect(prover.isClosed, isTrue);
-        expect(
-          () => prover!.proveRequest(request),
-          throwsA(isA<ProverException>()),
-        );
+        await prover.close();
         await rejected;
-        await draining;
+        await expectLater(
+          prover.prove(requestJson: request),
+          throwsA(const WalletError.proverClosed()),
+        );
       } finally {
         await prover?.close();
         await directory.delete(recursive: true);

@@ -10,7 +10,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'zolana_mobile.freezed.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Loaded`, `ProverState`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `drop`, `fmt`
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
 Future<Uint8List> derivationMessage({required String solanaPubkey}) => RustLib
@@ -23,27 +23,34 @@ Future<String> sdkVersion() => RustLib.instance.api.zolanaMobileSdkVersion();
 Future<Uint8List> poseidonHash({required List<Uint8List> inputs}) =>
     RustLib.instance.api.zolanaMobilePoseidonHash(inputs: inputs);
 
-Future<PreparedProverInfo> loadProver({
-  required String r1CsPath,
-  required String provingKeyPath,
-  required String verifyingKeyPath,
-}) => RustLib.instance.api.zolanaMobileLoadProver(
-  r1CsPath: r1CsPath,
-  provingKeyPath: provingKeyPath,
-  verifyingKeyPath: verifyingKeyPath,
-);
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LocalProver>>
+abstract class LocalProver implements RustOpaqueInterface {
+  /// Release the circuit, after the proof in progress, which then fails with
+  /// `prover_closed`. Later proofs fail the same way.
+  Future<void> close();
 
-Future<void> releaseProver({required BigInt id}) =>
-    RustLib.instance.api.zolanaMobileReleaseProver(id: id);
+  /// Load the circuit from its compiled constraints (`circuit_path`, the
+  /// `.r1cs` file) and keys. Fails with `prover_busy` while another circuit
+  /// is loaded or proving.
+  static Future<LocalProver> load({
+    required String circuitPath,
+    required String provingKeyPath,
+    required String verifyingKeyPath,
+  }) => RustLib.instance.api.zolanaMobileLocalProverLoad(
+    circuitPath: circuitPath,
+    provingKeyPath: provingKeyPath,
+    verifyingKeyPath: verifyingKeyPath,
+  );
 
-/// Prove a structured Zolana `/prove` request with the prepared prover `id`.
-Future<LocalProofResult> provePrepared({
-  required BigInt id,
-  required String inputJson,
-}) => RustLib.instance.api.zolanaMobileProvePrepared(
-  id: id,
-  inputJson: inputJson,
-);
+  /// How long loading the circuit took.
+  BigInt get loadMs;
+
+  /// Prove `request_json`, a Zolana `/prove` request, and verify the proof.
+  /// One proof at a time: another fails with `prover_busy`. Fails with
+  /// `prover_closed` after `close`, also when the close came while this proof
+  /// ran.
+  Future<LocalProofResult> prove({required String requestJson});
+}
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>>
 abstract class MobileWallet implements RustOpaqueInterface {
@@ -248,7 +255,7 @@ abstract class PreparedTransaction implements RustOpaqueInterface {
   String get feePayer;
 
   /// The last block height at which the message can still land. Past it,
-  /// [`MobileWallet::refresh`] gives it a new blockhash.
+  /// `refresh` gives it a new blockhash without a new proof.
   BigInt get lastValidBlockHeight;
 
   /// The serialized Solana message every signer signs with Ed25519.
@@ -488,24 +495,6 @@ class Payment {
           runtimeType == other.runtimeType &&
           recipient == other.recipient &&
           amount == other.amount;
-}
-
-class PreparedProverInfo {
-  final BigInt id;
-  final BigInt loadMs;
-
-  const PreparedProverInfo({required this.id, required this.loadMs});
-
-  @override
-  int get hashCode => id.hashCode ^ loadMs.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PreparedProverInfo &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          loadMs == other.loadMs;
 }
 
 /// Where a spend is proved.

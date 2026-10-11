@@ -127,7 +127,7 @@ public key together. Releases signed with the old key stop verifying.
 ## Current boundary
 
 `ZolanaWallet` builds and proves transactions; the application signs them, and
-either the wallet or the application sends them. `LocalProver.proveRequest`
+either the wallet or the application sends them. `LocalProver.prove`
 remains for callers that assemble their own `/prove` requests. The wallet holds
 SOL and the SPL tokens the shielded pool has registered, keeps its state in
 memory, and merges notes on request.

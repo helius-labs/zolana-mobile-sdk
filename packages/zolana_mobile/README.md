@@ -603,13 +603,12 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 
 await initZolanaMobile();
 final prover = await LocalProver.load(
-  r1csPath: circuitPath,
+  circuitPath: r1csPath,
   provingKeyPath: provingKeyPath,
   verifyingKeyPath: verifyingKeyPath,
 );
 try {
-  final job = prover.proveRequest(requestJson);
-  final result = await job.result;
+  final result = await prover.prove(requestJson: requestJson);
   useProofIfWalletSessionIsStillAuthorized(result.proofJson);
 } finally {
   await prover.close();
@@ -633,7 +632,9 @@ key shape. Other circuit types fail closed. The bundled demo stages only 2→2;
 provide the matching trusted keys for other shapes.
 
 Only one prepared native prover is loaded at a time per process, and each
-`LocalProver` accepts one active job. Release it before loading another circuit.
+`LocalProver` runs one proof at a time; another fails with
+`WalletError.proverBusy`, and so do the wallet's own proofs while a
+`LocalProver` is loaded. Close it before loading another circuit.
 The key/circuit files are deserialized once by `load`, not on every warm proof.
 `loadMs` measures preparation separately from job timings. Parsed keys are held
 until `close`; deleting or replacing their source files does not rotate an
@@ -647,21 +648,17 @@ await prover.close();
 ```
 
 The wallet must invalidate its own authorization/session immediately on lock.
-`close()` synchronously rejects new jobs and marks the active result discarded.
-Its future waits for native work to finish, then releases the prepared keys.
-It is idempotent; a failed release can be retried.
-
-`job.discard()` discards only that pending result; it does **not** stop native
-computation. `job.done` settles after native work finishes, on success or error.
-`job.result` rejects with `ProverErrorCode.discarded` when discarded while active.
-Already-delivered results cannot be revoked: always check the current wallet
-session/approval immediately before accepting a proof or signing/submitting.
+`close()` waits for the proof in progress, which then fails with
+`WalletError.proverClosed`, and releases the prepared keys; later proofs fail
+the same way. It is idempotent. Already-delivered results cannot be revoked:
+always check the current wallet session/approval immediately before accepting
+a proof or signing/submitting.
 
 Inputs are copied across Dart, Rust, and Go. Do not pass borrowed pointers to
 wallet-owned memory. You may clear caller-owned buffers once you no longer need
 them, but that does not erase copies already passed to the prover. Dart strings
 and Go/FFI temporaries cannot provide a complete secure-erasure guarantee.
-Completion and `close()` mean no more SDK work uses the job; they do not prove
+Completion and `close()` mean no more SDK work uses the proof; they do not prove
 that every secret byte has been overwritten. Immediate native cancellation and
 guaranteed memory erasure on lock are not supported.
 
