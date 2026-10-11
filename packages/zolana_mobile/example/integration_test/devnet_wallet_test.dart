@@ -91,14 +91,12 @@ void main() {
 
     final started = DateTime.now();
     // The demo's fee is a second payment in the same proof.
-    final prepared = await sender.prepareTransfer(
-      payments: [
-        Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
-        Payment(recipient: demoFeeCollector.publicKey, amount: fee),
-      ],
-    );
-    expect(prepared.amount, lamports + fee);
-    expect(prepared.payments, hasLength(2));
+    final payments = [
+      Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
+      Payment(recipient: demoFeeCollector.publicKey, amount: fee),
+    ];
+    final prepared = await sender.prepareTransfer(payments: payments);
+    expect(prepared.operation, Operation.transfer(payments: payments));
     // A slow approval: the same proof under a new blockhash.
     final transaction = await sender.refresh(prepared);
     expect(

@@ -66,7 +66,8 @@ signs two things:
    wallet's nullifier and viewing keys, which stay in memory for this session.
    A wallet opened from saved keys (see below) skips this.
 2. each prepared transaction's message, with the `PreparedTransaction` to show
-   the user first: its `kind`, `amount`, `mint`, `recipient` and `feePayer`.
+   the user first: its `operation`, what it moves and to whom, and its
+   `feePayer`.
 
 ```dart
 class KeystoreSigner implements SolanaSigner {
@@ -110,8 +111,8 @@ await wallet.transfer(
 
   Two payments and the change prove with 4-output keys, so the notes that
   pay them must number 24 or fewer instead of 40; past that the transfer
-  fails with `WalletError.mergeRequired`. `tx.amount` is the total and
-  `tx.payments` lists each. A deposit or withdrawal fee is public anyway: the
+  fails with `WalletError.mergeRequired`. The prepared transfer's
+  `Operation_Transfer` lists each payment. A deposit or withdrawal fee is public anyway: the
   application sends it as a plain transfer with its own Solana client.
 
 - **Proving keys** download from the Zolana key host into `provingKeyDir`
@@ -318,9 +319,27 @@ transactions itself uses the `prepare` methods and reports back:
 final tx = await wallet.prepareTransfer(
   payments: [Payment(recipient: account, amount: amount)],
 );
-// Show tx.kind, tx.payments, tx.mint and tx.feePayer, sign tx.message with
-// each of tx.signers, send it.
+// Show tx.operation and tx.feePayer, sign tx.message with each of
+// tx.signers, send it.
 await wallet.confirm(tx, signature); // base58 transaction signature
+```
+
+`tx.operation` has one variant per kind of transaction, each with only its own
+fields (amounts in base units, `mint` `null` for SOL). Match on it as on
+`WalletError`; the switch covers every kind, so a new one is a compile error
+rather than a blank approval screen:
+
+```dart
+final text = switch (tx.operation) {
+  Operation_Registration() => 'Register for private payments',
+  Operation_Deposit(:final amount) => 'Shield $amount',
+  Operation_Transfer(:final payments) => 'Send privately '
+      '${payments.map((p) => '${p.amount} to ${p.recipient}').join(', ')}',
+  Operation_Withdrawal(:final recipient, :final amount) =>
+    'Unshield $amount to $recipient',
+  Operation_Merging(:final enabled) => enabled ? 'Allow merges' : 'Stop merges',
+  Operation_Merge(:final amount) => 'Combine notes holding $amount',
+};
 ```
 
 `confirm` checks that `signature` is the fee payer's signature over

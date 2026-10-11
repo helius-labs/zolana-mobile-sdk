@@ -21,25 +21,24 @@ String explorerUrl(String signature) =>
 /// What a prepared transaction does, to show before signing. A mint the demo
 /// does not hold shows in base units.
 String approvalText(PreparedTransaction tx) {
-  final amount = switch ((tx.amount, demoAsset(tx.mint))) {
-    (null, _) => '',
-    (final units?, final asset?) => asset.format(units),
-    (final units?, null) => '$units units of ${shortAddress(tx.mint!)}',
+  String format(BigInt units, String? mint) => switch (demoAsset(mint)) {
+    final asset? => asset.format(units),
+    null => '$units units of ${shortAddress(mint!)}',
   };
-  final to = tx.recipient == null ? '' : shortAddress(tx.recipient!);
-  if (tx.kind == PendingTransactionKind.transfer && tx.payments.length > 1) {
-    final asset = demoAsset(tx.mint);
-    String units(BigInt amount) =>
-        asset == null ? '$amount units' : asset.format(amount);
-    return 'Send privately: ${[for (final payment in tx.payments) '${units(payment.amount)} to ${shortAddress(payment.recipient)}'].join(', ')}';
-  }
-  return switch (tx.kind) {
-    PendingTransactionKind.registration => 'Register for private payments',
-    PendingTransactionKind.deposit => 'Shield $amount',
-    PendingTransactionKind.transfer => 'Send $amount privately to $to',
-    PendingTransactionKind.withdrawal => 'Unshield $amount to $to',
-    PendingTransactionKind.merging => 'Change who can merge your notes',
-    PendingTransactionKind.merge => 'Combine notes holding $amount',
+  String pay(Payment payment, String? mint) =>
+      '${format(payment.amount, mint)} to ${shortAddress(payment.recipient)}';
+  return switch (tx.operation) {
+    Operation_Registration() => 'Register for private payments',
+    Operation_Deposit(:final mint, :final amount) =>
+      'Shield ${format(amount, mint)}',
+    Operation_Transfer(:final mint, :final payments) =>
+      'Send privately ${payments.map((p) => pay(p, mint)).join(', ')}',
+    Operation_Withdrawal(:final mint, :final recipient, :final amount) =>
+      'Unshield ${format(amount, mint)} to ${shortAddress(recipient)}',
+    Operation_Merging(:final enabled) =>
+      enabled ? 'Allow merges of your notes' : 'Stop merges of your notes',
+    Operation_Merge(:final mint, :final amount) =>
+      'Combine notes holding ${format(amount, mint)}',
   };
 }
 

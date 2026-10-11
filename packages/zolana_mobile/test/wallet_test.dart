@@ -54,11 +54,17 @@ class RecordingSigner implements SolanaSigner {
 }
 
 class FakePending implements PendingTransaction {
-  FakePending(this.bytes, {this.signerKeys = const [owner], this.height = 100});
+  FakePending(
+    this.bytes, {
+    this.signerKeys = const [owner],
+    this.height = 100,
+    this.op = const Operation.registration(),
+  });
 
   final Uint8List bytes;
   final List<String> signerKeys;
   final int height;
+  final Operation op;
 
   @override
   Future<BigInt> lastValidBlockHeight() async => BigInt.from(height);
@@ -70,26 +76,13 @@ class FakePending implements PendingTransaction {
   bool get isDisposed => false;
 
   @override
-  Future<PendingTransactionKind> kind() async =>
-      PendingTransactionKind.transfer;
-
-  @override
-  Future<List<Payment>> payments() async => const [];
+  Future<Operation> operation() async => op;
 
   @override
   Future<Uint8List> messageBytes() async => bytes;
 
   @override
   Future<List<String>> signers() async => signerKeys;
-
-  @override
-  Future<BigInt?> amount() async => BigInt.from(bytes.first);
-
-  @override
-  Future<String?> mint() async => null;
-
-  @override
-  Future<String?> recipient() async => 'Recipient';
 
   @override
   Future<String> feePayer() async => signerKeys.first;
@@ -143,6 +136,7 @@ class FakeWallet implements MobileWallet {
       Uint8List.fromList([...old.bytes, 0]),
       signerKeys: old.signerKeys,
       height: old.height + 150,
+      op: old.op,
     );
   }
 
@@ -186,7 +180,12 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<PendingTransaction?> prepareMerging({required bool enabled}) async =>
-      enabled == merging ? null : FakePending(Uint8List.fromList([5]));
+      enabled == merging
+      ? null
+      : FakePending(
+          Uint8List.fromList([5]),
+          op: Operation.merging(enabled: enabled),
+        );
 
   @override
   Future<PendingTransaction> prepareMerge({
@@ -197,14 +196,20 @@ class FakeWallet implements MobileWallet {
   }) async {
     if (!merging) throw const WalletError.mergingDisabled();
     merges.add((mint, maxInputs, feePayer, proving));
-    return FakePending(Uint8List.fromList([6]));
+    return FakePending(
+      Uint8List.fromList([6]),
+      op: Operation.merge(mint: mint, amount: BigInt.two),
+    );
   }
 
   @override
   Future<PendingTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
-  }) async => FakePending(Uint8List.fromList([1, 2]));
+  }) async => FakePending(
+    Uint8List.fromList([1, 2]),
+    op: Operation.deposit(mint: mint, amount: amount),
+  );
 
   @override
   Future<PendingTransaction> prepareTransfer({
@@ -219,7 +224,11 @@ class FakeWallet implements MobileWallet {
     await holdTransfer?.future;
     final error = transferError;
     if (error != null) throw error;
-    return FakePending(Uint8List.fromList([7, 8]), signerKeys: transferSigners);
+    return FakePending(
+      Uint8List.fromList([7, 8]),
+      signerKeys: transferSigners,
+      op: Operation.transfer(mint: mint, payments: payments),
+    );
   }
 
   @override
@@ -231,7 +240,14 @@ class FakeWallet implements MobileWallet {
     Proving? proving,
   }) async {
     proved.add(proving);
-    return FakePending(Uint8List.fromList([9]));
+    return FakePending(
+      Uint8List.fromList([9]),
+      op: Operation.withdrawal(
+        mint: mint,
+        recipient: recipient,
+        amount: amount,
+      ),
+    );
   }
 
   @override
@@ -986,7 +1002,10 @@ void main() {
     );
 
     expect(await wallet.deposit(BigInt.one), 'signature');
-    expect(signer.requests.single.$2?.amount, BigInt.one);
+    expect(
+      signer.requests.single.$2?.operation,
+      Operation.deposit(amount: BigInt.one),
+    );
     await expectLater(
       ZolanaWallet.openWithKeys(
         config: config,
@@ -1039,8 +1058,8 @@ void main() {
     expect(refreshed.message, isNot(prepared.message));
     expect(refreshed.signers, prepared.signers);
     expect(
-      (refreshed.amount, refreshed.recipient, refreshed.feePayer),
-      (prepared.amount, prepared.recipient, prepared.feePayer),
+      (refreshed.operation, refreshed.feePayer),
+      (prepared.operation, prepared.feePayer),
     );
 
     await wallet.submit(refreshed, [Uint8List(64)]);
@@ -1064,7 +1083,12 @@ void main() {
 
     expect(signature, 'signature');
     expect(signer.requests.last.$1, [7, 8]);
-    expect(signer.requests.last.$2?.amount, BigInt.from(7));
+    expect(
+      signer.requests.last.$2?.operation,
+      Operation.transfer(
+        payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
+      ),
+    );
     expect(native.submitted.single.$2.single, [8, 7]);
   });
 
@@ -1076,17 +1100,17 @@ void main() {
       mint: 'Mint',
     );
     expect(native.events, ['transfer Mint']);
-    expect(transaction.kind, PendingTransactionKind.transfer);
     expect(transaction.message, [7, 8]);
     expect(transaction.signers, [owner]);
     expect(
+      (transaction.operation, transaction.feePayer),
       (
-        transaction.amount,
-        transaction.mint,
-        transaction.recipient,
-        transaction.feePayer,
+        Operation.transfer(
+          mint: 'Mint',
+          payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
+        ),
+        owner,
       ),
-      (BigInt.from(7), null, 'Recipient', owner),
     );
 
     await wallet.confirm(transaction, 'sent-by-the-app');
@@ -1187,7 +1211,7 @@ void main() {
 
     native.status = RegistrationStatus.notRegistered;
     expect(await wallet.register(), 'signature');
-    expect(signer.requests.last.$2?.amount, BigInt.from(3));
+    expect(signer.requests.last.$2?.operation, const Operation.registration());
 
     native.status = RegistrationStatus.registered;
     expect(await wallet.register(), isNull);

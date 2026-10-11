@@ -114,51 +114,36 @@ pub enum RegistrationStatus {
     Conflict,
 }
 
-/// What a submitted transaction waits for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PendingTransactionKind {
+/// What a prepared transaction does, to show the user before signing.
+/// Amounts are in base units; `mint` is `None` for SOL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[flutter_rust_bridge::frb(non_opaque)]
+pub enum Operation {
     /// Publishes the wallet's shielded address so others can pay it.
     Registration,
     /// Moves public funds into the private balance. Public: sender, asset,
     /// amount.
-    Deposit,
-    /// Private transfer to a registered wallet. Reveals neither amount nor
-    /// recipient.
-    Transfer,
+    Deposit { mint: Option<String>, amount: u64 },
+    /// Private transfer of one asset to registered wallets, in the order
+    /// given. Reveals neither amounts nor recipients.
+    Transfer {
+        mint: Option<String>,
+        payments: Vec<Payment>,
+    },
     /// Moves private funds to a public account. Public: recipient, asset,
     /// amount.
-    Withdrawal,
+    Withdrawal {
+        mint: Option<String>,
+        recipient: String,
+        amount: u64,
+    },
     /// Turns merges of this account's notes on or off. Public: the account
     /// and the setting.
-    Merging,
-    /// Combines notes of one asset into one, for this account. Public: the
-    /// account and roughly how many notes; not the asset or any amount.
-    Merge,
-}
-
-/// A built, and where needed proved, v1 transaction awaiting signatures. The
-/// application shows what it does, from [`Self::kind`], [`Self::amount`],
-/// [`Self::mint`], [`Self::recipient`] and [`Self::fee_payer`], before it asks
-/// for them.
-pub struct PendingTransaction {
-    /// Unique per wallet: the key of the notes a spend reserves.
-    id: u64,
-    kind: PendingTransactionKind,
-    message: VersionedMessage,
-    moved: Moved,
-    last_valid_block_height: u64,
-    /// Nullifiers of the notes it spends; empty unless it is a spend.
-    spends: Vec<[u8; 32]>,
-}
-
-/// What a transaction moves and to whom; nothing for a registration.
-#[derive(Clone, Default)]
-struct Moved {
-    amount: Option<u64>,
-    /// `None` for SOL.
-    mint: Option<String>,
-    recipient: Option<String>,
-    payments: Vec<Payment>,
+    Merging { enabled: bool },
+    /// Combines notes of one asset, `amount` in total, into one for this
+    /// account. Public: the account and roughly how many notes; not the asset
+    /// or any amount.
+    Merge { mint: Option<String>, amount: u64 },
 }
 
 /// One recipient of a private transfer and the amount it receives.
@@ -168,33 +153,22 @@ pub struct Payment {
     pub amount: u64,
 }
 
+/// A built, and where needed proved, v1 transaction awaiting signatures. The
+/// application shows its [`Self::operation`] and [`Self::fee_payer`] before
+/// it asks for them.
+pub struct PendingTransaction {
+    /// Unique per wallet: the key of the notes a spend reserves.
+    id: u64,
+    operation: Operation,
+    message: VersionedMessage,
+    last_valid_block_height: u64,
+    /// Nullifiers of the notes it spends; empty unless it is a spend.
+    spends: Vec<[u8; 32]>,
+}
+
 impl PendingTransaction {
-    pub fn kind(&self) -> PendingTransactionKind {
-        self.kind
-    }
-
-    /// Base units a deposit, transfer or withdrawal moves, or the sum a merge
-    /// combines.
-    pub fn amount(&self) -> Option<u64> {
-        self.moved.amount
-    }
-
-    /// Each recipient of a transfer and its amount, in the order given;
-    /// empty for other kinds.
-    pub fn payments(&self) -> Vec<Payment> {
-        self.moved.payments.clone()
-    }
-
-    /// The mint of the asset moved, or of the token account created; `None`
-    /// for SOL.
-    pub fn mint(&self) -> Option<String> {
-        self.moved.mint.clone()
-    }
-
-    /// The account a withdrawal pays, the first recipient of a transfer, or
-    /// the account whose token account is created.
-    pub fn recipient(&self) -> Option<String> {
-        self.moved.recipient.clone()
+    pub fn operation(&self) -> Operation {
+        self.operation.clone()
     }
 
     /// The base58 account that pays the network fee: the first signer.
@@ -423,13 +397,7 @@ impl MobileWallet {
             None,
         )?;
         message
-            .map(|message| {
-                self.pending(
-                    PendingTransactionKind::Registration,
-                    message,
-                    Moved::default(),
-                )
-            })
+            .map(|message| self.pending(Operation::Registration, message))
             .transpose()
     }
 
@@ -455,12 +423,8 @@ impl MobileWallet {
             return Ok(None);
         }
         let instruction = set_merging_enabled_instruction(self.owner, enabled);
-        self.pending(
-            PendingTransactionKind::Merging,
-            self.message(instruction)?,
-            Moved::default(),
-        )
-        .map(Some)
+        self.pending(Operation::Merging { enabled }, self.message(instruction)?)
+            .map(Some)
     }
 
     /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -517,9 +481,11 @@ impl MobileWallet {
                     .unwrap_or_else(|| failure.into())
             })?;
         let pending = self.pending(
-            PendingTransactionKind::Merge,
+            Operation::Merge {
+                mint: mint_name(&asset.mint),
+                amount,
+            },
             message,
-            moved(asset, amount, None),
         )?;
         Ok(self.reserve(pending, spends))
     }
@@ -559,9 +525,11 @@ impl MobileWallet {
         }
         .instruction()?;
         self.pending(
-            PendingTransactionKind::Deposit,
+            Operation::Deposit {
+                mint: mint_name(&asset.mint),
+                amount,
+            },
             self.message(deposit)?,
-            moved(asset, amount, None),
         )
     }
 
@@ -673,12 +641,11 @@ impl MobileWallet {
             }?;
         }
         let pending = self.pending(
-            PendingTransactionKind::Transfer,
-            self.prove(transaction, Vec::new(), payer, proving)?,
-            Moved {
+            Operation::Transfer {
+                mint: mint_name(&asset.mint),
                 payments,
-                ..moved(asset, total, recipients.first().copied())
             },
+            self.prove(transaction, Vec::new(), payer, proving)?,
         )?;
         Ok(self.reserve(pending, spends))
     }
@@ -716,9 +683,12 @@ impl MobileWallet {
         let settlement =
             transaction.withdraw_to(asset.mint, amount, recipient, asset.token_program)?;
         let pending = self.pending(
-            PendingTransactionKind::Withdrawal,
+            Operation::Withdrawal {
+                mint: mint_name(&asset.mint),
+                recipient: recipient.to_string(),
+                amount,
+            },
             self.prove(transaction, vec![settlement], payer, proving)?,
-            moved(asset, amount, Some(recipient)),
         )?;
         Ok(self.reserve(pending, spends))
     }
@@ -752,9 +722,8 @@ impl MobileWallet {
     /// as it can be when the application gets it.
     fn pending(
         &self,
-        kind: PendingTransactionKind,
+        operation: Operation,
         mut message: VersionedMessage,
-        moved: Moved,
     ) -> Result<PendingTransaction, WalletError> {
         let (blockhash, last_valid_block_height) = self.client.get_latest_blockhash()?;
         message.set_recent_blockhash(blockhash);
@@ -763,9 +732,8 @@ impl MobileWallet {
         reservations.next_id += 1;
         Ok(PendingTransaction {
             id,
-            kind,
+            operation,
             message,
-            moved,
             last_valid_block_height,
             spends: Vec::new(),
         })
@@ -840,8 +808,7 @@ impl MobileWallet {
     /// A refreshed spend reserves its notes again until its new last valid
     /// block height.
     pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, WalletError> {
-        let refreshed =
-            self.pending(pending.kind, pending.message.clone(), pending.moved.clone())?;
+        let refreshed = self.pending(pending.operation.clone(), pending.message.clone())?;
         self.release(pending);
         Ok(if pending.spends.is_empty() {
             refreshed
@@ -1029,8 +996,8 @@ impl MobileWallet {
         signature: Signature,
     ) -> Result<(), WalletError> {
         if matches!(
-            pending.kind,
-            PendingTransactionKind::Registration | PendingTransactionKind::Merging
+            pending.operation,
+            Operation::Registration | Operation::Merging { .. }
         ) {
             return wait_for_confirmation(&self.client, signature);
         }
@@ -1049,16 +1016,6 @@ fn spend_failure(amount: u64, failure: TransactionError) -> WalletError {
             available: 0,
         },
         failure => failure.into(),
-    }
-}
-
-/// `amount` of `asset`, paid to `recipient` for a transfer or withdrawal.
-fn moved(asset: Asset, amount: u64, recipient: Option<Pubkey>) -> Moved {
-    Moved {
-        amount: Some(amount),
-        mint: mint_name(&asset.mint),
-        recipient: recipient.map(|recipient| recipient.to_string()),
-        payments: Vec::new(),
     }
 }
 
@@ -1224,9 +1181,8 @@ mod tests {
         .unwrap();
         PendingTransaction {
             id: 0,
-            kind: PendingTransactionKind::Deposit,
+            operation: Operation::Registration,
             message,
-            moved: Moved::default(),
             last_valid_block_height: 0,
             spends: Vec::new(),
         }
@@ -1277,7 +1233,7 @@ mod tests {
         let internal =
             || serde_json::json!({"error": {"code": -32603, "message": "Internal error"}});
         let registration = |signer: &Keypair| PendingTransaction {
-            kind: PendingTransactionKind::Registration,
+            operation: Operation::Registration,
             ..unsigned(signer)
         };
         let signed = |pending: &PendingTransaction| {
