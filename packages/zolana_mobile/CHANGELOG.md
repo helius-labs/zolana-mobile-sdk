@@ -16,6 +16,9 @@ Unreleased.
 * `activity()`: the wallet's history, newest first, as the Zolana SDK
   classifies it: `deposit`, `received`, `sent`, `withdrawal` or
   `selfTransfer`.
+* `transfer` / `prepareTransfer` take `payments`, one or more `Payment`s of
+  the same asset proved together, such as a payment and the application's
+  fee; `PreparedTransaction.payments` lists them.
 * `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
   `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
   send transactions themselves. `feePayer` lets another account pay the

@@ -99,6 +99,7 @@ class PreparedTransaction {
     this.amount,
     this.mint,
     this.recipient,
+    this.payments,
     this.feePayer,
     this.message,
     this.signers,
@@ -113,6 +114,7 @@ class PreparedTransaction {
     await pending.amount(),
     await pending.mint(),
     await pending.recipient(),
+    await pending.payments(),
     await pending.feePayer(),
     await pending.messageBytes(),
     await pending.signers(),
@@ -122,16 +124,21 @@ class PreparedTransaction {
   final native.PendingTransaction _pending;
   final native.PendingTransactionKind kind;
 
-  /// Base units a deposit, transfer or withdrawal moves.
+  /// Base units a deposit, transfer or withdrawal moves: for a transfer,
+  /// the total of [payments].
   final BigInt? amount;
 
   /// The mint of the asset moved, or of the token account created; `null`
   /// for SOL.
   final String? mint;
 
-  /// The account a transfer or withdrawal pays, or whose token account is
-  /// created.
+  /// The account a withdrawal pays, the first recipient of a transfer, or
+  /// the account whose token account is created.
   final String? recipient;
+
+  /// Each recipient of a transfer and its amount, in the order given; empty
+  /// for other kinds.
+  final List<native.Payment> payments;
 
   /// Base58 account that pays the network fee: the first of [signers].
   final String feePayer;
@@ -375,11 +382,14 @@ class ZolanaWallet {
         () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),
       );
 
-  /// Send private funds to the registered wallet of [recipient] (a Solana
-  /// public key). Reads the spendable notes, takes the largest first, builds
-  /// and proves on the device. Fails with [WalletError.mergeRequired] when
-  /// the amount needs more notes than one transaction spends (40), and with
-  /// [WalletError.tooManyInputTrees] when they are on more than two trees.
+  /// Send private funds to the registered wallets of [payments], each
+  /// [Payment.recipient] a Solana public key, in one transaction: a second
+  /// payment can be the application's own fee, as private as the first.
+  /// Reads the spendable notes, takes the largest first, builds and proves
+  /// on the device. Fails with [WalletError.mergeRequired] when the total
+  /// needs more notes than one transaction spends (40 with one payment, 24
+  /// with two), and with [WalletError.tooManyInputTrees] when they are on
+  /// more than two trees.
   ///
   /// [feePayer] (a Solana public key, such as the application's backend)
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
@@ -395,17 +405,15 @@ class ZolanaWallet {
   /// [WalletError.proofMalformed], a proof that does not verify with
   /// [WalletError.proofInvalid].
   Future<PreparedTransaction> prepareTransfer({
-    required String recipient,
-    required BigInt amount,
+    required List<native.Payment> payments,
     String? mint,
     String? feePayer,
     native.Proving? proving,
   }) => _serial(
     () => _prepare(
       _wallet.prepareTransfer(
-        recipient: recipient,
+        payments: payments,
         mint: mint,
-        amount: amount,
         feePayer: feePayer,
         proving: proving,
       ),
@@ -520,16 +528,14 @@ class ZolanaWallet {
 
   /// [prepareTransfer], signed and submitted.
   Future<String> transfer({
-    required String recipient,
-    required BigInt amount,
+    required List<native.Payment> payments,
     String? mint,
     native.Proving? proving,
   }) => _serial(
     () => _send(
       _wallet.prepareTransfer(
-        recipient: recipient,
+        payments: payments,
         mint: mint,
-        amount: amount,
         proving: proving,
       ),
     ),

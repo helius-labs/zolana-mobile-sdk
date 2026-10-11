@@ -150,7 +150,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// this wallet never replaces them.
   Future<PendingTransaction?> prepareRegistration();
 
-  /// Build and prove a private transfer to a registered wallet.
+  /// Build and prove a private transfer of `mint` (SOL for `None`) to one
+  /// or more registered wallets, each receiving its payment as a private
+  /// output: a second payment can be the application's own fee. The proof
+  /// hides every amount and recipient. A transfer with two payments proves
+  /// with 4-output keys, which take at most 24 notes; past that it fails
+  /// with [`WalletError::MergeRequired`].
   ///
   /// Refuses an unregistered recipient instead of paying it publicly:
   /// [`Self::prepare_withdrawal`] makes a public payment explicit.
@@ -167,9 +172,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
   /// does not verify with [`WalletError::ProofInvalid`].
   Future<PendingTransaction> prepareTransfer({
-    required String recipient,
+    required List<Payment> payments,
     String? mint,
-    required BigInt amount,
     String? feePayer,
     Proving? proving,
   });
@@ -260,8 +264,12 @@ abstract class PendingTransaction implements RustOpaqueInterface {
   /// for SOL.
   Future<String?> mint();
 
-  /// The account a transfer or withdrawal pays, or whose token account is
-  /// created.
+  /// Each recipient of a transfer and its amount, in the order given;
+  /// empty for other kinds.
+  Future<List<Payment>> payments();
+
+  /// The account a withdrawal pays, the first recipient of a transfer, or
+  /// the account whose token account is created.
   Future<String?> recipient();
 
   /// Base58 public keys that must sign, in signature order.
@@ -431,6 +439,25 @@ class MintConfig {
           runtimeType == other.runtimeType &&
           mint == other.mint &&
           tokenProgram == other.tokenProgram;
+}
+
+/// One recipient of a private transfer and the amount it receives.
+class Payment {
+  final String recipient;
+  final BigInt amount;
+
+  const Payment({required this.recipient, required this.amount});
+
+  @override
+  int get hashCode => recipient.hashCode ^ amount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Payment &&
+          runtimeType == other.runtimeType &&
+          recipient == other.recipient &&
+          amount == other.amount;
 }
 
 /// What a submitted transaction waits for.

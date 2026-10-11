@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1619530324;
+  int get rustContentHash => 1036114619;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -141,9 +141,8 @@ abstract class RustLibApi extends BaseApi {
 
   Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({
     required MobileWallet that,
-    required String recipient,
+    required List<Payment> payments,
     String? mint,
-    required BigInt amount,
     String? feePayer,
     Proving? proving,
   });
@@ -216,6 +215,10 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<String?> zolanaMobilePendingTransactionMint({
+    required PendingTransaction that,
+  });
+
+  Future<List<Payment>> zolanaMobilePendingTransactionPayments({
     required PendingTransaction that,
   });
 
@@ -758,9 +761,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({
     required MobileWallet that,
-    required String recipient,
+    required List<Payment> payments,
     String? mint,
-    required BigInt amount,
     String? feePayer,
     Proving? proving,
   }) {
@@ -772,9 +774,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          sse_encode_String(recipient, serializer);
+          sse_encode_list_payment(payments, serializer);
           sse_encode_opt_String(mint, serializer);
-          sse_encode_u_64(amount, serializer);
           sse_encode_opt_String(feePayer, serializer);
           sse_encode_opt_box_autoadd_proving(proving, serializer);
           pdeCallFfi(
@@ -790,7 +791,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareTransferConstMeta,
-        argValues: [that, recipient, mint, amount, feePayer, proving],
+        argValues: [that, payments, mint, feePayer, proving],
         apiImpl: this,
       ),
     );
@@ -799,14 +800,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kZolanaMobileMobileWalletPrepareTransferConstMeta =>
       const TaskConstMeta(
         debugName: "MobileWallet_prepare_transfer",
-        argNames: [
-          "that",
-          "recipient",
-          "mint",
-          "amount",
-          "feePayer",
-          "proving",
-        ],
+        argNames: ["that", "payments", "mint", "feePayer", "proving"],
       );
 
   @override
@@ -1392,7 +1386,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String?> zolanaMobilePendingTransactionRecipient({
+  Future<List<Payment>> zolanaMobilePendingTransactionPayments({
     required PendingTransaction that,
   }) {
     return handler.executeNormal(
@@ -1407,6 +1401,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             generalizedFrbRustBinding,
             serializer,
             funcId: 28,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_payment,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobilePendingTransactionPaymentsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobilePendingTransactionPaymentsConstMeta =>
+      const TaskConstMeta(
+        debugName: "PendingTransaction_payments",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<String?> zolanaMobilePendingTransactionRecipient({
+    required PendingTransaction that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1442,7 +1472,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1476,7 +1506,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1515,7 +1545,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1558,7 +1588,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1594,7 +1624,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1627,7 +1657,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1658,7 +1688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1688,7 +1718,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1722,7 +1752,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1754,7 +1784,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1786,7 +1816,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1816,7 +1846,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1843,7 +1873,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 42,
             port: port_,
           );
         },
@@ -2239,6 +2269,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<Payment> dco_decode_list_payment(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_payment).toList();
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -2365,6 +2401,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
+  }
+
+  @protected
+  Payment dco_decode_payment(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return Payment(
+      recipient: dco_decode_String(arr[0]),
+      amount: dco_decode_u_64(arr[1]),
+    );
   }
 
   @protected
@@ -3054,6 +3102,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<Payment> sse_decode_list_payment(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Payment>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_payment(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -3249,6 +3309,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     } else {
       return null;
     }
+  }
+
+  @protected
+  Payment sse_decode_payment(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_recipient = sse_decode_String(deserializer);
+    var var_amount = sse_decode_u_64(deserializer);
+    return Payment(recipient: var_recipient, amount: var_amount);
   }
 
   @protected
@@ -4024,6 +4092,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_payment(List<Payment> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_payment(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_32_loose(
     List<int> self,
     SseSerializer serializer,
@@ -4220,6 +4297,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     if (self != null) {
       sse_encode_box_autoadd_u_64(self, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_payment(Payment self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.recipient, serializer);
+    sse_encode_u_64(self.amount, serializer);
   }
 
   @protected
@@ -4687,7 +4771,12 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<PendingTransaction?> prepareRegistration() => RustLib.instance.api
       .zolanaMobileMobileWalletPrepareRegistration(that: this);
 
-  /// Build and prove a private transfer to a registered wallet.
+  /// Build and prove a private transfer of `mint` (SOL for `None`) to one
+  /// or more registered wallets, each receiving its payment as a private
+  /// output: a second payment can be the application's own fee. The proof
+  /// hides every amount and recipient. A transfer with two payments proves
+  /// with 4-output keys, which take at most 24 notes; past that it fails
+  /// with [`WalletError::MergeRequired`].
   ///
   /// Refuses an unregistered recipient instead of paying it publicly:
   /// [`Self::prepare_withdrawal`] makes a public payment explicit.
@@ -4704,16 +4793,14 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
   /// does not verify with [`WalletError::ProofInvalid`].
   Future<PendingTransaction> prepareTransfer({
-    required String recipient,
+    required List<Payment> payments,
     String? mint,
-    required BigInt amount,
     String? feePayer,
     Proving? proving,
   }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareTransfer(
     that: this,
-    recipient: recipient,
+    payments: payments,
     mint: mint,
-    amount: amount,
     feePayer: feePayer,
     proving: proving,
   );
@@ -4857,8 +4944,13 @@ class PendingTransactionImpl extends RustOpaque implements PendingTransaction {
   Future<String?> mint() =>
       RustLib.instance.api.zolanaMobilePendingTransactionMint(that: this);
 
-  /// The account a transfer or withdrawal pays, or whose token account is
-  /// created.
+  /// Each recipient of a transfer and its amount, in the order given;
+  /// empty for other kinds.
+  Future<List<Payment>> payments() =>
+      RustLib.instance.api.zolanaMobilePendingTransactionPayments(that: this);
+
+  /// The account a withdrawal pays, the first recipient of a transfer, or
+  /// the account whose token account is created.
   Future<String?> recipient() =>
       RustLib.instance.api.zolanaMobilePendingTransactionRecipient(that: this);
 

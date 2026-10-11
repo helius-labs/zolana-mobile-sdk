@@ -74,6 +74,9 @@ class FakePending implements PendingTransaction {
       PendingTransactionKind.transfer;
 
   @override
+  Future<List<Payment>> payments() async => const [];
+
+  @override
   Future<Uint8List> messageBytes() async => bytes;
 
   @override
@@ -205,9 +208,8 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<PendingTransaction> prepareTransfer({
-    required String recipient,
+    required List<Payment> payments,
     String? mint,
-    required BigInt amount,
     String? feePayer,
     Proving? proving,
   }) async {
@@ -960,12 +962,13 @@ void main() {
     expect(await wallet.exportKeys(), savedKeys);
     // Without a signer the application signs the prepared transactions.
     final prepared = await wallet.prepareTransfer(
-      recipient: 'Recipient',
-      amount: BigInt.one,
+      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
     );
     expect(prepared.signers, [owner]);
     await expectLater(
-      wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
+      wallet.transfer(
+        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      ),
       throwsWalletError(const WalletError.signerMissing()),
     );
     expect(native.submitted, isEmpty);
@@ -1007,15 +1010,16 @@ void main() {
     );
 
     await expectLater(
-      wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
+      wallet.transfer(
+        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      ),
       throwsA(isA<StateError>()),
     );
     expect((native.released.single as FakePending).bytes, [7, 8]);
     expect(native.submitted, isEmpty);
 
     final prepared = await wallet.prepareTransfer(
-      recipient: 'Recipient',
-      amount: BigInt.one,
+      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
     );
     await wallet.release(prepared);
     expect(native.released, hasLength(2));
@@ -1026,8 +1030,7 @@ void main() {
   test('refreshes the blockhash of a prepared transaction', () async {
     final (wallet, native, _, _) = await openWallet();
     final prepared = await wallet.prepareTransfer(
-      recipient: 'Recipient',
-      amount: BigInt.one,
+      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
     );
     expect(prepared.lastValidBlockHeight, BigInt.from(100));
 
@@ -1056,8 +1059,7 @@ void main() {
     final (wallet, native, signer, _) = await openWallet();
 
     final signature = await wallet.transfer(
-      recipient: 'Recipient',
-      amount: BigInt.from(5),
+      payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
     );
 
     expect(signature, 'signature');
@@ -1070,8 +1072,7 @@ void main() {
     final (wallet, native, signer, _) = await openWallet();
 
     final transaction = await wallet.prepareTransfer(
-      recipient: 'Recipient',
-      amount: BigInt.from(5),
+      payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
       mint: 'Mint',
     );
     expect(native.events, ['transfer Mint']);
@@ -1103,8 +1104,7 @@ void main() {
     native.transferSigners = const ['Backend', owner];
 
     final transaction = await wallet.prepareTransfer(
-      recipient: 'Recipient',
-      amount: BigInt.one,
+      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
       feePayer: 'Backend',
     );
     expect(native.transferFeePayer, 'Backend');
@@ -1124,10 +1124,11 @@ void main() {
     () async {
       final (wallet, native, _, _) = await openWallet();
 
-      await wallet.prepareTransfer(recipient: 'R', amount: BigInt.one);
       await wallet.prepareTransfer(
-        recipient: 'R',
-        amount: BigInt.one,
+        payments: [Payment(recipient: 'R', amount: BigInt.one)],
+      );
+      await wallet.prepareTransfer(
+        payments: [Payment(recipient: 'R', amount: BigInt.one)],
         proving: Proving.remote,
       );
       await wallet.prepareWithdrawal(
@@ -1136,8 +1137,7 @@ void main() {
         proving: Proving.local,
       );
       await wallet.transfer(
-        recipient: 'R',
-        amount: BigInt.one,
+        payments: [Payment(recipient: 'R', amount: BigInt.one)],
         proving: Proving.remote,
       );
       await wallet.withdraw(recipient: 'R', amount: BigInt.one);
@@ -1156,7 +1156,9 @@ void main() {
     native.transferSigners = const [owner, 'SomeoneElse'];
 
     await expectLater(
-      wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
+      wallet.transfer(
+        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      ),
       throwsWalletError(
         const WalletError.unexpectedSigners(signers: [owner, 'SomeoneElse']),
       ),
@@ -1173,7 +1175,9 @@ void main() {
     native.transferError = unregistered;
 
     await expectLater(
-      wallet.transfer(recipient: 'Recipient', amount: BigInt.one),
+      wallet.transfer(
+        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      ),
       throwsWalletError(unregistered),
     );
   });
@@ -1228,8 +1232,9 @@ void main() {
 
   test('a prepare that is proving when close is called fails', () async {
     final prepares = <Future<Object?> Function(ZolanaWallet, FakeWallet)>[
-      (wallet, native) =>
-          wallet.prepareTransfer(recipient: 'R', amount: BigInt.one),
+      (wallet, native) => wallet.prepareTransfer(
+        payments: [Payment(recipient: 'R', amount: BigInt.one)],
+      ),
       (wallet, native) {
         native.status = RegistrationStatus.notRegistered;
         return wallet.prepareRegistration();
@@ -1261,7 +1266,9 @@ void main() {
     final (wallet, native, signer, _) = await openWallet();
     native.holdTransfer = Completer();
 
-    final transfer = wallet.transfer(recipient: 'R', amount: BigInt.one);
+    final transfer = wallet.transfer(
+      payments: [Payment(recipient: 'R', amount: BigInt.one)],
+    );
     final queued = wallet.balances();
     await Future<void>.delayed(Duration.zero);
     final closed = wallet.close();
@@ -1380,7 +1387,9 @@ void main() {
     native.transferError = const WalletError.proofFailed();
 
     final balances = wallet.balances();
-    final transfer = wallet.transfer(recipient: 'R', amount: BigInt.one);
+    final transfer = wallet.transfer(
+      payments: [Payment(recipient: 'R', amount: BigInt.one)],
+    );
     final deposit = wallet.deposit(BigInt.one);
     await Future<void>.delayed(Duration.zero);
     expect(native.events, ['balances start']);

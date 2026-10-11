@@ -56,7 +56,7 @@ use zolana_program::instruction::{
 use zolana_transaction::{
     instructions::{
         merge::{MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT},
-        transact::ConfidentialTransaction,
+        transact::{canonical_shape, ConfidentialTransaction, MAX_SPEND_INPUTS},
     },
     select_merge, select_spend_excluding, LocalShieldedKeys, SpendableDecryptionResult,
     TransactionError, WalletUtxo,
@@ -158,6 +158,14 @@ struct Moved {
     /// `None` for SOL.
     mint: Option<String>,
     recipient: Option<String>,
+    payments: Vec<Payment>,
+}
+
+/// One recipient of a private transfer and the amount it receives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Payment {
+    pub recipient: String,
+    pub amount: u64,
 }
 
 impl PendingTransaction {
@@ -171,14 +179,20 @@ impl PendingTransaction {
         self.moved.amount
     }
 
+    /// Each recipient of a transfer and its amount, in the order given;
+    /// empty for other kinds.
+    pub fn payments(&self) -> Vec<Payment> {
+        self.moved.payments.clone()
+    }
+
     /// The mint of the asset moved, or of the token account created; `None`
     /// for SOL.
     pub fn mint(&self) -> Option<String> {
         self.moved.mint.clone()
     }
 
-    /// The account a transfer or withdrawal pays, or whose token account is
-    /// created.
+    /// The account a withdrawal pays, the first recipient of a transfer, or
+    /// the account whose token account is created.
     pub fn recipient(&self) -> Option<String> {
         self.moved.recipient.clone()
     }
@@ -590,7 +604,12 @@ impl MobileWallet {
         Ok(activity::fetch(&self.keys, assets, &self.client, indexed)?)
     }
 
-    /// Build and prove a private transfer to a registered wallet.
+    /// Build and prove a private transfer of `mint` (SOL for `None`) to one
+    /// or more registered wallets, each receiving its payment as a private
+    /// output: a second payment can be the application's own fee. The proof
+    /// hides every amount and recipient. A transfer with two payments proves
+    /// with 4-output keys, which take at most 24 notes; past that it fails
+    /// with [`WalletError::MergeRequired`].
     ///
     /// Refuses an unregistered recipient instead of paying it publicly:
     /// [`Self::prepare_withdrawal`] makes a public payment explicit.
@@ -608,32 +627,58 @@ impl MobileWallet {
     /// does not verify with [`WalletError::ProofInvalid`].
     pub fn prepare_transfer(
         &mut self,
-        recipient: String,
+        payments: Vec<Payment>,
         mint: Option<String>,
-        amount: u64,
         fee_payer: Option<String>,
         proving: Option<Proving>,
     ) -> Result<PendingTransaction, WalletError> {
-        let recipient = parse_pubkey(&recipient)?;
+        let mut recipients = Vec::with_capacity(payments.len());
+        let mut total = 0u64;
+        for payment in &payments {
+            if payment.amount == 0 {
+                return Err(WalletError::AmountZero);
+            }
+            total = total
+                .checked_add(payment.amount)
+                .ok_or(TransactionError::SelectedBalanceOverflow)?;
+            recipients.push(parse_pubkey(&payment.recipient)?);
+        }
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
         let asset = self.asset(mint)?;
-        let Some(registered) = try_resolve_registered_address(&self.client, recipient)? else {
-            return Err(WalletError::RecipientNotRegistered {
-                recipient: recipient.to_string(),
+        let mut addresses = Vec::with_capacity(recipients.len());
+        for recipient in &recipients {
+            let Some(registered) = try_resolve_registered_address(&self.client, *recipient)? else {
+                return Err(WalletError::RecipientNotRegistered {
+                    recipient: recipient.to_string(),
+                });
+            };
+            addresses.push(registered.address);
+        }
+        let inputs = self.select_notes(asset, total)?;
+        // The payments and a change output.
+        let outputs = payments.len() + 1;
+        if canonical_shape(inputs.len(), outputs).is_err() {
+            return Err(WalletError::MergeRequired {
+                amount: total,
+                max_inputs: max_spend_inputs(outputs) as u64,
             });
-        };
-        let inputs = self.select_notes(asset, amount)?;
+        }
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
-        match asset.token_program {
-            None => transaction.transfer_sol(&registered.address, amount),
-            Some(_) => transaction.transfer(&registered.address, asset.mint, amount),
-        }?;
+        for (address, payment) in addresses.iter().zip(&payments) {
+            match asset.token_program {
+                None => transaction.transfer_sol(address, payment.amount),
+                Some(_) => transaction.transfer(address, asset.mint, payment.amount),
+            }?;
+        }
         let pending = self.pending(
             PendingTransactionKind::Transfer,
             self.prove(transaction, Vec::new(), payer, proving)?,
-            moved(asset, amount, Some(recipient)),
+            Moved {
+                payments,
+                ..moved(asset, total, recipients.first().copied())
+            },
         )?;
         Ok(self.reserve(pending, spends))
     }
@@ -1013,7 +1058,20 @@ fn moved(asset: Asset, amount: u64, recipient: Option<Pubkey>) -> Moved {
         amount: Some(amount),
         mint: mint_name(&asset.mint),
         recipient: recipient.map(|recipient| recipient.to_string()),
+        payments: Vec::new(),
     }
+}
+
+/// The most notes a spend with `outputs` outputs takes: the widest pinned
+/// shape for them, within the Zolana SDK's selection cap.
+fn max_spend_inputs(outputs: usize) -> usize {
+    zolana_client::SPP_SUPPORTED_SHAPES
+        .iter()
+        .filter(|shape| shape.n_outputs() >= outputs)
+        .map(|shape| shape.n_inputs())
+        .max()
+        .unwrap_or(0)
+        .min(MAX_SPEND_INPUTS)
 }
 
 fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
@@ -1107,6 +1165,13 @@ mod tests {
 
     fn open(signer: &Keypair) -> Result<MobileWallet, WalletError> {
         open_with(signer, config())
+    }
+
+    fn pay(recipient: &str, amount: u64) -> Vec<Payment> {
+        vec![Payment {
+            recipient: recipient.to_string(),
+            amount,
+        }]
     }
 
     /// A wallet whose transport reaches nothing: a request fails as a
@@ -1594,7 +1659,7 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let missing = |wallet: &mut MobileWallet, proving| {
             [
-                wallet.prepare_transfer(recipient.clone(), None, 1, None, proving),
+                wallet.prepare_transfer(pay(&recipient, 1), None, None, proving),
                 wallet.prepare_withdrawal(recipient.clone(), None, 1, None, proving),
             ]
             .map(|result| result.err() == Some(WalletError::RemoteProverMissing))
@@ -1617,6 +1682,16 @@ mod tests {
     }
 
     #[test]
+    fn a_second_payment_narrows_a_spend_to_the_widest_four_output_key() {
+        // One payment and change: the 2-output keys, up to the SDK's cap.
+        assert_eq!(max_spend_inputs(2), MAX_SPEND_INPUTS);
+        // Two payments and change: 4-output keys, which stop at 24 notes.
+        assert_eq!(max_spend_inputs(3), 24);
+        assert!(canonical_shape(24, 3).is_ok());
+        assert!(canonical_shape(25, 3).is_err());
+    }
+
+    #[test]
     fn rejects_malformed_keys_before_the_network() {
         let mut wallet = open(&Keypair::new()).unwrap();
         let recipient = Keypair::new().pubkey().to_string();
@@ -1624,11 +1699,11 @@ mod tests {
         let invalid = Some(WalletError::InvalidPubkey { value: bad.clone() });
         let error = |result: Result<PendingTransaction, WalletError>| result.err();
         assert_eq!(
-            error(wallet.prepare_transfer(bad.clone(), None, 1, None, None)),
+            error(wallet.prepare_transfer(pay(&bad, 1), None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_transfer(recipient.clone(), None, 1, Some(bad.clone()), None)),
+            error(wallet.prepare_transfer(pay(&recipient, 1), None, Some(bad.clone()), None)),
             invalid
         );
         assert_eq!(

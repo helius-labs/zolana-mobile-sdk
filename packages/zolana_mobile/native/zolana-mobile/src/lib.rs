@@ -23,7 +23,7 @@ pub use transport::{
     Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
 };
 pub use wallet::{
-    derivation_message, MobileWallet, PendingTransaction, PendingTransactionKind,
+    derivation_message, MobileWallet, Payment, PendingTransaction, PendingTransactionKind,
     RegistrationStatus, TokenBalance, WalletConfig, WalletKeys,
 };
 
