@@ -263,10 +263,19 @@ class _WalletScreenState extends State<WalletScreen> {
         asset: _asset,
         available: available,
         suggestedRecipient: action == WalletAction.send ? other : null,
+        fee: action == WalletAction.send ? demoFee : null,
         run: (units, recipient) => switch (action) {
+          // The fee is a second payment in the same proof: the chain sees
+          // neither amount nor who received what.
           WalletAction.send => wallet.transfer(
-            recipient: recipient!,
-            amount: units,
+            payments: [
+              Payment(recipient: recipient!, amount: units),
+              if (demoFee(units) > BigInt.zero)
+                Payment(
+                  recipient: demoFeeCollector.publicKey,
+                  amount: demoFee(units),
+                ),
+            ],
             mint: mint,
           ),
           WalletAction.shield => wallet.deposit(units, mint: mint),

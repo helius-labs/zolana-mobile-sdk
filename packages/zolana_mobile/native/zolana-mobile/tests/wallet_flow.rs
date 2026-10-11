@@ -43,7 +43,7 @@ use zolana_interface::{
     SPL_TOKEN_MINT_TO_DISCRIMINATOR, SPL_TOKEN_PROGRAM_ID,
 };
 use zolana_mobile::{
-    derivation_message, ActivityKind, MintConfig, MobileWallet, PendingTransaction,
+    derivation_message, ActivityKind, MintConfig, MobileWallet, Payment, PendingTransaction,
     PendingTransactionKind, Proving, RegistrationStatus, Transport, TransportFailure,
     TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
 };
@@ -240,6 +240,17 @@ fn newest_of(
     );
 }
 
+fn payment(recipient: &Keypair, amount: u64) -> Payment {
+    Payment {
+        recipient: recipient.pubkey().to_string(),
+        amount,
+    }
+}
+
+fn pay(recipient: &Keypair, amount: u64) -> Vec<Payment> {
+    vec![payment(recipient, amount)]
+}
+
 fn register(wallet: &mut MobileWallet, signer: &Keypair) {
     if let Some(pending) = wallet.prepare_registration().expect("prepare registration") {
         submit(wallet, &[signer], pending);
@@ -291,7 +302,7 @@ fn register_deposit_transfer_and_receive() {
 
     let started = std::time::Instant::now();
     let pending = sender_wallet
-        .prepare_transfer(recipient.pubkey().to_string(), None, TRANSFER, None, None)
+        .prepare_transfer(pay(&recipient, TRANSFER), None, None, None)
         .expect("prove transfer");
     println!("built and proved on device in {:?}", started.elapsed());
     // A slow approval: the same proof under a new blockhash.
@@ -365,7 +376,7 @@ fn register_deposit_transfer_and_receive() {
     let recipient_before = private_sol(&mut recipient_wallet);
     let prepare = |wallet: &mut MobileWallet| {
         wallet
-            .prepare_transfer(recipient.pubkey().to_string(), None, SPLIT, None, None)
+            .prepare_transfer(pay(&recipient, SPLIT), None, None, None)
             .expect("prove transfer")
     };
     let first = prepare(&mut sender_wallet);
@@ -391,25 +402,13 @@ fn register_deposit_transfer_and_receive() {
     };
     let error = MobileWallet::open(replaying, pubkey, signature.as_ref().to_vec(), transport())
         .expect("open wallet")
-        .prepare_transfer(
-            recipient.pubkey().to_string(),
-            None,
-            SPLIT,
-            None,
-            Some(Proving::Remote),
-        )
+        .prepare_transfer(pay(&recipient, SPLIT), None, None, Some(Proving::Remote))
         .err();
     assert_eq!(error, Some(WalletError::ProofInvalid));
     // A transfer the remote prover proves lands like one proved on the device.
     let started = std::time::Instant::now();
     let pending = sender_wallet
-        .prepare_transfer(
-            recipient.pubkey().to_string(),
-            None,
-            SPLIT,
-            None,
-            Some(Proving::Remote),
-        )
+        .prepare_transfer(pay(&recipient, SPLIT), None, None, Some(Proving::Remote))
         .expect("prove transfer remotely");
     println!("built and proved remotely in {:?}", started.elapsed());
     let transfer = submit(&sender_wallet, &[&sender], pending);
@@ -587,9 +586,8 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
 
     let pending = sender_wallet
         .prepare_transfer(
-            recipient.pubkey().to_string(),
+            pay(&recipient, TOKEN_TRANSFER),
             Some(name.clone()),
-            TOKEN_TRANSFER,
             None,
             None,
         )
@@ -643,6 +641,49 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         .unwrap()
         .iter()
         .any(|balance| balance.mint.as_deref() == Some(name.as_str())));
+}
+
+/// Two payments in one proof, as an application pays a recipient and its own
+/// fee collector: here both go to the recipient, which is registered.
+#[test]
+#[ignore = "needs a Zolana cluster and indexer"]
+fn pays_two_recipients_in_one_transfer() {
+    let sender = account("ZOLANA_E2E_SENDER_SEED");
+    let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
+    let mut sender_wallet = open(&sender);
+    let mut recipient_wallet = open(&recipient);
+    register(&mut sender_wallet, &sender);
+    register(&mut recipient_wallet, &recipient);
+    if private_sol(&mut sender_wallet) < SPLIT * 3 {
+        let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
+        submit(&sender_wallet, &[&sender], pending);
+    }
+    let sender_before = private_sol(&mut sender_wallet);
+    let recipient_before = private_sol(&mut recipient_wallet);
+
+    let payments = vec![payment(&recipient, SPLIT), payment(&recipient, SPLIT / 4)];
+    let pending = sender_wallet
+        .prepare_transfer(payments.clone(), None, None, None)
+        .expect("prove a transfer with two outputs");
+    assert_eq!(pending.payments(), payments);
+    assert_eq!(pending.amount(), Some(SPLIT + SPLIT / 4));
+    assert_eq!(pending.recipient(), Some(recipient.pubkey().to_string()));
+    let transfer = submit(&sender_wallet, &[&sender], pending);
+
+    assert_eq!(
+        private_sol(&mut sender_wallet),
+        sender_before - SPLIT - SPLIT / 4
+    );
+    assert_eq!(
+        private_sol(&mut recipient_wallet),
+        recipient_before + SPLIT + SPLIT / 4
+    );
+    newest(
+        &mut sender_wallet,
+        &transfer,
+        ActivityKind::Sent,
+        SPLIT + SPLIT / 4,
+    );
 }
 
 #[test]

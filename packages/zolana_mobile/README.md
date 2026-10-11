@@ -92,8 +92,27 @@ final wallet = await ZolanaWallet.open(
 );
 await wallet.register();               // once, so others can pay this wallet
 await wallet.deposit(BigInt.from(500000000));
-await wallet.transfer(recipient: registeredAccount, amount: BigInt.from(100000000));
+await wallet.transfer(
+  payments: [Payment(recipient: registeredAccount, amount: BigInt.from(100000000))],
+);
 ```
+
+- **Payments**: a transfer takes one or more payments, each to a registered
+  account, and proves them together. An application's own fee is a second
+  payment to its collector: the chain sees neither amount nor recipient.
+
+  ```dart
+  await wallet.transfer(payments: [
+    Payment(recipient: registeredAccount, amount: amount),
+    Payment(recipient: feeCollector, amount: fee),
+  ]);
+  ```
+
+  Two payments and the change prove with 4-output keys, so the notes that
+  pay them must number 24 or fewer instead of 40; past that the transfer
+  fails with `WalletError.mergeRequired`. `tx.amount` is the total and
+  `tx.payments` lists each. A deposit or withdrawal fee is public anyway: the
+  application sends it as a plain transfer with its own Solana client.
 
 - **Proving keys** download from the Zolana key host into `provingKeyDir`
   (through the transport, see [Networking](#networking)), and are used only
@@ -240,7 +259,7 @@ on, to read the data:
 
 ```dart
 try {
-  await wallet.transfer(recipient: account, amount: amount);
+  await wallet.transfer(payments: [Payment(recipient: account, amount: amount)]);
 } on ZolanaWalletException catch (e) {
   final text = switch (e.error) {
     WalletError_InsufficientPrivateBalance(:final available) =>
@@ -296,9 +315,11 @@ or the 64-byte derivation signature, which derives the same keys, not both.
 transactions itself uses the `prepare` methods and reports back:
 
 ```dart
-final tx = await wallet.prepareTransfer(recipient: account, amount: amount);
-// Show tx.kind, tx.amount, tx.mint, tx.recipient and tx.feePayer, sign
-// tx.message with each of tx.signers, send it.
+final tx = await wallet.prepareTransfer(
+  payments: [Payment(recipient: account, amount: amount)],
+);
+// Show tx.kind, tx.payments, tx.mint and tx.feePayer, sign tx.message with
+// each of tx.signers, send it.
 await wallet.confirm(tx, signature); // base58 transaction signature
 ```
 
@@ -362,8 +383,7 @@ final wallet = await ZolanaWallet.open(
   ),
 );
 await wallet.transfer(
-  recipient: account,
-  amount: amount,
+  payments: [Payment(recipient: account, amount: amount)],
   proving: Proving.remote,
 );
 ```

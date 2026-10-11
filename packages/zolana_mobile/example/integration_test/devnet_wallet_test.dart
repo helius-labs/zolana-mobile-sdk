@@ -10,7 +10,8 @@ import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
-/// device or simulator running the test, with A reopened from its exported
+/// device or simulator running the test, with the demo's fee paid to its
+/// collector in the same proof, with A reopened from its exported
 /// keys and the transfer signed by the test after a blockhash refresh, as an
 /// application that signs itself does; one proved remotely by the Helius
 /// prover, asked through the transport. In both, A sends every request
@@ -76,18 +77,28 @@ void main() {
     expect(sender.shieldedAddress, signed.shieldedAddress);
     final recipient = await open(demoAccounts[1]);
     addTearDown(recipient.close);
+    final collector = await open(demoFeeCollector);
+    addTearDown(collector.close);
     expect(await sender.registrationStatus(), RegistrationStatus.registered);
     expect(await recipient.registrationStatus(), RegistrationStatus.registered);
+    expect(await collector.registrationStatus(), RegistrationStatus.registered);
 
+    final fee = demoFee(lamports);
     final senderBefore = await sender.privateBalance();
     final recipientBefore = await recipient.privateBalance();
-    expect(senderBefore, greaterThanOrEqualTo(lamports));
+    final collectorBefore = await collector.privateBalance();
+    expect(senderBefore, greaterThanOrEqualTo(lamports + fee));
 
     final started = DateTime.now();
+    // The demo's fee is a second payment in the same proof.
     final prepared = await sender.prepareTransfer(
-      recipient: demoAccounts[1].publicKey,
-      amount: lamports,
+      payments: [
+        Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
+        Payment(recipient: demoFeeCollector.publicKey, amount: fee),
+      ],
     );
+    expect(prepared.amount, lamports + fee);
+    expect(prepared.payments, hasLength(2));
     // A slow approval: the same proof under a new blockhash.
     final transaction = await sender.refresh(prepared);
     expect(
@@ -105,8 +116,9 @@ void main() {
 
     // The transfer returned once the indexer had it, so both balances
     // already read its notes.
-    expect(await sender.privateBalance(), senderBefore - lamports);
+    expect(await sender.privateBalance(), senderBefore - lamports - fee);
     expect(await recipient.privateBalance(), recipientBefore + lamports);
+    expect(await collector.privateBalance(), collectorBefore + fee);
     // ignore: avoid_print
     print(
       'the sender sent ${transport.sent.length} requests through Dart, '
@@ -129,8 +141,9 @@ void main() {
     addTearDown(local.close);
     await expectLater(
       local.prepareTransfer(
-        recipient: demoAccounts[1].publicKey,
-        amount: lamports,
+        payments: [
+          Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
+        ],
         proving: Proving.remote,
       ),
       throwsA(
@@ -154,8 +167,9 @@ void main() {
 
     final started = DateTime.now();
     final signature = await remote.transfer(
-      recipient: demoAccounts[1].publicKey,
-      amount: lamports,
+      payments: [
+        Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
+      ],
       proving: Proving.remote,
     );
     // ignore: avoid_print
@@ -204,8 +218,7 @@ void main() {
     expect(await sender.privateBalance(mint: mint), senderBefore + shield);
 
     final sent = await sender.transfer(
-      recipient: demoAccounts[1].publicKey,
-      amount: send,
+      payments: [Payment(recipient: demoAccounts[1].publicKey, amount: send)],
       mint: mint,
     );
     expect(

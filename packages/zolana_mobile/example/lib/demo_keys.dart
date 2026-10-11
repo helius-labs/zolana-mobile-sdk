@@ -25,3 +25,16 @@ const demoAccounts = [
     '7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67',
   ),
 ];
+
+/// Receives the demo's Privacy Fee: a registered devnet account, so its
+/// fees arrive privately like any payment.
+const demoFeeCollector = DemoAccount(
+  'Fee collector',
+  'CWhA2o6Sh95Qjy3iYX1rQdMjEcZ2QX1qz3wWMcUdgCdt',
+  '53f28974691e1fd92a1739b32124c556fa700539ba87104af213230688f0fc9c',
+);
+
+/// The demo's Privacy Fee on a private send: 0.5%, rounded down. An
+/// application charges what it decides; the wallet only sees a second
+/// payment.
+BigInt demoFee(BigInt amount) => amount * BigInt.from(5) ~/ BigInt.from(1000);

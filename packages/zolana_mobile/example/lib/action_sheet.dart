@@ -17,6 +17,7 @@ class ActionSheet extends StatefulWidget {
     required this.available,
     required this.run,
     this.suggestedRecipient,
+    this.fee,
   });
 
   final WalletAction action;
@@ -29,6 +30,9 @@ class ActionSheet extends StatefulWidget {
   final Future<String> Function(BigInt units, String? recipient) run;
 
   final DemoAccount? suggestedRecipient;
+
+  /// The fee on an amount, paid on top of it in the same transaction.
+  final BigInt Function(BigInt units)? fee;
 
   @override
   State<ActionSheet> createState() => _ActionSheetState();
@@ -99,11 +103,22 @@ class _ActionSheetState extends State<ActionSheet> {
 
   BigInt? get _units => widget.asset.parse(_amount.text);
 
+  BigInt _fee(BigInt units) => widget.fee?.call(units) ?? BigInt.zero;
+
+  /// The most that can be sent with its fee on top.
+  BigInt get _max {
+    var units = widget.available;
+    while (units > BigInt.zero && units + _fee(units) > widget.available) {
+      units -= BigInt.one + _fee(units) ~/ BigInt.two;
+    }
+    return units < BigInt.zero ? BigInt.zero : units;
+  }
+
   String? get _amountProblem {
     final units = _units;
     if (_amount.text.trim().isEmpty) return null;
     if (units == null || units <= BigInt.zero) return 'Enter an amount';
-    if (units > widget.available) return 'More than available';
+    if (units + _fee(units) > widget.available) return 'More than available';
     return null;
   }
 
@@ -243,13 +258,23 @@ class _ActionSheetState extends State<ActionSheet> {
         helperText: 'Available ${widget.asset.format(widget.available)}',
         border: const OutlineInputBorder(),
         suffixIcon: TextButton(
-          onPressed: widget.available > BigInt.zero
-              ? () => _amount.text = widget.asset.amountString(widget.available)
+          onPressed: _max > BigInt.zero
+              ? () => _amount.text = widget.asset.amountString(_max)
               : null,
           child: const Text('Max'),
         ),
       ),
     ),
+    if (widget.fee != null &&
+        _units != null &&
+        _fee(_units!) > BigInt.zero) ...[
+      const SizedBox(height: 8),
+      Text(
+        'Privacy fee ${widget.asset.format(_fee(_units!))}, paid privately '
+        'in the same transaction',
+        style: theme.textTheme.bodySmall,
+      ),
+    ],
     const SizedBox(height: 16),
     Text(_route, style: theme.textTheme.bodyMedium),
     const SizedBox(height: 4),

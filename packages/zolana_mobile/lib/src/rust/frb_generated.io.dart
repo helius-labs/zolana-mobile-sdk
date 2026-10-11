@@ -191,6 +191,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MintConfig> dco_decode_list_mint_config(dynamic raw);
 
   @protected
+  List<Payment> dco_decode_list_payment(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
 
   @protected
@@ -243,6 +246,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  Payment dco_decode_payment(dynamic raw);
 
   @protected
   PendingTransactionKind dco_decode_pending_transaction_kind(dynamic raw);
@@ -461,6 +467,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MintConfig> sse_decode_list_mint_config(SseDeserializer deserializer);
 
   @protected
+  List<Payment> sse_decode_list_payment(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
 
   @protected
@@ -523,6 +532,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  Payment sse_decode_payment(SseDeserializer deserializer);
 
   @protected
   PendingTransactionKind sse_decode_pending_transaction_kind(
@@ -793,6 +805,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_payment(List<Payment> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_prim_u_32_loose(
     List<int> self,
     SseSerializer serializer,
@@ -876,6 +891,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_payment(Payment self, SseSerializer serializer);
 
   @protected
   void sse_encode_pending_transaction_kind(

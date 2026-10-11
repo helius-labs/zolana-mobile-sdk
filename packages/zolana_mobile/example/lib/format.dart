@@ -27,6 +27,12 @@ String approvalText(PreparedTransaction tx) {
     (final units?, null) => '$units units of ${shortAddress(tx.mint!)}',
   };
   final to = tx.recipient == null ? '' : shortAddress(tx.recipient!);
+  if (tx.kind == PendingTransactionKind.transfer && tx.payments.length > 1) {
+    final asset = demoAsset(tx.mint);
+    String units(BigInt amount) =>
+        asset == null ? '$amount units' : asset.format(amount);
+    return 'Send privately: ${[for (final payment in tx.payments) '${units(payment.amount)} to ${shortAddress(payment.recipient)}'].join(', ')}';
+  }
   return switch (tx.kind) {
     PendingTransactionKind.registration => 'Register for private payments',
     PendingTransactionKind.deposit => 'Shield $amount',
