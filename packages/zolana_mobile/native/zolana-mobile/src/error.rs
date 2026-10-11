@@ -76,6 +76,15 @@ pub enum WalletError {
     SignatureCountMismatch { expected: u64, got: u64 },
     /// Solana did not confirm the transaction within the wait.
     TransactionNotConfirmed { signature: String },
+    /// A transaction whose send went unanswered did not land before its
+    /// blockhash expired. It can no longer land, so sending it again is safe:
+    /// `refresh` it, or prepare it again.
+    TransactionExpired { signature: String },
+    /// Whether a transaction whose send went unanswered landed could not be
+    /// told: the status lookups kept failing, or it landed and did not
+    /// confirm. Wait for it with `wait_for_transaction` before sending it
+    /// again.
+    TransactionOutcomeUnknown { signature: String, message: String },
     /// The spend asked for remote proving and `WalletConfig.prover_url` is
     /// not set.
     RemoteProverMissing,
@@ -220,19 +229,24 @@ fn program_error(failure: Option<&ChainError>) -> Option<u32> {
     }
 }
 
-/// Whether `failure` is the chain's verdict on a transaction: it ran, or a
-/// node refused it, so it did not land and will not. Any other failure of a
-/// send may have come after the transaction went out.
-pub(crate) fn rejected_by_chain(failure: &ClientError) -> bool {
+/// Whether `failure` settles a send: the chain ran the transaction and
+/// refused it, or refused it in simulation, so it was never sent. A
+/// simulation that found it already processed does not settle it, since it
+/// may have landed; nor does any other failure, which may have come after
+/// the transaction went out.
+pub(crate) fn settles_the_send(failure: &ClientError) -> bool {
     matches!(failure, ClientError::SolanaRpcTransaction { source, .. }
-        if source.get_transaction_error().is_some())
+    if !matches!(
+        source.get_transaction_error(),
+        None | Some(ChainError::AlreadyProcessed)
+    ))
 }
 
 /// The error and its causes, so a failed request says why it failed (DNS,
 /// connection, TLS). Client and transaction errors describe what failed
 /// without key material; keep it that way when adding variants. Request
 /// errors name their URL, so `api-key` values are masked.
-fn client_message(error: &ClientError) -> String {
+pub(crate) fn client_message(error: &ClientError) -> String {
     let mut message = error.to_string();
     let mut source = std::error::Error::source(error);
     while let Some(cause) = source {
