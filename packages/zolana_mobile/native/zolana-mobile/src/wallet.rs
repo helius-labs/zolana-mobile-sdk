@@ -9,7 +9,7 @@
 //!    stay in this process for reading notes and proving. An application that
 //!    saved them with [`MobileWallet::export_keys`] opens the wallet from them
 //!    instead, without a signature.
-//! 2. each [`PendingTransaction::message_bytes`], the v1 Solana message this
+//! 2. each [`PreparedTransaction::message_bytes`], the v1 Solana message this
 //!    library built, proved and returned unsigned.
 //!
 //! The wallet keeps no chain state between calls. Balances, spends and history
@@ -157,10 +157,11 @@ pub struct Payment {
     pub amount: u64,
 }
 
-/// A built, and where needed proved, v1 transaction awaiting signatures. The
-/// application shows its [`Self::operation`] and [`Self::fee_payer`] before
-/// it asks for them.
-pub struct PendingTransaction {
+/// A transaction the wallet built and, where needed, proved, awaiting
+/// signatures: each of [`Self::signers`] signs [`Self::message`] with
+/// Ed25519, in order. [`Self::operation`] and [`Self::fee_payer`] are what to
+/// show the user before signing.
+pub struct PreparedTransaction {
     /// Unique per wallet: the key of the notes a spend reserves.
     id: u64,
     operation: Operation,
@@ -170,28 +171,35 @@ pub struct PendingTransaction {
     spends: Vec<[u8; 32]>,
 }
 
-impl PendingTransaction {
+impl PreparedTransaction {
+    /// What it does, with what it moves and to whom.
+    #[flutter_rust_bridge::frb(sync, getter)]
     pub fn operation(&self) -> Operation {
         self.operation.clone()
     }
 
     /// The base58 account that pays the network fee: the first signer.
+    #[flutter_rust_bridge::frb(sync, getter)]
     pub fn fee_payer(&self) -> String {
         self.message.static_account_keys()[0].to_string()
     }
 
     /// The last block height at which the message can still land. Past it,
-    /// [`MobileWallet::refresh`] gives it a new blockhash.
+    /// `refresh` gives it a new blockhash without a new proof.
+    #[flutter_rust_bridge::frb(sync, getter)]
     pub fn last_valid_block_height(&self) -> u64 {
         self.last_valid_block_height
     }
 
-    /// The bytes every signer signs with Ed25519.
-    pub fn message_bytes(&self) -> Vec<u8> {
+    /// The serialized Solana message every signer signs with Ed25519.
+    #[flutter_rust_bridge::frb(sync, getter)]
+    pub fn message(&self) -> Vec<u8> {
         self.message.serialize()
     }
 
-    /// Base58 public keys that must sign, in signature order.
+    /// Base58 public keys that must sign, in signature order. The first is
+    /// the fee payer, whose signature is the transaction signature.
+    #[flutter_rust_bridge::frb(sync, getter)]
     pub fn signers(&self) -> Vec<String> {
         let required = usize::from(self.message.header().num_required_signatures);
         self.message.static_account_keys()[..required]
@@ -392,7 +400,7 @@ impl MobileWallet {
     /// `None` when the registry already holds this wallet's address. Fails
     /// with [`WalletError::RegistrationConflict`] when it holds other keys:
     /// this wallet never replaces them.
-    pub fn prepare_registration(&self) -> Result<Option<PendingTransaction>, WalletError> {
+    pub fn prepare_registration(&self) -> Result<Option<PreparedTransaction>, WalletError> {
         let message = build_registration_transaction_sync(
             &self.client,
             self.owner,
@@ -422,7 +430,7 @@ impl MobileWallet {
     pub fn prepare_merging(
         &self,
         enabled: bool,
-    ) -> Result<Option<PendingTransaction>, WalletError> {
+    ) -> Result<Option<PreparedTransaction>, WalletError> {
         if self.merging_enabled()? == enabled {
             return Ok(None);
         }
@@ -451,7 +459,7 @@ impl MobileWallet {
         max_inputs: Option<u32>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
-    ) -> Result<PendingTransaction, WalletError> {
+    ) -> Result<PreparedTransaction, WalletError> {
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
         let asset = self.asset(mint)?;
@@ -500,7 +508,7 @@ impl MobileWallet {
         &mut self,
         mint: Option<String>,
         amount: u64,
-    ) -> Result<PendingTransaction, WalletError> {
+    ) -> Result<PreparedTransaction, WalletError> {
         let asset = self.asset(mint)?;
         let deposit_asset = match asset.token_program {
             None => DepositAsset::Sol,
@@ -603,7 +611,7 @@ impl MobileWallet {
         mint: Option<String>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
-    ) -> Result<PendingTransaction, WalletError> {
+    ) -> Result<PreparedTransaction, WalletError> {
         let mut recipients = Vec::with_capacity(payments.len());
         let mut total = 0u64;
         for payment in &payments {
@@ -668,7 +676,7 @@ impl MobileWallet {
         amount: u64,
         fee_payer: Option<String>,
         proving: Option<Proving>,
-    ) -> Result<PendingTransaction, WalletError> {
+    ) -> Result<PreparedTransaction, WalletError> {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
@@ -728,13 +736,13 @@ impl MobileWallet {
         &self,
         operation: Operation,
         mut message: VersionedMessage,
-    ) -> Result<PendingTransaction, WalletError> {
+    ) -> Result<PreparedTransaction, WalletError> {
         let (blockhash, last_valid_block_height) = self.client.get_latest_blockhash()?;
         message.set_recent_blockhash(blockhash);
         let mut reservations = self.reservations();
         let id = reservations.next_id;
         reservations.next_id += 1;
-        Ok(PendingTransaction {
+        Ok(PreparedTransaction {
             id,
             operation,
             message,
@@ -747,9 +755,9 @@ impl MobileWallet {
     /// can no longer land.
     fn reserve(
         &self,
-        mut pending: PendingTransaction,
+        mut pending: PreparedTransaction,
         spends: Vec<[u8; 32]>,
-    ) -> PendingTransaction {
+    ) -> PreparedTransaction {
         self.reservations().reserved.insert(
             pending.id,
             (spends.clone(), pending.last_valid_block_height),
@@ -761,7 +769,7 @@ impl MobileWallet {
     /// Release the notes `pending` reserves, so the next spend can select
     /// them: for a prepared spend that will not be sent, such as one the user
     /// declined. Submitting or confirming it does this too.
-    pub fn release(&self, pending: &PendingTransaction) {
+    pub fn release(&self, pending: &PreparedTransaction) {
         self.reservations().reserved.remove(&pending.id);
     }
 
@@ -801,7 +809,7 @@ impl MobileWallet {
     }
 
     /// `pending` with a new blockhash and the same proof, for an approval that
-    /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
+    /// outlived [`PreparedTransaction::last_valid_block_height`]. Signatures
     /// over the old message do not apply to the new one.
     ///
     /// The proof stays valid while the trees still hold the roots it was built
@@ -811,7 +819,10 @@ impl MobileWallet {
     ///
     /// A refreshed spend reserves its notes again until its new last valid
     /// block height.
-    pub fn refresh(&self, pending: &PendingTransaction) -> Result<PendingTransaction, WalletError> {
+    pub fn refresh(
+        &self,
+        pending: &PreparedTransaction,
+    ) -> Result<PreparedTransaction, WalletError> {
         let refreshed = self.pending(pending.operation.clone(), pending.message.clone())?;
         self.release(pending);
         Ok(if pending.spends.is_empty() {
@@ -883,14 +894,14 @@ impl MobileWallet {
     /// Attach the signatures, send, and wait as [`Self::confirm`] does.
     /// Returns the signature.
     ///
-    /// `signatures` follows [`PendingTransaction::signers`]; each is checked
+    /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
     /// before anything is sent.
     pub fn submit(
         &self,
-        pending: &PendingTransaction,
+        pending: &PreparedTransaction,
         signatures: Vec<Vec<u8>>,
     ) -> Result<String, WalletError> {
-        let message_bytes = pending.message_bytes();
+        let message_bytes = pending.message();
         let required = usize::from(pending.message.header().num_required_signatures);
         if signatures.len() != required {
             return Err(WalletError::SignatureCountMismatch {
@@ -934,7 +945,7 @@ impl MobileWallet {
     fn landed(
         &self,
         signature: Signature,
-        pending: &PendingTransaction,
+        pending: &PreparedTransaction,
     ) -> Result<bool, WalletError> {
         let poll = IndexerPollConfig::default();
         for delay in std::iter::once(Default::default()).chain(poll.backoff()) {
@@ -971,13 +982,13 @@ impl MobileWallet {
     /// checked against `pending` before anything is asked.
     pub fn confirm(
         &self,
-        pending: &PendingTransaction,
+        pending: &PreparedTransaction,
         signature: String,
     ) -> Result<(), WalletError> {
         let signature =
             Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
         let fee_payer = &pending.message.static_account_keys()[0];
-        if !signed_by(fee_payer, &pending.message_bytes(), signature.as_array()) {
+        if !signed_by(fee_payer, &pending.message(), signature.as_array()) {
             return Err(WalletError::SignatureInvalid);
         }
         self.settle(pending, signature)
@@ -996,7 +1007,7 @@ impl MobileWallet {
     /// Once it settles, a spend's notes are spent and no longer reserved.
     fn settle(
         &self,
-        pending: &PendingTransaction,
+        pending: &PreparedTransaction,
         signature: Signature,
     ) -> Result<(), WalletError> {
         if matches!(
@@ -1172,7 +1183,7 @@ mod tests {
     }
 
     /// A deposit-kind message `signer` pays for, with no instructions.
-    fn unsigned(signer: &Keypair) -> PendingTransaction {
+    fn unsigned(signer: &Keypair) -> PreparedTransaction {
         let message = compile_message(
             &signer.pubkey(),
             &[],
@@ -1183,7 +1194,7 @@ mod tests {
             },
         )
         .unwrap();
-        PendingTransaction {
+        PreparedTransaction {
             id: 0,
             operation: Operation::Registration,
             message,
@@ -1236,15 +1247,12 @@ mod tests {
         let signer = Keypair::new();
         let internal =
             || serde_json::json!({"error": {"code": -32603, "message": "Internal error"}});
-        let registration = |signer: &Keypair| PendingTransaction {
+        let registration = |signer: &Keypair| PreparedTransaction {
             operation: Operation::Registration,
             ..unsigned(signer)
         };
-        let signed = |pending: &PendingTransaction| {
-            vec![signer
-                .sign_message(&pending.message_bytes())
-                .as_ref()
-                .to_vec()]
+        let signed = |pending: &PreparedTransaction| {
+            vec![signer.sign_message(&pending.message()).as_ref().to_vec()]
         };
 
         let (wallet, asked) = rpc_wallet(&signer, move |method| match method {
@@ -1257,7 +1265,7 @@ mod tests {
             .expect("it landed");
         assert_eq!(
             signature,
-            signer.sign_message(&pending.message_bytes()).to_string()
+            signer.sign_message(&pending.message()).to_string()
         );
         assert!(asked
             .lock()
@@ -1331,10 +1339,7 @@ mod tests {
             _ => status(true),
         });
         let pending = unsigned(&signer);
-        let signatures = vec![signer
-            .sign_message(&pending.message_bytes())
-            .as_ref()
-            .to_vec()];
+        let signatures = vec![signer.sign_message(&pending.message()).as_ref().to_vec()];
         assert_eq!(
             wallet.submit(&pending, signatures).unwrap_err(),
             WalletError::NotesAlreadySpent
@@ -1459,8 +1464,8 @@ mod tests {
         let wallet = open(&signer).unwrap();
         let pending = || unsigned(&signer);
         assert_eq!(pending().signers(), vec![signer.pubkey().to_string()]);
-        let valid = signer.sign_message(&pending().message_bytes());
-        let wrong_signer = Keypair::new().sign_message(&pending().message_bytes());
+        let valid = signer.sign_message(&pending().message());
+        let wrong_signer = Keypair::new().sign_message(&pending().message());
         let count = |got| WalletError::SignatureCountMismatch { expected: 1, got };
         for (signatures, expected) in [
             (vec![], count(0)),
@@ -1488,7 +1493,7 @@ mod tests {
         let signer = Keypair::new();
         let wallet = open(&signer).unwrap();
         let pending = unsigned(&signer);
-        let other = Keypair::new().sign_message(&pending.message_bytes());
+        let other = Keypair::new().sign_message(&pending.message());
         for signature in ["not-a-signature".to_string(), other.to_string()] {
             assert_eq!(
                 wallet.confirm(&pending, signature).err(),
@@ -1496,7 +1501,7 @@ mod tests {
             );
         }
         // The fee payer's signature gets as far as the transport.
-        let signature = signer.sign_message(&pending.message_bytes()).to_string();
+        let signature = signer.sign_message(&pending.message()).to_string();
         let error = wallet.confirm(&pending, signature).unwrap_err();
         assert_ne!(error, WalletError::SignatureInvalid);
     }
@@ -1657,7 +1662,7 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let bad = "not-a-pubkey".to_string();
         let invalid = Some(WalletError::InvalidPubkey { value: bad.clone() });
-        let error = |result: Result<PendingTransaction, WalletError>| result.err();
+        let error = |result: Result<PreparedTransaction, WalletError>| result.err();
         assert_eq!(
             error(wallet.prepare_transfer(pay(&bad, 1), None, None, None)),
             invalid

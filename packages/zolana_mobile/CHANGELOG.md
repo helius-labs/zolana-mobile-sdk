@@ -87,8 +87,8 @@ Unreleased.
 * Proving keys download on first use, pinned by the Zolana proving-key
   lockfile. With the default transport, a part that receives no data for
   30 s fails with `WalletError.provingKeyDownloadFailed`.
-* Errors are `ZolanaWalletException`s whose `error` is a `WalletError` with
-  the data of what happened: amounts, accounts, mints. They carry no key
+* Errors are `WalletError`s with the data of what happened: amounts,
+  accounts, mints. They carry no key
   material, and `api-key` values in them are masked.
 * `LocalProver`: prepare a circuit once and prove structured Zolana requests
   repeatedly. `poseidonHash`.
