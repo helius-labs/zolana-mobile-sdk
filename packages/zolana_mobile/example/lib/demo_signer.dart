@@ -51,7 +51,7 @@ class DemoSigner implements SolanaSigner {
     onSign?.call(
       transaction == null
           ? 'Open your private Zolana wallet'
-          : approvalText(transaction),
+          : approvalText(transaction.operation),
     );
     final signature = await Ed25519().sign(message, keyPair: _keyPair);
     return Uint8List.fromList(signature.bytes);

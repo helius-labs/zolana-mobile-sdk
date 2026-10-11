@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zolana_mobile/zolana_mobile.dart';
 import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/format.dart';
 
@@ -29,6 +30,40 @@ void main() {
     expect(demoAsset(demoToken.mint), demoToken);
     expect(demoAsset(null), sol);
     expect(demoAsset('another mint'), isNull);
+  });
+
+  test('describes each operation for approval', () {
+    const b = '8JEEsykAwsPBvtcXa5byTZbggSpC63EiXRW44khYsS8E';
+    const collector = 'CWhA2o6Sh95Qjy3iYX1rQdMjEcZ2QX1qz3wWMcUdgCdt';
+    expect(
+      approvalText(
+        Operation.transfer(
+          payments: [
+            Payment(recipient: b, amount: BigInt.from(1000000000)),
+            Payment(recipient: collector, amount: BigInt.from(5000000)),
+          ],
+        ),
+      ),
+      'Send privately 1 SOL to 8JEE…sS8E, 0.005 SOL to CWhA…gCdt',
+    );
+    expect(
+      approvalText(
+        Operation.withdrawal(
+          mint: demoToken.mint,
+          recipient: b,
+          amount: BigInt.from(2500000),
+        ),
+      ),
+      'Unshield 2.5 TEST to 8JEE…sS8E',
+    );
+    expect(
+      approvalText(const Operation.merging(enabled: false)),
+      'Stop merges of your notes',
+    );
+    expect(
+      approvalText(const Operation.custom(programs: [collector])),
+      'Call CWhA…gCdt',
+    );
   });
 
   test('recognizes Solana addresses', () {

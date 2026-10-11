@@ -13,6 +13,658 @@ part of 'zolana_mobile.dart';
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
+mixin _$Operation {
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'Operation()';
+}
+
+
+}
+
+/// @nodoc
+class $OperationCopyWith<$Res>  {
+$OperationCopyWith(Operation _, $Res Function(Operation) __);
+}
+
+
+/// Adds pattern-matching-related methods to [Operation].
+extension OperationPatterns on Operation {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( Operation_Registration value)?  registration,TResult Function( Operation_Deposit value)?  deposit,TResult Function( Operation_Transfer value)?  transfer,TResult Function( Operation_Withdrawal value)?  withdrawal,TResult Function( Operation_Merging value)?  merging,TResult Function( Operation_Merge value)?  merge,TResult Function( Operation_Custom value)?  custom,required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case Operation_Registration() when registration != null:
+return registration(_that);case Operation_Deposit() when deposit != null:
+return deposit(_that);case Operation_Transfer() when transfer != null:
+return transfer(_that);case Operation_Withdrawal() when withdrawal != null:
+return withdrawal(_that);case Operation_Merging() when merging != null:
+return merging(_that);case Operation_Merge() when merge != null:
+return merge(_that);case Operation_Custom() when custom != null:
+return custom(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( Operation_Registration value)  registration,required TResult Function( Operation_Deposit value)  deposit,required TResult Function( Operation_Transfer value)  transfer,required TResult Function( Operation_Withdrawal value)  withdrawal,required TResult Function( Operation_Merging value)  merging,required TResult Function( Operation_Merge value)  merge,required TResult Function( Operation_Custom value)  custom,}){
+final _that = this;
+switch (_that) {
+case Operation_Registration():
+return registration(_that);case Operation_Deposit():
+return deposit(_that);case Operation_Transfer():
+return transfer(_that);case Operation_Withdrawal():
+return withdrawal(_that);case Operation_Merging():
+return merging(_that);case Operation_Merge():
+return merge(_that);case Operation_Custom():
+return custom(_that);}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( Operation_Registration value)?  registration,TResult? Function( Operation_Deposit value)?  deposit,TResult? Function( Operation_Transfer value)?  transfer,TResult? Function( Operation_Withdrawal value)?  withdrawal,TResult? Function( Operation_Merging value)?  merging,TResult? Function( Operation_Merge value)?  merge,TResult? Function( Operation_Custom value)?  custom,}){
+final _that = this;
+switch (_that) {
+case Operation_Registration() when registration != null:
+return registration(_that);case Operation_Deposit() when deposit != null:
+return deposit(_that);case Operation_Transfer() when transfer != null:
+return transfer(_that);case Operation_Withdrawal() when withdrawal != null:
+return withdrawal(_that);case Operation_Merging() when merging != null:
+return merging(_that);case Operation_Merge() when merge != null:
+return merge(_that);case Operation_Custom() when custom != null:
+return custom(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount)?  deposit,TResult Function( String? mint,  List<Payment> payments)?  transfer,TResult Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,TResult Function( List<String> programs)?  custom,required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case Operation_Registration() when registration != null:
+return registration();case Operation_Deposit() when deposit != null:
+return deposit(_that.mint,_that.amount);case Operation_Transfer() when transfer != null:
+return transfer(_that.mint,_that.payments);case Operation_Withdrawal() when withdrawal != null:
+return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging() when merging != null:
+return merging(_that.enabled);case Operation_Merge() when merge != null:
+return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
+return custom(_that.programs);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount)  deposit,required TResult Function( String? mint,  List<Payment> payments)  transfer,required TResult Function( String? mint,  String recipient,  BigInt amount)  withdrawal,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,required TResult Function( List<String> programs)  custom,}) {final _that = this;
+switch (_that) {
+case Operation_Registration():
+return registration();case Operation_Deposit():
+return deposit(_that.mint,_that.amount);case Operation_Transfer():
+return transfer(_that.mint,_that.payments);case Operation_Withdrawal():
+return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging():
+return merging(_that.enabled);case Operation_Merge():
+return merge(_that.mint,_that.amount);case Operation_Custom():
+return custom(_that.programs);}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount)?  deposit,TResult? Function( String? mint,  List<Payment> payments)?  transfer,TResult? Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,TResult? Function( List<String> programs)?  custom,}) {final _that = this;
+switch (_that) {
+case Operation_Registration() when registration != null:
+return registration();case Operation_Deposit() when deposit != null:
+return deposit(_that.mint,_that.amount);case Operation_Transfer() when transfer != null:
+return transfer(_that.mint,_that.payments);case Operation_Withdrawal() when withdrawal != null:
+return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging() when merging != null:
+return merging(_that.enabled);case Operation_Merge() when merge != null:
+return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
+return custom(_that.programs);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class Operation_Registration extends Operation {
+  const Operation_Registration(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Registration);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'Operation.registration()';
+}
+
+
+}
+
+
+
+
+/// @nodoc
+
+
+class Operation_Deposit extends Operation {
+  const Operation_Deposit({this.mint, required this.amount}): super._();
+  
+
+ final  String? mint;
+ final  BigInt amount;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_DepositCopyWith<Operation_Deposit> get copyWith => _$Operation_DepositCopyWithImpl<Operation_Deposit>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Deposit&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.amount, amount) || other.amount == amount));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,mint,amount);
+}
+
+@override
+String toString() {
+    return 'Operation.deposit(mint: $mint, amount: $amount)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_DepositCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_DepositCopyWith(Operation_Deposit value, $Res Function(Operation_Deposit) _then) = _$Operation_DepositCopyWithImpl;
+@useResult
+$Res call({
+ String? mint, BigInt amount
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_DepositCopyWithImpl<$Res>
+    implements $Operation_DepositCopyWith<$Res> {
+  _$Operation_DepositCopyWithImpl(this._self, this._then);
+
+  final Operation_Deposit _self;
+  final $Res Function(Operation_Deposit) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? amount = null,}) {
+  return _then(Operation_Deposit(
+mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
+as String?,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Operation_Transfer extends Operation {
+  const Operation_Transfer({this.mint, required  List<Payment> payments}): _payments = payments,super._();
+  
+
+ final  String? mint;
+ final  List<Payment> _payments;
+ List<Payment> get payments {
+  if (_payments is EqualUnmodifiableListView) return _payments;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_payments);
+}
+
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_TransferCopyWith<Operation_Transfer> get copyWith => _$Operation_TransferCopyWithImpl<Operation_Transfer>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Transfer&&(identical(other.mint, mint) || other.mint == mint)&&const DeepCollectionEquality().equals(other.payments, _payments));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,mint,const DeepCollectionEquality().hash(_payments));
+}
+
+@override
+String toString() {
+    return 'Operation.transfer(mint: $mint, payments: $payments)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_TransferCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_TransferCopyWith(Operation_Transfer value, $Res Function(Operation_Transfer) _then) = _$Operation_TransferCopyWithImpl;
+@useResult
+$Res call({
+ String? mint, List<Payment> payments
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_TransferCopyWithImpl<$Res>
+    implements $Operation_TransferCopyWith<$Res> {
+  _$Operation_TransferCopyWithImpl(this._self, this._then);
+
+  final Operation_Transfer _self;
+  final $Res Function(Operation_Transfer) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? payments = null,}) {
+  return _then(Operation_Transfer(
+mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
+as String?,payments: null == payments ? _self._payments : payments // ignore: cast_nullable_to_non_nullable
+as List<Payment>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Operation_Withdrawal extends Operation {
+  const Operation_Withdrawal({this.mint, required this.recipient, required this.amount}): super._();
+  
+
+ final  String? mint;
+ final  String recipient;
+ final  BigInt amount;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_WithdrawalCopyWith<Operation_Withdrawal> get copyWith => _$Operation_WithdrawalCopyWithImpl<Operation_Withdrawal>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Withdrawal&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.recipient, recipient) || other.recipient == recipient)&&(identical(other.amount, amount) || other.amount == amount));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,mint,recipient,amount);
+}
+
+@override
+String toString() {
+    return 'Operation.withdrawal(mint: $mint, recipient: $recipient, amount: $amount)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_WithdrawalCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_WithdrawalCopyWith(Operation_Withdrawal value, $Res Function(Operation_Withdrawal) _then) = _$Operation_WithdrawalCopyWithImpl;
+@useResult
+$Res call({
+ String? mint, String recipient, BigInt amount
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_WithdrawalCopyWithImpl<$Res>
+    implements $Operation_WithdrawalCopyWith<$Res> {
+  _$Operation_WithdrawalCopyWithImpl(this._self, this._then);
+
+  final Operation_Withdrawal _self;
+  final $Res Function(Operation_Withdrawal) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? recipient = null,Object? amount = null,}) {
+  return _then(Operation_Withdrawal(
+mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
+as String?,recipient: null == recipient ? _self.recipient : recipient // ignore: cast_nullable_to_non_nullable
+as String,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Operation_Merging extends Operation {
+  const Operation_Merging({required this.enabled}): super._();
+  
+
+ final  bool enabled;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_MergingCopyWith<Operation_Merging> get copyWith => _$Operation_MergingCopyWithImpl<Operation_Merging>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Merging&&(identical(other.enabled, enabled) || other.enabled == enabled));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,enabled);
+}
+
+@override
+String toString() {
+    return 'Operation.merging(enabled: $enabled)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_MergingCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_MergingCopyWith(Operation_Merging value, $Res Function(Operation_Merging) _then) = _$Operation_MergingCopyWithImpl;
+@useResult
+$Res call({
+ bool enabled
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_MergingCopyWithImpl<$Res>
+    implements $Operation_MergingCopyWith<$Res> {
+  _$Operation_MergingCopyWithImpl(this._self, this._then);
+
+  final Operation_Merging _self;
+  final $Res Function(Operation_Merging) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? enabled = null,}) {
+  return _then(Operation_Merging(
+enabled: null == enabled ? _self.enabled : enabled // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Operation_Merge extends Operation {
+  const Operation_Merge({this.mint, required this.amount}): super._();
+  
+
+ final  String? mint;
+ final  BigInt amount;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_MergeCopyWith<Operation_Merge> get copyWith => _$Operation_MergeCopyWithImpl<Operation_Merge>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Merge&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.amount, amount) || other.amount == amount));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,mint,amount);
+}
+
+@override
+String toString() {
+    return 'Operation.merge(mint: $mint, amount: $amount)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_MergeCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_MergeCopyWith(Operation_Merge value, $Res Function(Operation_Merge) _then) = _$Operation_MergeCopyWithImpl;
+@useResult
+$Res call({
+ String? mint, BigInt amount
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_MergeCopyWithImpl<$Res>
+    implements $Operation_MergeCopyWith<$Res> {
+  _$Operation_MergeCopyWithImpl(this._self, this._then);
+
+  final Operation_Merge _self;
+  final $Res Function(Operation_Merge) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? amount = null,}) {
+  return _then(Operation_Merge(
+mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
+as String?,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
+as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Operation_Custom extends Operation {
+  const Operation_Custom({required  List<String> programs}): _programs = programs,super._();
+  
+
+ final  List<String> _programs;
+ List<String> get programs {
+  if (_programs is EqualUnmodifiableListView) return _programs;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_programs);
+}
+
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_CustomCopyWith<Operation_Custom> get copyWith => _$Operation_CustomCopyWithImpl<Operation_Custom>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Custom&&const DeepCollectionEquality().equals(other.programs, _programs));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_programs));
+}
+
+@override
+String toString() {
+    return 'Operation.custom(programs: $programs)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_CustomCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_CustomCopyWith(Operation_Custom value, $Res Function(Operation_Custom) _then) = _$Operation_CustomCopyWithImpl;
+@useResult
+$Res call({
+ List<String> programs
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_CustomCopyWithImpl<$Res>
+    implements $Operation_CustomCopyWith<$Res> {
+  _$Operation_CustomCopyWithImpl(this._self, this._then);
+
+  final Operation_Custom _self;
+  final $Res Function(Operation_Custom) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? programs = null,}) {
+  return _then(Operation_Custom(
+programs: null == programs ? _self._programs : programs // ignore: cast_nullable_to_non_nullable
+as List<String>,
+  ));
+}
+
+
+}
+
+/// @nodoc
 mixin _$WalletError {
 
 

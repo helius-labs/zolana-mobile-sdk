@@ -90,16 +90,11 @@ abstract interface class WalletBackend {
 
 /// A transaction the wallet built and, where needed, proved, awaiting
 /// signatures. Each of [signers] signs [message] with Ed25519, in order.
-/// [kind], [amount], [mint], [recipient] and [feePayer] are what to show the
-/// user before signing.
+/// [operation] and [feePayer] are what to show the user before signing.
 class PreparedTransaction {
   PreparedTransaction._(
     this._pending,
-    this.kind,
-    this.amount,
-    this.mint,
-    this.recipient,
-    this.payments,
+    this.operation,
     this.feePayer,
     this.message,
     this.signers,
@@ -110,11 +105,7 @@ class PreparedTransaction {
     native.PendingTransaction pending,
   ) async => PreparedTransaction._(
     pending,
-    await pending.kind(),
-    await pending.amount(),
-    await pending.mint(),
-    await pending.recipient(),
-    await pending.payments(),
+    await pending.operation(),
     await pending.feePayer(),
     await pending.messageBytes(),
     await pending.signers(),
@@ -122,23 +113,10 @@ class PreparedTransaction {
   );
 
   final native.PendingTransaction _pending;
-  final native.PendingTransactionKind kind;
 
-  /// Base units a deposit, transfer or withdrawal moves: for a transfer,
-  /// the total of [payments].
-  final BigInt? amount;
-
-  /// The mint of the asset moved, or of the token account created; `null`
-  /// for SOL.
-  final String? mint;
-
-  /// The account a withdrawal pays, the first recipient of a transfer, or
-  /// the account whose token account is created.
-  final String? recipient;
-
-  /// Each recipient of a transfer and its amount, in the order given; empty
-  /// for other kinds.
-  final List<native.Payment> payments;
+  /// What it does, with what it moves and to whom: one variant per kind of
+  /// transaction, such as `Operation_Transfer(:mint, :payments)`.
+  final native.Operation operation;
 
   /// Base58 account that pays the network fee: the first of [signers].
   final String feePayer;
@@ -533,11 +511,7 @@ class ZolanaWallet {
     native.Proving? proving,
   }) => _serial(
     () => _send(
-      _wallet.prepareTransfer(
-        payments: payments,
-        mint: mint,
-        proving: proving,
-      ),
+      _wallet.prepareTransfer(payments: payments, mint: mint, proving: proving),
     ),
   );
 

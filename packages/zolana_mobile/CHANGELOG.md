@@ -18,7 +18,7 @@ Unreleased.
   `selfTransfer`.
 * `transfer` / `prepareTransfer` take `payments`, one or more `Payment`s of
   the same asset proved together, such as a payment and the application's
-  fee; `PreparedTransaction.payments` lists them.
+  fee.
 * `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
   `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
   send transactions themselves. `feePayer` lets another account pay the
@@ -54,10 +54,15 @@ Unreleased.
   `release(tx)` frees them. `waitForTransaction(signature)` waits for a
   transaction sent before a restart.
 * `refresh(tx)`: a prepared transaction with a new blockhash and the same
-  proof, for slow approvals. Every prepared transaction carries its `kind`,
-  `amount`, `mint`, `recipient`, `feePayer`, `signers`, `message` and
-  `lastValidBlockHeight`; the application builds its approval text from
-  them, and the `SolanaSigner` receives the transaction it signs.
+  proof, for slow approvals. Every prepared transaction carries its
+  `operation`, `feePayer`, `signers`, `message` and `lastValidBlockHeight`.
+  `operation` has one variant per kind, each with its own fields
+  (`Operation_Transfer` its `mint` and `payments`, `Operation_Withdrawal` its
+  `recipient`, `Operation_Merging` whether it turns merges on,
+  `Operation_Custom` the top-level programs of a transaction the application
+  composes, which the wallet does not prepare yet); the application builds
+  its approval text from it, and the `SolanaSigner` receives the transaction
+  it signs.
 * `exportKeys()` and `ZolanaWallet.openWithKeys()`: open the wallet from its
   saved derived keys, without a derivation signature; the signer is optional.
 * `close()` for lock and account switch: it rejects queued operations and a

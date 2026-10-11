@@ -244,14 +244,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
 abstract class PendingTransaction implements RustOpaqueInterface {
-  /// Base units a deposit, transfer or withdrawal moves, or the sum a merge
-  /// combines.
-  Future<BigInt?> amount();
-
   /// The base58 account that pays the network fee: the first signer.
   Future<String> feePayer();
-
-  Future<PendingTransactionKind> kind();
 
   /// The last block height at which the message can still land. Past it,
   /// [`MobileWallet::refresh`] gives it a new blockhash.
@@ -260,17 +254,7 @@ abstract class PendingTransaction implements RustOpaqueInterface {
   /// The bytes every signer signs with Ed25519.
   Future<Uint8List> messageBytes();
 
-  /// The mint of the asset moved, or of the token account created; `None`
-  /// for SOL.
-  Future<String?> mint();
-
-  /// Each recipient of a transfer and its amount, in the order given;
-  /// empty for other kinds.
-  Future<List<Payment>> payments();
-
-  /// The account a withdrawal pays, the first recipient of a transfer, or
-  /// the account whose token account is created.
-  Future<String?> recipient();
+  Future<Operation> operation();
 
   /// Base58 public keys that must sign, in signature order.
   Future<List<String>> signers();
@@ -441,6 +425,50 @@ class MintConfig {
           tokenProgram == other.tokenProgram;
 }
 
+@freezed
+sealed class Operation with _$Operation {
+  const Operation._();
+
+  /// Publishes the wallet's shielded address so others can pay it.
+  const factory Operation.registration() = Operation_Registration;
+
+  /// Moves public funds into the private balance. Public: sender, asset,
+  /// amount.
+  const factory Operation.deposit({String? mint, required BigInt amount}) =
+      Operation_Deposit;
+
+  /// Private transfer of one asset to registered wallets, in the order
+  /// given. Reveals neither amounts nor recipients.
+  const factory Operation.transfer({
+    String? mint,
+    required List<Payment> payments,
+  }) = Operation_Transfer;
+
+  /// Moves private funds to a public account. Public: recipient, asset,
+  /// amount.
+  const factory Operation.withdrawal({
+    String? mint,
+    required String recipient,
+    required BigInt amount,
+  }) = Operation_Withdrawal;
+
+  /// Turns merges of this account's notes on or off. Public: the account
+  /// and the setting.
+  const factory Operation.merging({required bool enabled}) = Operation_Merging;
+
+  /// Combines notes of one asset, `amount` in total, into one for this
+  /// account. Public: the account and roughly how many notes; not the asset
+  /// or any amount.
+  const factory Operation.merge({String? mint, required BigInt amount}) =
+      Operation_Merge;
+
+  /// A transaction the application composed itself, such as a call to
+  /// another program that spends this wallet's notes; `programs` are its
+  /// top-level programs. This wallet does not prepare one yet.
+  const factory Operation.custom({required List<String> programs}) =
+      Operation_Custom;
+}
+
 /// One recipient of a private transfer and the amount it receives.
 class Payment {
   final String recipient;
@@ -458,32 +486,6 @@ class Payment {
           runtimeType == other.runtimeType &&
           recipient == other.recipient &&
           amount == other.amount;
-}
-
-/// What a submitted transaction waits for.
-enum PendingTransactionKind {
-  /// Publishes the wallet's shielded address so others can pay it.
-  registration,
-
-  /// Moves public funds into the private balance. Public: sender, asset,
-  /// amount.
-  deposit,
-
-  /// Private transfer to a registered wallet. Reveals neither amount nor
-  /// recipient.
-  transfer,
-
-  /// Moves private funds to a public account. Public: recipient, asset,
-  /// amount.
-  withdrawal,
-
-  /// Turns merges of this account's notes on or off. Public: the account
-  /// and the setting.
-  merging,
-
-  /// Combines notes of one asset into one, for this account. Public: the
-  /// account and roughly how many notes; not the asset or any amount.
-  merge,
 }
 
 class PreparedProverInfo {

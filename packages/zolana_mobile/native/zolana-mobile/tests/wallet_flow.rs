@@ -43,9 +43,9 @@ use zolana_interface::{
     SPL_TOKEN_MINT_TO_DISCRIMINATOR, SPL_TOKEN_PROGRAM_ID,
 };
 use zolana_mobile::{
-    derivation_message, ActivityKind, MintConfig, MobileWallet, Payment, PendingTransaction,
-    PendingTransactionKind, Proving, RegistrationStatus, Transport, TransportFailure,
-    TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
+    derivation_message, ActivityKind, MintConfig, MobileWallet, Operation, Payment,
+    PendingTransaction, Proving, RegistrationStatus, Transport, TransportFailure, TransportOutcome,
+    TransportRequest, TransportResponse, WalletConfig, WalletError,
 };
 use zolana_program::instruction::{CreateAssociatedTokenAccount, CreateSplInterface};
 
@@ -198,13 +198,7 @@ fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PendingTransacti
         .iter()
         .map(|s| s.sign_message(&pending.message_bytes()).as_ref().to_vec())
         .collect();
-    println!(
-        "{:?} {:?} {:?} to {:?}",
-        pending.kind(),
-        pending.amount(),
-        pending.mint(),
-        pending.recipient()
-    );
+    println!("{:?}", pending.operation());
     wallet.submit(&pending, signatures).expect("submit")
 }
 
@@ -315,10 +309,7 @@ fn register_deposit_transfer_and_receive() {
         .expect("a new blockhash");
     assert!(refreshed.last_valid_block_height() >= pending.last_valid_block_height());
     assert_eq!(refreshed.signers(), pending.signers());
-    assert_eq!(
-        (refreshed.amount(), refreshed.mint(), refreshed.recipient()),
-        (pending.amount(), pending.mint(), pending.recipient())
-    );
+    assert_eq!(refreshed.operation(), pending.operation());
     let transfer = submit(&sender_wallet, &[&sender], refreshed);
 
     assert_eq!(
@@ -665,9 +656,13 @@ fn pays_two_recipients_in_one_transfer() {
     let pending = sender_wallet
         .prepare_transfer(payments.clone(), None, None, None)
         .expect("prove a transfer with two outputs");
-    assert_eq!(pending.payments(), payments);
-    assert_eq!(pending.amount(), Some(SPLIT + SPLIT / 4));
-    assert_eq!(pending.recipient(), Some(recipient.pubkey().to_string()));
+    assert_eq!(
+        pending.operation(),
+        Operation::Transfer {
+            mint: None,
+            payments
+        }
+    );
     let transfer = submit(&sender_wallet, &[&sender], pending);
 
     assert_eq!(
@@ -704,7 +699,7 @@ fn merges_notes_proved_remotely_and_on_the_device() {
     }
     assert!(wallet.merging_enabled().unwrap());
     assert_eq!(
-        wallet.prepare_merging(true).unwrap().map(|p| p.kind()),
+        wallet.prepare_merging(true).unwrap().map(|p| p.operation()),
         None
     );
     // Notes to merge on a fresh account too.
@@ -725,8 +720,13 @@ fn merges_notes_proved_remotely_and_on_the_device() {
             )
             .expect("prepare merge");
         println!("merge proved {proving:?} in {:?}", started.elapsed());
-        assert_eq!(pending.kind(), PendingTransactionKind::Merge);
-        let merged = pending.amount().expect("merged amount");
+        let Operation::Merge {
+            mint: None,
+            amount: merged,
+        } = pending.operation()
+        else {
+            panic!("a SOL merge: {:?}", pending.operation());
+        };
         let signature = submit(&wallet, &[&payer], pending);
         assert_eq!(private_sol(&mut wallet), before);
         newest(&mut wallet, &signature, ActivityKind::SelfTransfer, merged);
