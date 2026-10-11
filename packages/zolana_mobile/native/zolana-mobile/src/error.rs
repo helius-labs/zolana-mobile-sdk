@@ -9,6 +9,8 @@ use zolana_keypair::KeypairError;
 use zolana_program::instruction::DepositBuildError;
 use zolana_transaction::TransactionError;
 
+use crate::prover::DeviceProverFailure;
+
 /// Every failure a wallet call reports. Amounts are in base units, accounts
 /// and mints base58. No variant carries key material.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,6 +150,9 @@ pub enum WalletError {
 impl From<ClientError> for WalletError {
     fn from(failure: ClientError) -> Self {
         match failure {
+            ClientError::ProverFailed(source) if source.is::<DeviceProverFailure>() => source
+                .downcast::<DeviceProverFailure>()
+                .map_or(Self::ProofFailed, |failure| failure.0),
             ClientError::Transaction(failure) => failure.into(),
             ClientError::UserRegistryKeysMismatch { owner }
             | ClientError::MergeViewingKeyMismatch { owner } => Self::RegistrationConflict {

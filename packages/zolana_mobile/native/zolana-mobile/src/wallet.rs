@@ -47,8 +47,8 @@ use zolana_client::{
         try_resolve_registered_address,
     },
     ClientError, ComputeBudgetConfig, IndexerPollConfig, IndexerRpcConfig, MergeSubmission,
-    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, Submission, UtxoScan, UtxoScanResult,
-    ZolanaClient,
+    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, Submission, UnsignedMessage, UtxoScan,
+    UtxoScanResult, ZolanaClient,
 };
 use zolana_interface::pda;
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
@@ -280,7 +280,6 @@ pub struct MobileWallet {
     proving: Proving,
     /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
     send_lookup: IndexerPollConfig,
-    native_prover: NativeProver,
     proving_keys: Arc<KeyStore>,
     /// The SDK's prover client of [`WalletConfig::prover_url`].
     remote_prover: Option<Arc<ProverClient>>,
@@ -370,7 +369,7 @@ impl MobileWallet {
         let client = ZolanaClient::with_prover(
             transport.solana_rpc(config.rpc_url)?,
             transport.indexer(&config.indexer_url),
-            native_prover.clone(),
+            native_prover,
         );
         Ok(MobileWallet {
             owner,
@@ -382,7 +381,6 @@ impl MobileWallet {
             reservations: Mutex::default(),
             proving: config.proving.unwrap_or(Proving::Local),
             send_lookup: SEND_LOOKUP,
-            native_prover,
             proving_keys,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
             client,
@@ -508,22 +506,13 @@ impl MobileWallet {
                 .ok_or(WalletError::RemoteProverMissing)?;
             submission = submission.with_prover(remote);
         }
-        self.native_prover.take_failure();
-        let message = submission
-            .finish_unsigned_sync(&self.client, payer)
-            .map_err(|failure| {
-                self.native_prover
-                    .take_failure()
-                    .unwrap_or_else(|| failure.into())
-            })?
-            .message;
-        let pending = self.pending(
+        let pending = self.proved(
             Operation::Merge {
                 mint: mint_name(&asset.mint),
                 amount,
             },
-            message,
-        )?;
+            submission.finish_unsigned_sync(&self.client, payer)?,
+        );
         Ok(self.reserve(pending, spends))
     }
 
@@ -676,13 +665,13 @@ impl MobileWallet {
                 Some(_) => transaction.transfer(address, asset.mint, payment.amount),
             }?;
         }
-        let pending = self.pending(
+        let pending = self.proved(
             Operation::Transfer {
                 mint: mint_name(&asset.mint),
                 payments,
             },
             self.prove(transaction, Vec::new(), payer, proving)?,
-        )?;
+        );
         Ok(self.reserve(pending, spends))
     }
 
@@ -718,14 +707,14 @@ impl MobileWallet {
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         let settlement =
             transaction.withdraw_to(asset.mint, amount, recipient, asset.token_program)?;
-        let pending = self.pending(
+        let pending = self.proved(
             Operation::Withdrawal {
                 mint: mint_name(&asset.mint),
                 recipient: recipient.to_string(),
                 amount,
             },
             self.prove(transaction, vec![settlement], payer, proving)?,
-        )?;
+        );
         Ok(self.reserve(pending, spends))
     }
 
@@ -763,16 +752,28 @@ impl MobileWallet {
     ) -> Result<PreparedTransaction, WalletError> {
         let (blockhash, last_valid_block_height) = self.client.get_latest_blockhash()?;
         message.set_recent_blockhash(blockhash);
+        Ok(self.proved(
+            operation,
+            UnsignedMessage {
+                message,
+                last_valid_block_height,
+            },
+        ))
+    }
+
+    /// A message the SDK proved and built with the latest blockhash, fetched
+    /// after proving.
+    fn proved(&self, operation: Operation, unsigned: UnsignedMessage) -> PreparedTransaction {
         let mut reservations = self.reservations();
         let id = reservations.next_id;
         reservations.next_id += 1;
-        Ok(PreparedTransaction {
+        PreparedTransaction {
             id,
             operation,
-            message,
-            last_valid_block_height,
+            message: unsigned.message,
+            last_valid_block_height: unsigned.last_valid_block_height,
             spends: Vec::new(),
-        })
+        }
     }
 
     /// `pending`, reserving the notes with `spends` as nullifiers until it
@@ -896,7 +897,7 @@ impl MobileWallet {
         settlement_transfers: Vec<TransactInterfaceTransferAccounts>,
         payer: Pubkey,
         proving: Proving,
-    ) -> Result<VersionedMessage, WalletError> {
+    ) -> Result<UnsignedMessage, WalletError> {
         let signed = SignedPrivateTransaction {
             transaction: transaction.encrypt(&self.keys)?,
             settlement_transfers,
@@ -909,17 +910,7 @@ impl MobileWallet {
                 .ok_or(WalletError::RemoteProverMissing)?;
             submission = submission.with_prover(remote);
         }
-        // A device failure the client reports as a message; the wallet reports
-        // what happened.
-        self.native_prover.take_failure();
-        submission
-            .finish_unsigned_sync(&self.client)
-            .map(|unsigned| unsigned.message)
-            .map_err(|failure| {
-                self.native_prover
-                    .take_failure()
-                    .unwrap_or_else(|| failure.into())
-            })
+        Ok(submission.finish_unsigned_sync(&self.client)?)
     }
 
     /// Attach the signatures, send, and wait as [`Self::confirm`] does.
