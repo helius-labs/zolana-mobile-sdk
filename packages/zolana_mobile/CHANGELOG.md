@@ -28,8 +28,12 @@ Unreleased.
   one asset on one tree into one, proved on the device or by `proverUrl`.
   A merge needs only the fee payer's signature and expires ten minutes after
   it is prepared.
-* `submit` checks the signature's status after a send error that is not the
-  chain's verdict, so a transaction that landed is not reported as failed.
+* `submit` looks the signature up after a send error that is not the chain's
+  verdict, until Solana confirms it, the chain refuses it or its blockhash
+  expires, so a transaction that landed is not reported as failed. It fails
+  with `WalletError.transactionExpired` when sending again is safe and
+  `WalletError.transactionOutcomeUnknown` when it is not known whether the
+  transaction landed.
   A spend of a note the chain already spent fails with
   `WalletError.notesAlreadySpent`.
 * Balances, activity and every spend wait for the indexer to reach the RPC's

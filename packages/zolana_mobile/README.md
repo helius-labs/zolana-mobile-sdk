@@ -236,6 +236,8 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `signatureInvalid` | | a signature is malformed or not the signer's over the message |
 | `signatureCountMismatch` | `expected`, `got` | `submit` received the wrong number of signatures |
 | `transactionNotConfirmed` | `signature` | Solana did not confirm the transaction within the wait |
+| `transactionExpired` | `signature` | a send went unanswered and the transaction did not land before its blockhash expired; sending it again is safe |
+| `transactionOutcomeUnknown` | `signature`, `message` | a send went unanswered and whether it landed could not be told; wait for it before sending it again |
 | `remoteProverMissing` | | the spend asked for remote proving without `WalletConfig.proverUrl` |
 | `proofMalformed` | | the remote prover's response is not a proof of the pinned proving key |
 | `proofInvalid` | | the proof does not verify against the pinned verifying key |
@@ -371,10 +373,16 @@ sends through the wallet's RPC instead.
   enough: `wallet.waitForTransaction(signature)` waits until Solana confirms
   it and the indexer has it, and fails with the chain's error if it failed.
 - A send can fail after the transaction went out, for example when the RPC
-  loses its confirmation. `submit` then looks for the signature until the
-  blockhash expires before it reports a failure. An application that sends
-  itself does the same: after any send error that is not the chain's
-  verdict, call `waitForTransaction(signature)` before showing a failure.
+  loses its confirmation. `submit` then looks the signature up until the
+  outcome is known, and the result says whether sending again is safe: the
+  signature once Solana confirms it; the chain's error when the chain refused
+  it, or refused it in simulation so it was never sent;
+  `WalletError.transactionExpired` when it did not land before its blockhash
+  expired, so `refresh` or prepare it again; `WalletError.transactionOutcomeUnknown`
+  when the lookups kept failing or it landed without confirming, so call
+  `waitForTransaction(signature)` before sending it again. An application
+  that sends itself does the same after any send error that is not the
+  chain's verdict.
 - Balances, activity and every spend first wait for the indexer to reach
   the RPC's confirmed slot, so a spend made moments ago, in this session or
   another, is read. An indexer still behind after about ten seconds fails

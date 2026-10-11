@@ -72,6 +72,9 @@ String friendlyError(Object error, {DemoAsset asset = sol}) {
     WalletError_ProvingKeyDownloadFailed() =>
       "Couldn't download the proving key. Check your connection.",
     WalletError_ProofFailed() => "Couldn't prove this transaction.",
+    WalletError_TransactionExpired() =>
+      "This payment didn't go through in time. Nothing was sent; try again.",
+    WalletError_TransactionOutcomeUnknown() => "Couldn't tell whether this payment went through. Check activity before trying again.",
     WalletError_Client(:final message)
         when message.contains('already used or queued') =>
       'Your balance just changed. Try again.',

@@ -945,6 +945,21 @@ sealed class WalletError with _$WalletError implements FrbException {
     required String signature,
   }) = WalletError_TransactionNotConfirmed;
 
+  /// A transaction whose send went unanswered did not land before its
+  /// blockhash expired. It can no longer land, so sending it again is safe:
+  /// `refresh` it, or prepare it again.
+  const factory WalletError.transactionExpired({required String signature}) =
+      WalletError_TransactionExpired;
+
+  /// Whether a transaction whose send went unanswered landed could not be
+  /// told: the status lookups kept failing, or it landed and did not
+  /// confirm. Wait for it with `wait_for_transaction` before sending it
+  /// again.
+  const factory WalletError.transactionOutcomeUnknown({
+    required String signature,
+    required String message,
+  }) = WalletError_TransactionOutcomeUnknown;
+
   /// The spend asked for remote proving and `WalletConfig.prover_url` is
   /// not set.
   const factory WalletError.remoteProverMissing() =

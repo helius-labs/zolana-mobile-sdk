@@ -31,11 +31,13 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use solana_commitment_config::CommitmentConfig;
 use solana_instruction::Instruction;
 use solana_message::VersionedMessage;
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
+use solana_transaction_error::TransactionError as ChainError;
 use zeroize::Zeroizing;
 use zolana_client::{
     compile_message,
@@ -65,7 +67,7 @@ use zolana_transaction::{
 use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
-    error::{rejected_by_chain, WalletError},
+    error::{client_message, settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
@@ -257,6 +259,8 @@ pub struct MobileWallet {
     reservations: Mutex<Reservations>,
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
+    /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
+    send_lookup: IndexerPollConfig,
     native_prover: NativeProver,
     proving_keys: Arc<KeyStore>,
     /// The SDK's prover client of [`WalletConfig::prover_url`].
@@ -358,6 +362,7 @@ impl MobileWallet {
             assets,
             reservations: Mutex::default(),
             proving: config.proving.unwrap_or(Proving::Local),
+            send_lookup: SEND_LOOKUP,
             native_prover,
             proving_keys,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
@@ -928,49 +933,20 @@ impl MobileWallet {
             signatures: transaction_signatures,
             message: pending.message.clone(),
         };
-        if let Err(failure) = self.client.process_transaction(transaction) {
+        match self.client.process_transaction(transaction) {
+            Ok(_) => {}
+            Err(failure) if settles_the_send(&failure) => return Err(failure.into()),
             // A send can fail after the transaction went out, such as when
             // the RPC loses the confirmation: look for it before failing.
-            if rejected_by_chain(&failure) || !self.landed(signature, pending)? {
-                return Err(failure.into());
-            }
+            Err(_) => reconcile(
+                &self.client,
+                signature,
+                pending.last_valid_block_height,
+                self.send_lookup,
+            )?,
         }
         self.settle(pending, signature)?;
         Ok(signature.to_string())
-    }
-
-    /// Whether `signature`, `pending` sent, landed: polled until it shows or
-    /// its blockhash expires. A transaction the chain ran and refused fails
-    /// with the chain's error.
-    fn landed(
-        &self,
-        signature: Signature,
-        pending: &PreparedTransaction,
-    ) -> Result<bool, WalletError> {
-        let poll = IndexerPollConfig::default();
-        for delay in std::iter::once(Default::default()).chain(poll.backoff()) {
-            sleep(delay);
-            let status = self
-                .client
-                .get_signature_statuses(vec![signature])?
-                .into_iter()
-                .next()
-                .flatten();
-            if let Some(status) = status {
-                return match status.err {
-                    None => Ok(true),
-                    Some(failure) => Err(ClientError::SolanaRpcTransaction {
-                        operation: "process_transaction",
-                        source: failure.into(),
-                    }
-                    .into()),
-                };
-            }
-            if self.client.get_block_height()? > pending.last_valid_block_height {
-                return Ok(false);
-            }
-        }
-        Ok(false)
     }
 
     /// Wait for a transaction the application sent itself: until Solana
@@ -1071,6 +1047,106 @@ fn merge_expiry() -> u64 {
         .as_secs()
 }
 
+/// How a send whose response was lost is looked up: on the indexer poll's
+/// schedule, then at its longest delay until the blockhash expires.
+const SEND_LOOKUP: IndexerPollConfig = IndexerPollConfig {
+    num_retries: 10,
+    delay_ms: 400,
+    max_delay_ms: 8_000,
+};
+
+/// What a status lookup says of a transaction whose send went unanswered.
+enum SendStatus {
+    /// Landed and confirmed, without an error.
+    Confirmed,
+    /// Landed and confirmed, and the chain refused it.
+    Refused(ChainError),
+    /// Landed but not confirmed yet: it may still be dropped with its fork.
+    Processed,
+    /// Not seen, and its blockhash still lets it land.
+    Pending,
+    /// Not seen, and its blockhash no longer lets it land.
+    Expired,
+}
+
+/// What became of `signature`, whose send went unanswered: looked up until it
+/// is confirmed, refused by the chain or expired. Lookups that fail one after
+/// another, or a landed transaction that does not confirm, end after `poll`'s
+/// retries as [`WalletError::TransactionOutcomeUnknown`].
+fn reconcile(
+    rpc: &impl Rpc,
+    signature: Signature,
+    last_valid_block_height: u64,
+    poll: IndexerPollConfig,
+) -> Result<(), WalletError> {
+    let unknown = |message: String| WalletError::TransactionOutcomeUnknown {
+        signature: signature.to_string(),
+        message,
+    };
+    let mut delays = poll
+        .backoff()
+        .chain(std::iter::repeat(Duration::from_millis(poll.max_delay_ms)));
+    let (mut failed_lookups, mut processed_lookups) = (0, 0);
+    loop {
+        match send_status(rpc, signature, last_valid_block_height) {
+            Ok(SendStatus::Confirmed) => return Ok(()),
+            Ok(SendStatus::Refused(failure)) => {
+                return Err(ClientError::SolanaRpcTransaction {
+                    operation: "process_transaction",
+                    source: failure.into(),
+                }
+                .into())
+            }
+            Ok(SendStatus::Expired) => {
+                return Err(WalletError::TransactionExpired {
+                    signature: signature.to_string(),
+                })
+            }
+            Ok(SendStatus::Pending) => failed_lookups = 0,
+            Ok(SendStatus::Processed) => {
+                failed_lookups = 0;
+                processed_lookups += 1;
+                if processed_lookups > poll.num_retries {
+                    return Err(unknown("landed but not confirmed".to_string()));
+                }
+            }
+            Err(failure) => {
+                failed_lookups += 1;
+                if failed_lookups > poll.num_retries {
+                    return Err(unknown(client_message(&failure)));
+                }
+            }
+        }
+        sleep(delays.next().unwrap_or_default());
+    }
+}
+
+/// One look at `signature` in the RPC's status cache, which holds a landed
+/// transaction for longer than its blockhash lets it land, so one missing once
+/// `last_valid_block_height` passed never landed.
+fn send_status(
+    rpc: &impl Rpc,
+    signature: Signature,
+    last_valid_block_height: u64,
+) -> Result<SendStatus, ClientError> {
+    let status = rpc
+        .get_signature_statuses(vec![signature])?
+        .into_iter()
+        .next()
+        .flatten();
+    Ok(match status {
+        Some(status) if status.satisfies_commitment(CommitmentConfig::confirmed()) => {
+            match status.err {
+                None => SendStatus::Confirmed,
+                Some(failure) => SendStatus::Refused(failure),
+            }
+        }
+        Some(_) => SendStatus::Processed,
+        None if rpc.get_block_height()? > last_valid_block_height => SendStatus::Expired,
+        None => SendStatus::Pending,
+    })
+}
+
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
 fn wait_for_confirmation(rpc: &impl Rpc, signature: Signature) -> Result<(), WalletError> {
     let poll = IndexerPollConfig::default();
@@ -1118,6 +1194,9 @@ fn parse_pubkey(value: &str) -> Result<Pubkey, WalletError> {
 mod tests {
     use solana_keypair::Keypair;
     use solana_signer::Signer;
+    use solana_transaction_status_client_types::{
+        TransactionConfirmationStatus, TransactionStatus,
+    };
     use zolana_client::{compile_message, ClientError, ComputeBudgetConfig};
 
     use super::*;
@@ -1272,16 +1351,171 @@ mod tests {
             .unwrap()
             .contains(&"getSignatureStatuses".to_string()));
 
+        // Not seen, and past its blockhash: it can be sent again.
         let (wallet, _) = rpc_wallet(&signer, move |method| match method {
             "sendTransaction" => internal(),
             "getBlockHeight" => serde_json::json!({"result": 10}),
             _ => status(false),
         });
-        let error = wallet.submit(&pending, signed(&pending)).unwrap_err();
-        assert!(
-            matches!(&error, WalletError::Client { message } if message.contains("Internal error")),
-            "{error:?}"
+        assert_eq!(
+            wallet.submit(&pending, signed(&pending)).unwrap_err(),
+            WalletError::TransactionExpired {
+                signature: signer.sign_message(&pending.message()).to_string()
+            }
         );
+    }
+
+    /// What one status lookup answers.
+    #[derive(Clone)]
+    enum Lookup {
+        Fails,
+        Missing,
+        Processed,
+        Confirmed(Option<ChainError>),
+    }
+
+    /// An RPC whose status lookups answer `lookups` in turn, the last one from
+    /// then on, at `block_height`. Counts the lookups.
+    struct Lookups {
+        lookups: Mutex<std::collections::VecDeque<Lookup>>,
+        block_height: u64,
+        asked: Mutex<u32>,
+    }
+
+    impl Lookups {
+        fn new(lookups: &[Lookup], block_height: u64) -> Self {
+            Self {
+                lookups: Mutex::new(lookups.iter().cloned().collect()),
+                block_height,
+                asked: Mutex::new(0),
+            }
+        }
+    }
+
+    impl Rpc for Lookups {
+        fn get_block_height(&self) -> Result<u64, ClientError> {
+            Ok(self.block_height)
+        }
+
+        fn get_signature_statuses(
+            &self,
+            signatures: Vec<Signature>,
+        ) -> Result<Vec<Option<TransactionStatus>>, ClientError> {
+            *self.asked.lock().unwrap() += 1;
+            let mut lookups = self.lookups.lock().unwrap();
+            let lookup = if lookups.len() > 1 {
+                lookups.pop_front()
+            } else {
+                lookups.front().cloned()
+            };
+            let level = |err, confirmation_status| {
+                Some(TransactionStatus {
+                    slot: 1,
+                    confirmations: Some(1),
+                    status: Ok(()),
+                    err,
+                    confirmation_status: Some(confirmation_status),
+                })
+            };
+            let status = match lookup.expect("a scripted lookup") {
+                Lookup::Fails => return Err(ClientError::Rpc("lookup timed out".into())),
+                Lookup::Missing => None,
+                Lookup::Processed => level(None, TransactionConfirmationStatus::Processed),
+                Lookup::Confirmed(err) => level(err, TransactionConfirmationStatus::Confirmed),
+            };
+            Ok(signatures.iter().map(|_| status.clone()).collect())
+        }
+    }
+
+    const QUICK: IndexerPollConfig = IndexerPollConfig {
+        num_retries: 2,
+        delay_ms: 1,
+        max_delay_ms: 1,
+    };
+
+    fn reconciled(rpc: &Lookups) -> Result<(), WalletError> {
+        reconcile(rpc, Signature::from([3; 64]), 100, QUICK)
+    }
+
+    /// The lookups last until the blockhash expires, however short the
+    /// retry schedule, and only a confirmed status counts: a processed one
+    /// can still be dropped with its fork.
+    #[test]
+    fn a_lost_send_is_looked_up_until_it_is_confirmed() {
+        let unseen = Lookups::new(
+            &[
+                Lookup::Missing,
+                Lookup::Missing,
+                Lookup::Missing,
+                Lookup::Missing,
+                Lookup::Confirmed(None),
+            ],
+            99,
+        );
+        assert_eq!(reconciled(&unseen), Ok(()));
+
+        let processed = Lookups::new(&[Lookup::Processed, Lookup::Confirmed(None)], 99);
+        assert_eq!(reconciled(&processed), Ok(()));
+        assert_eq!(*processed.asked.lock().unwrap(), 2);
+
+        let flaky = Lookups::new(&[Lookup::Fails, Lookup::Confirmed(None)], 99);
+        assert_eq!(reconciled(&flaky), Ok(()));
+    }
+
+    /// Each outcome says whether sending again is safe.
+    #[test]
+    fn a_lost_send_ends_refused_expired_or_unknown() {
+        let refused = Lookups::new(
+            &[Lookup::Confirmed(Some(ChainError::InsufficientFundsForFee))],
+            99,
+        );
+        assert!(matches!(
+            reconciled(&refused),
+            Err(WalletError::Client { message }) if message.contains("Insufficient funds for fee")
+        ));
+
+        let expired = Lookups::new(&[Lookup::Missing], 101);
+        assert!(matches!(
+            reconciled(&expired),
+            Err(WalletError::TransactionExpired { .. })
+        ));
+
+        let unreachable = Lookups::new(&[Lookup::Fails], 99);
+        assert!(matches!(
+            reconciled(&unreachable),
+            Err(WalletError::TransactionOutcomeUnknown { message, .. })
+                if message.contains("lookup timed out")
+        ));
+
+        let unconfirmed = Lookups::new(&[Lookup::Processed], 99);
+        assert!(matches!(
+            reconciled(&unconfirmed),
+            Err(WalletError::TransactionOutcomeUnknown { .. })
+        ));
+    }
+
+    /// A send refused in simulation was never sent and settles at once; one
+    /// found already processed may have landed and is looked up.
+    #[test]
+    fn only_an_already_processed_simulation_is_looked_up() {
+        let preflight = |err: &str| {
+            let result: solana_rpc_client_api::response::RpcSimulateTransactionResult =
+                serde_json::from_str(&format!(r#"{{"err":"{err}"}}"#)).unwrap();
+            ClientError::SolanaRpcTransaction {
+                operation: "process_transaction",
+                source: solana_rpc_client_api::request::RpcError::RpcResponseError {
+                    code: -32002,
+                    message: "Transaction simulation failed".into(),
+                    data: solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(result),
+                }
+                .into(),
+            }
+        };
+        assert!(settles_the_send(&preflight("InsufficientFundsForFee")));
+        assert!(!settles_the_send(&preflight("AlreadyProcessed")));
+        assert!(!settles_the_send(&ClientError::Rpc(
+            "connection reset".into()
+        )));
     }
 
     /// The notes and history wait for the indexer to reach the RPC's slot,
@@ -1461,7 +1695,7 @@ mod tests {
     #[test]
     fn submit_checks_every_signature_before_sending() {
         let signer = Keypair::new();
-        let wallet = open(&signer).unwrap();
+        let mut wallet = open(&signer).unwrap();
         let pending = || unsigned(&signer);
         assert_eq!(pending().signers(), vec![signer.pubkey().to_string()]);
         let valid = signer.sign_message(&pending().message());
@@ -1481,11 +1715,16 @@ mod tests {
         ] {
             assert_eq!(wallet.submit(&pending(), signatures).err(), Some(expected));
         }
-        // A valid signature gets as far as the transport.
+        // A valid signature gets as far as the transport, which answers
+        // neither the send nor the lookups after it.
+        wallet.send_lookup = QUICK;
         let error = wallet
             .submit(&pending(), vec![valid.as_ref().to_vec()])
             .unwrap_err();
-        assert!(matches!(error, WalletError::Client { .. }), "{error:?}");
+        assert!(
+            matches!(error, WalletError::TransactionOutcomeUnknown { .. }),
+            "{error:?}"
+        );
     }
 
     #[test]
