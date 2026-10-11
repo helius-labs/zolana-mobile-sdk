@@ -169,19 +169,20 @@ class _WalletScreenState extends State<WalletScreen> {
     final generation = _generation;
     setState(() => _refreshing = true);
     try {
-      // One read of the notes and one of the history cover every asset.
-      final balances = await wallet.balances();
-      final history = await wallet.activity();
-      final publics = await Future.wait([
+      // One read of the indexer covers every asset's balance and history;
+      // the public balances are read beside it.
+      final publics = Future.wait([
         for (final asset in demoAssets) _publicBalance(wallet, asset),
       ]);
+      final overview = await wallet.overview();
+      final public = await publics;
       if (!_current(generation)) return;
       setState(() {
-        _balances = balances;
-        _history = history;
+        _balances = overview.balances;
+        _history = overview.activity;
         _publics = {
           for (final (index, asset) in demoAssets.indexed)
-            asset.mint: publics[index],
+            asset.mint: public[index],
         };
       });
     } catch (error) {

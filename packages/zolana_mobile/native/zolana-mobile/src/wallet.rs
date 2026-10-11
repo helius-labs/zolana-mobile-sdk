@@ -47,7 +47,7 @@ use zolana_client::{
         try_resolve_registered_address,
     },
     ClientError, ComputeBudgetConfig, IndexerPollConfig, IndexerRpcConfig, MergeSubmission,
-    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, SpendableUtxos, Submission,
+    ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, Submission, UtxoScan, UtxoScanResult,
     ZolanaClient,
 };
 use zolana_interface::pda;
@@ -225,6 +225,25 @@ pub struct WalletKeys {
     pub viewing_public_key: Vec<u8>,
     pub nullifier_private_key: Vec<u8>,
     pub nullifier_public_key: Vec<u8>,
+}
+
+/// The private balances, one per asset held, and the history, newest first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalletOverview {
+    pub balances: Vec<TokenBalance>,
+    pub activity: Vec<ActivityEntry>,
+}
+
+fn token_balances(spendable: &SpendableDecryptionResult) -> Vec<TokenBalance> {
+    spendable
+        .balances
+        .assets
+        .iter()
+        .map(|balance| TokenBalance {
+            mint: mint_name(&balance.mint),
+            amount: balance.amount,
+        })
+        .collect()
 }
 
 /// A spendable private balance. `mint` is `None` for SOL.
@@ -496,7 +515,8 @@ impl MobileWallet {
                 self.native_prover
                     .take_failure()
                     .unwrap_or_else(|| failure.into())
-            })?;
+            })?
+            .message;
         let pending = self.pending(
             Operation::Merge {
                 mint: mint_name(&asset.mint),
@@ -553,16 +573,17 @@ impl MobileWallet {
     /// Spendable private balances, read from the indexer now: one per asset
     /// held in SOL and the configured mints.
     pub fn balances(&mut self) -> Result<Vec<TokenBalance>, WalletError> {
-        Ok(self
-            .spendable()?
-            .balances
-            .assets
-            .iter()
-            .map(|balance| TokenBalance {
-                mint: mint_name(&balance.mint),
-                amount: balance.amount,
-            })
-            .collect())
+        Ok(token_balances(&self.spendable()?))
+    }
+
+    /// [`Self::balances`] and [`Self::activity`] from one read of the
+    /// indexer, which each of them makes on its own.
+    pub fn overview(&mut self) -> Result<WalletOverview, WalletError> {
+        let scan = self.scan()?;
+        Ok(WalletOverview {
+            balances: token_balances(&scan.spendable),
+            activity: activity::entries(&scan.history),
+        })
     }
 
     /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -584,9 +605,7 @@ impl MobileWallet {
     /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
     pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, WalletError> {
-        let indexed = self.indexed()?;
-        let assets = self.assets.registry(&self.client)?;
-        Ok(activity::fetch(&self.keys, assets, &self.client, indexed)?)
+        Ok(activity::entries(&self.scan()?.history))
     }
 
     /// Build and prove a private transfer of `mint` (SOL for `None`) to one
@@ -845,9 +864,15 @@ impl MobileWallet {
     /// The wallet's spendable notes, in SOL and every configured mint, once
     /// the indexer has caught up with the RPC.
     fn spendable(&mut self) -> Result<SpendableDecryptionResult, WalletError> {
+        Ok(self.scan()?.spendable)
+    }
+
+    /// The wallet's notes and history, in SOL and every configured mint, once
+    /// the indexer has caught up with the RPC.
+    fn scan(&mut self) -> Result<UtxoScanResult, WalletError> {
         let indexed = self.indexed()?;
         let assets = self.assets.registry(&self.client)?;
-        Ok(SpendableUtxos::new(&self.keys, assets)
+        Ok(UtxoScan::new(&self.keys, assets)
             .with_indexer_config(indexed)
             .fetch(&self.client)?)
     }
@@ -889,6 +914,7 @@ impl MobileWallet {
         self.native_prover.take_failure();
         submission
             .finish_unsigned_sync(&self.client)
+            .map(|unsigned| unsigned.message)
             .map_err(|failure| {
                 self.native_prover
                     .take_failure()
@@ -1536,9 +1562,25 @@ mod tests {
             }
         };
 
-        let (mut wallet, _) = rpc_wallet(&signer, at_slot(100));
+        let (mut wallet, asked) = rpc_wallet(&signer, at_slot(100));
         assert!(wallet.balances().expect("caught up").is_empty());
         assert!(wallet.activity().expect("caught up").is_empty());
+        asked.lock().unwrap().clear();
+        assert_eq!(
+            wallet.overview().expect("caught up"),
+            WalletOverview {
+                balances: Vec::new(),
+                activity: Vec::new(),
+            }
+        );
+        // One read of each stream serves both halves.
+        let tag_reads = asked
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|method| *method == "getShieldedTransactionsByTags")
+            .count();
+        assert_eq!(tag_reads, 1);
 
         let (mut wallet, asked) = rpc_wallet(&signer, at_slot(90));
         let behind = WalletError::IndexerBehind {

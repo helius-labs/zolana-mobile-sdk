@@ -189,7 +189,9 @@ await wallet.transfer(
   `privateBalance()`, `activity()` and every spend read the wallet's notes from
   the indexer when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
   has the transaction, so notes spent by another session or device are never
-  picked.
+  picked. Each of those reads is a full read of the wallet's notes: a screen
+  that shows balances and history calls `overview()`, which returns both from
+  one read, and filters by asset itself.
 - **Errors** are `WalletError`s that say what happened, with its data; the
   table below lists them. Errors never contain key material.
 
