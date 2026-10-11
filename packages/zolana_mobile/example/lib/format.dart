@@ -18,16 +18,16 @@ String shortAddress(String value) => value.length <= 12
 String explorerUrl(String signature) =>
     'https://explorer.solana.com/tx/$signature?cluster=devnet';
 
-/// What a prepared transaction does, to show before signing. A mint the demo
-/// does not hold shows in base units.
-String approvalText(PreparedTransaction tx) {
+/// What a prepared transaction's [operation] does, to show before signing. A
+/// mint the demo does not hold shows in base units.
+String approvalText(Operation operation) {
   String format(BigInt units, String? mint) => switch (demoAsset(mint)) {
     final asset? => asset.format(units),
     null => '$units units of ${shortAddress(mint!)}',
   };
   String pay(Payment payment, String? mint) =>
       '${format(payment.amount, mint)} to ${shortAddress(payment.recipient)}';
-  return switch (tx.operation) {
+  return switch (operation) {
     Operation_Registration() => 'Register for private payments',
     Operation_Deposit(:final mint, :final amount) =>
       'Shield ${format(amount, mint)}',
@@ -39,6 +39,8 @@ String approvalText(PreparedTransaction tx) {
       enabled ? 'Allow merges of your notes' : 'Stop merges of your notes',
     Operation_Merge(:final mint, :final amount) =>
       'Combine notes holding ${format(amount, mint)}',
+    Operation_Custom(:final programs) =>
+      'Call ${programs.map(shortAddress).join(', ')}',
   };
 }
 

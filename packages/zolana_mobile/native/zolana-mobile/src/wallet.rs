@@ -144,6 +144,10 @@ pub enum Operation {
     /// account. Public: the account and roughly how many notes; not the asset
     /// or any amount.
     Merge { mint: Option<String>, amount: u64 },
+    /// A transaction the application composed itself, such as a call to
+    /// another program that spends this wallet's notes; `programs` are its
+    /// top-level programs. This wallet does not prepare one yet.
+    Custom { programs: Vec<String> },
 }
 
 /// One recipient of a private transfer and the amount it receives.

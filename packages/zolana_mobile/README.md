@@ -326,8 +326,10 @@ await wallet.confirm(tx, signature); // base58 transaction signature
 
 `tx.operation` has one variant per kind of transaction, each with only its own
 fields (amounts in base units, `mint` `null` for SOL). Match on it as on
-`WalletError`; the switch covers every kind, so a new one is a compile error
-rather than a blank approval screen:
+`WalletError`; the compiler checks that the switch covers every kind.
+`Operation_Custom` is a transaction the application composes itself, such as a
+call to another program, named by its top-level `programs`; the wallet does
+not prepare one yet.
 
 ```dart
 final text = switch (tx.operation) {
@@ -339,6 +341,7 @@ final text = switch (tx.operation) {
     'Unshield $amount to $recipient',
   Operation_Merging(:final enabled) => enabled ? 'Allow merges' : 'Stop merges',
   Operation_Merge(:final amount) => 'Combine notes holding $amount',
+  Operation_Custom(:final programs) => 'Call ${programs.join(', ')}',
 };
 ```
 

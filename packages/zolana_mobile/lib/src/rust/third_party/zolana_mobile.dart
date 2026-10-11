@@ -461,6 +461,12 @@ sealed class Operation with _$Operation {
   /// or any amount.
   const factory Operation.merge({String? mint, required BigInt amount}) =
       Operation_Merge;
+
+  /// A transaction the application composed itself, such as a call to
+  /// another program that spends this wallet's notes; `programs` are its
+  /// top-level programs. This wallet does not prepare one yet.
+  const factory Operation.custom({required List<String> programs}) =
+      Operation_Custom;
 }
 
 /// One recipient of a private transfer and the amount it receives.

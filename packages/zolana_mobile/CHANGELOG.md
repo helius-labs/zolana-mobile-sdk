@@ -58,9 +58,11 @@ Unreleased.
   `operation`, `feePayer`, `signers`, `message` and `lastValidBlockHeight`.
   `operation` has one variant per kind, each with its own fields
   (`Operation_Transfer` its `mint` and `payments`, `Operation_Withdrawal` its
-  `recipient`, `Operation_Merging` whether it turns merges on); the
-  application builds its approval text from it, and the `SolanaSigner`
-  receives the transaction it signs.
+  `recipient`, `Operation_Merging` whether it turns merges on,
+  `Operation_Custom` the top-level programs of a transaction the application
+  composes, which the wallet does not prepare yet); the application builds
+  its approval text from it, and the `SolanaSigner` receives the transaction
+  it signs.
 * `exportKeys()` and `ZolanaWallet.openWithKeys()`: open the wallet from its
   saved derived keys, without a derivation signature; the signer is optional.
 * `close()` for lock and account switch: it rejects queued operations and a

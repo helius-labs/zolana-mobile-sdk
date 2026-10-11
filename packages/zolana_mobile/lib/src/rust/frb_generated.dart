@@ -2209,6 +2209,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           mint: dco_decode_opt_String(raw[1]),
           amount: dco_decode_u_64(raw[2]),
         );
+      case 6:
+        return Operation_Custom(programs: dco_decode_list_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
@@ -3096,6 +3098,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_mint = sse_decode_opt_String(deserializer);
         var var_amount = sse_decode_u_64(deserializer);
         return Operation_Merge(mint: var_mint, amount: var_amount);
+      case 6:
+        var var_programs = sse_decode_list_String(deserializer);
+        return Operation_Custom(programs: var_programs);
       default:
         throw UnimplementedError('');
     }
@@ -4094,6 +4099,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_i_32(5, serializer);
         sse_encode_opt_String(mint, serializer);
         sse_encode_u_64(amount, serializer);
+      case Operation_Custom(programs: final programs):
+        sse_encode_i_32(6, serializer);
+        sse_encode_list_String(programs, serializer);
     }
   }
 

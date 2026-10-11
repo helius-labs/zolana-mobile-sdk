@@ -1976,6 +1976,9 @@ const _: fn() = || {
             let _: Option<String> = mint;
             let _: u64 = amount;
         }
+        zolana_mobile::Operation::Custom { programs } => {
+            let _: Vec<String> = programs;
+        }
     }
     {
         let Payment = None::<zolana_mobile::Payment>.unwrap();
@@ -2643,6 +2646,12 @@ impl SseDecode for zolana_mobile::Operation {
                 return zolana_mobile::Operation::Merge {
                     mint: var_mint,
                     amount: var_amount,
+                };
+            }
+            6 => {
+                let mut var_programs = <Vec<String>>::sse_decode(deserializer);
+                return zolana_mobile::Operation::Custom {
+                    programs: var_programs,
                 };
             }
             _ => {
@@ -3548,6 +3557,9 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Operation> {
                 amount.into_into_dart().into_dart(),
             ]
             .into_dart(),
+            zolana_mobile::Operation::Custom { programs } => {
+                [6.into_dart(), programs.into_into_dart().into_dart()].into_dart()
+            }
             _ => {
                 unimplemented!("");
             }
@@ -4338,6 +4350,10 @@ impl SseEncode for zolana_mobile::Operation {
                 <i32>::sse_encode(5, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
                 <u64>::sse_encode(amount, serializer);
+            }
+            zolana_mobile::Operation::Custom { programs } => {
+                <i32>::sse_encode(6, serializer);
+                <Vec<String>>::sse_encode(programs, serializer);
             }
             _ => {
                 unimplemented!("");

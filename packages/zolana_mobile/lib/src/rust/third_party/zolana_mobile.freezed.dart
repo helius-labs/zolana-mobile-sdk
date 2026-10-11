@@ -56,7 +56,7 @@ extension OperationPatterns on Operation {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( Operation_Registration value)?  registration,TResult Function( Operation_Deposit value)?  deposit,TResult Function( Operation_Transfer value)?  transfer,TResult Function( Operation_Withdrawal value)?  withdrawal,TResult Function( Operation_Merging value)?  merging,TResult Function( Operation_Merge value)?  merge,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( Operation_Registration value)?  registration,TResult Function( Operation_Deposit value)?  deposit,TResult Function( Operation_Transfer value)?  transfer,TResult Function( Operation_Withdrawal value)?  withdrawal,TResult Function( Operation_Merging value)?  merging,TResult Function( Operation_Merge value)?  merge,TResult Function( Operation_Custom value)?  custom,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
@@ -65,7 +65,8 @@ return deposit(_that);case Operation_Transfer() when transfer != null:
 return transfer(_that);case Operation_Withdrawal() when withdrawal != null:
 return withdrawal(_that);case Operation_Merging() when merging != null:
 return merging(_that);case Operation_Merge() when merge != null:
-return merge(_that);case _:
+return merge(_that);case Operation_Custom() when custom != null:
+return custom(_that);case _:
   return orElse();
 
 }
@@ -83,7 +84,7 @@ return merge(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( Operation_Registration value)  registration,required TResult Function( Operation_Deposit value)  deposit,required TResult Function( Operation_Transfer value)  transfer,required TResult Function( Operation_Withdrawal value)  withdrawal,required TResult Function( Operation_Merging value)  merging,required TResult Function( Operation_Merge value)  merge,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( Operation_Registration value)  registration,required TResult Function( Operation_Deposit value)  deposit,required TResult Function( Operation_Transfer value)  transfer,required TResult Function( Operation_Withdrawal value)  withdrawal,required TResult Function( Operation_Merging value)  merging,required TResult Function( Operation_Merge value)  merge,required TResult Function( Operation_Custom value)  custom,}){
 final _that = this;
 switch (_that) {
 case Operation_Registration():
@@ -92,7 +93,8 @@ return deposit(_that);case Operation_Transfer():
 return transfer(_that);case Operation_Withdrawal():
 return withdrawal(_that);case Operation_Merging():
 return merging(_that);case Operation_Merge():
-return merge(_that);}
+return merge(_that);case Operation_Custom():
+return custom(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -106,7 +108,7 @@ return merge(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( Operation_Registration value)?  registration,TResult? Function( Operation_Deposit value)?  deposit,TResult? Function( Operation_Transfer value)?  transfer,TResult? Function( Operation_Withdrawal value)?  withdrawal,TResult? Function( Operation_Merging value)?  merging,TResult? Function( Operation_Merge value)?  merge,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( Operation_Registration value)?  registration,TResult? Function( Operation_Deposit value)?  deposit,TResult? Function( Operation_Transfer value)?  transfer,TResult? Function( Operation_Withdrawal value)?  withdrawal,TResult? Function( Operation_Merging value)?  merging,TResult? Function( Operation_Merge value)?  merge,TResult? Function( Operation_Custom value)?  custom,}){
 final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
@@ -115,7 +117,8 @@ return deposit(_that);case Operation_Transfer() when transfer != null:
 return transfer(_that);case Operation_Withdrawal() when withdrawal != null:
 return withdrawal(_that);case Operation_Merging() when merging != null:
 return merging(_that);case Operation_Merge() when merge != null:
-return merge(_that);case _:
+return merge(_that);case Operation_Custom() when custom != null:
+return custom(_that);case _:
   return null;
 
 }
@@ -132,7 +135,7 @@ return merge(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount)?  deposit,TResult Function( String? mint,  List<Payment> payments)?  transfer,TResult Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount)?  deposit,TResult Function( String? mint,  List<Payment> payments)?  transfer,TResult Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,TResult Function( List<String> programs)?  custom,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
 return registration();case Operation_Deposit() when deposit != null:
@@ -140,7 +143,8 @@ return deposit(_that.mint,_that.amount);case Operation_Transfer() when transfer 
 return transfer(_that.mint,_that.payments);case Operation_Withdrawal() when withdrawal != null:
 return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging() when merging != null:
 return merging(_that.enabled);case Operation_Merge() when merge != null:
-return merge(_that.mint,_that.amount);case _:
+return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
+return custom(_that.programs);case _:
   return orElse();
 
 }
@@ -158,7 +162,7 @@ return merge(_that.mint,_that.amount);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount)  deposit,required TResult Function( String? mint,  List<Payment> payments)  transfer,required TResult Function( String? mint,  String recipient,  BigInt amount)  withdrawal,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount)  deposit,required TResult Function( String? mint,  List<Payment> payments)  transfer,required TResult Function( String? mint,  String recipient,  BigInt amount)  withdrawal,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,required TResult Function( List<String> programs)  custom,}) {final _that = this;
 switch (_that) {
 case Operation_Registration():
 return registration();case Operation_Deposit():
@@ -166,7 +170,8 @@ return deposit(_that.mint,_that.amount);case Operation_Transfer():
 return transfer(_that.mint,_that.payments);case Operation_Withdrawal():
 return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging():
 return merging(_that.enabled);case Operation_Merge():
-return merge(_that.mint,_that.amount);}
+return merge(_that.mint,_that.amount);case Operation_Custom():
+return custom(_that.programs);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -180,7 +185,7 @@ return merge(_that.mint,_that.amount);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount)?  deposit,TResult? Function( String? mint,  List<Payment> payments)?  transfer,TResult? Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount)?  deposit,TResult? Function( String? mint,  List<Payment> payments)?  transfer,TResult? Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,TResult? Function( List<String> programs)?  custom,}) {final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
 return registration();case Operation_Deposit() when deposit != null:
@@ -188,7 +193,8 @@ return deposit(_that.mint,_that.amount);case Operation_Transfer() when transfer 
 return transfer(_that.mint,_that.payments);case Operation_Withdrawal() when withdrawal != null:
 return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging() when merging != null:
 return merging(_that.enabled);case Operation_Merge() when merge != null:
-return merge(_that.mint,_that.amount);case _:
+return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
+return custom(_that.programs);case _:
   return null;
 
 }
@@ -578,6 +584,80 @@ class _$Operation_MergeCopyWithImpl<$Res>
 mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
 as String?,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
 as BigInt,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class Operation_Custom extends Operation {
+  const Operation_Custom({required  List<String> programs}): _programs = programs,super._();
+  
+
+ final  List<String> _programs;
+ List<String> get programs {
+  if (_programs is EqualUnmodifiableListView) return _programs;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_programs);
+}
+
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$Operation_CustomCopyWith<Operation_Custom> get copyWith => _$Operation_CustomCopyWithImpl<Operation_Custom>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Custom&&const DeepCollectionEquality().equals(other.programs, _programs));
+}
+
+
+@override
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_programs));
+}
+
+@override
+String toString() {
+    return 'Operation.custom(programs: $programs)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $Operation_CustomCopyWith<$Res> implements $OperationCopyWith<$Res> {
+  factory $Operation_CustomCopyWith(Operation_Custom value, $Res Function(Operation_Custom) _then) = _$Operation_CustomCopyWithImpl;
+@useResult
+$Res call({
+ List<String> programs
+});
+
+
+
+
+}
+/// @nodoc
+class _$Operation_CustomCopyWithImpl<$Res>
+    implements $Operation_CustomCopyWith<$Res> {
+  _$Operation_CustomCopyWithImpl(this._self, this._then);
+
+  final Operation_Custom _self;
+  final $Res Function(Operation_Custom) _then;
+
+/// Create a copy of Operation
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? programs = null,}) {
+  return _then(Operation_Custom(
+programs: null == programs ? _self._programs : programs // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 
