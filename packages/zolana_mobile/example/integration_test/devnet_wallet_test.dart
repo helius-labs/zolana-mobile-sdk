@@ -144,13 +144,7 @@ void main() {
         ],
         proving: Proving.remote,
       ),
-      throwsA(
-        isA<ZolanaWalletException>().having(
-          (e) => e.error,
-          'error',
-          const WalletError.remoteProverMissing(),
-        ),
-      ),
+      throwsA(const WalletError.remoteProverMissing()),
     );
     await local.close();
     // By default the Helius gateway, whose base URL is the indexer's.

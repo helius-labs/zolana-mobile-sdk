@@ -44,8 +44,8 @@ use zolana_interface::{
 };
 use zolana_mobile::{
     derivation_message, ActivityKind, MintConfig, MobileWallet, Operation, Payment,
-    PendingTransaction, Proving, RegistrationStatus, Transport, TransportFailure, TransportOutcome,
-    TransportRequest, TransportResponse, WalletConfig, WalletError,
+    PreparedTransaction, Proving, RegistrationStatus, Transport, TransportFailure,
+    TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
 };
 use zolana_program::instruction::{CreateAssociatedTokenAccount, CreateSplInterface};
 
@@ -191,12 +191,12 @@ fn open_with(signer: &Keypair, config: WalletConfig) -> MobileWallet {
 }
 
 /// Sign as `signers`, which must be the required signers in order.
-fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PendingTransaction) -> String {
+fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PreparedTransaction) -> String {
     let expected: Vec<String> = signers.iter().map(|s| s.pubkey().to_string()).collect();
     assert_eq!(pending.signers(), expected);
     let signatures = signers
         .iter()
-        .map(|s| s.sign_message(&pending.message_bytes()).as_ref().to_vec())
+        .map(|s| s.sign_message(&pending.message()).as_ref().to_vec())
         .collect();
     println!("{:?}", pending.operation());
     wallet.submit(&pending, signatures).expect("submit")
@@ -304,7 +304,7 @@ fn register_deposit_transfer_and_receive() {
         .find_map(|_| {
             std::thread::sleep(std::time::Duration::from_millis(500));
             let refreshed = sender_wallet.refresh(&pending).expect("refresh");
-            (refreshed.message_bytes() != pending.message_bytes()).then_some(refreshed)
+            (refreshed.message() != pending.message()).then_some(refreshed)
         })
         .expect("a new blockhash");
     assert!(refreshed.last_valid_block_height() >= pending.last_valid_block_height());

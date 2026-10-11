@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:zolana_mobile/src/http_transport.dart';
 import 'package:zolana_mobile/src/rust/third_party/zolana_mobile.dart'
-    show MobileWallet, PendingTransaction, ProvingKeys, TransportOutcome;
+    show MobileWallet, PreparedTransaction, ProvingKeys, TransportOutcome;
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 const owner = 'Owner1111111111111111111111111111111111111';
@@ -53,46 +53,40 @@ class RecordingSigner implements SolanaSigner {
   }
 }
 
-class FakePending implements PendingTransaction {
+class FakePending implements PreparedTransaction {
   FakePending(
-    this.bytes, {
-    this.signerKeys = const [owner],
+    this.message, {
+    this.signers = const [owner],
     this.height = 100,
-    this.op = const Operation.registration(),
+    this.operation = const Operation.registration(),
   });
 
-  final Uint8List bytes;
-  final List<String> signerKeys;
+  @override
+  final Uint8List message;
+  @override
+  final List<String> signers;
   final int height;
-  final Operation op;
+  @override
+  final Operation operation;
 
   @override
-  Future<BigInt> lastValidBlockHeight() async => BigInt.from(height);
+  BigInt get lastValidBlockHeight => BigInt.from(height);
+
+  @override
+  String get feePayer => signers.first;
 
   @override
   void dispose() {}
 
   @override
   bool get isDisposed => false;
-
-  @override
-  Future<Operation> operation() async => op;
-
-  @override
-  Future<Uint8List> messageBytes() async => bytes;
-
-  @override
-  Future<List<String>> signers() async => signerKeys;
-
-  @override
-  Future<String> feePayer() async => signerKeys.first;
 }
 
 class FakeWallet implements MobileWallet {
-  final submitted = <(PendingTransaction, List<Uint8List>)>[];
-  final released = <PendingTransaction>[];
+  final submitted = <(PreparedTransaction, List<Uint8List>)>[];
+  final released = <PreparedTransaction>[];
   final waited = <String>[];
-  final confirmed = <(PendingTransaction, String)>[];
+  final confirmed = <(PreparedTransaction, String)>[];
   final events = <String>[];
   Completer<void>? holdBalances;
 
@@ -119,7 +113,7 @@ class FakeWallet implements MobileWallet {
   Future<WalletKeys> exportKeys() async => savedKeys;
 
   @override
-  Future<void> release({required PendingTransaction pending}) async =>
+  Future<void> release({required PreparedTransaction pending}) async =>
       released.add(pending);
 
   @override
@@ -128,15 +122,15 @@ class FakeWallet implements MobileWallet {
 
   /// A new blockhash: new message bytes and a later height, same signers.
   @override
-  Future<PendingTransaction> refresh({
-    required PendingTransaction pending,
+  Future<PreparedTransaction> refresh({
+    required PreparedTransaction pending,
   }) async {
     final old = pending as FakePending;
     return FakePending(
-      Uint8List.fromList([...old.bytes, 0]),
-      signerKeys: old.signerKeys,
+      Uint8List.fromList([...old.message, 0]),
+      signers: old.signers,
       height: old.height + 150,
-      op: old.op,
+      operation: old.operation,
     );
   }
 
@@ -162,7 +156,7 @@ class FakeWallet implements MobileWallet {
   Future<List<ActivityEntry>> activity() async => const [];
 
   @override
-  Future<PendingTransaction?> prepareRegistration() async {
+  Future<PreparedTransaction?> prepareRegistration() async {
     await holdRegistration?.future;
     return switch (status) {
       RegistrationStatus.registered => null,
@@ -179,16 +173,16 @@ class FakeWallet implements MobileWallet {
   Future<bool> mergingEnabled() async => merging;
 
   @override
-  Future<PendingTransaction?> prepareMerging({required bool enabled}) async =>
+  Future<PreparedTransaction?> prepareMerging({required bool enabled}) async =>
       enabled == merging
       ? null
       : FakePending(
           Uint8List.fromList([5]),
-          op: Operation.merging(enabled: enabled),
+          operation: Operation.merging(enabled: enabled),
         );
 
   @override
-  Future<PendingTransaction> prepareMerge({
+  Future<PreparedTransaction> prepareMerge({
     String? mint,
     int? maxInputs,
     String? feePayer,
@@ -198,21 +192,21 @@ class FakeWallet implements MobileWallet {
     merges.add((mint, maxInputs, feePayer, proving));
     return FakePending(
       Uint8List.fromList([6]),
-      op: Operation.merge(mint: mint, amount: BigInt.two),
+      operation: Operation.merge(mint: mint, amount: BigInt.two),
     );
   }
 
   @override
-  Future<PendingTransaction> prepareDeposit({
+  Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
   }) async => FakePending(
     Uint8List.fromList([1, 2]),
-    op: Operation.deposit(mint: mint, amount: amount),
+    operation: Operation.deposit(mint: mint, amount: amount),
   );
 
   @override
-  Future<PendingTransaction> prepareTransfer({
+  Future<PreparedTransaction> prepareTransfer({
     required List<Payment> payments,
     String? mint,
     String? feePayer,
@@ -226,13 +220,13 @@ class FakeWallet implements MobileWallet {
     if (error != null) throw error;
     return FakePending(
       Uint8List.fromList([7, 8]),
-      signerKeys: transferSigners,
-      op: Operation.transfer(mint: mint, payments: payments),
+      signers: transferSigners,
+      operation: Operation.transfer(mint: mint, payments: payments),
     );
   }
 
   @override
-  Future<PendingTransaction> prepareWithdrawal({
+  Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     String? mint,
     required BigInt amount,
@@ -242,7 +236,7 @@ class FakeWallet implements MobileWallet {
     proved.add(proving);
     return FakePending(
       Uint8List.fromList([9]),
-      op: Operation.withdrawal(
+      operation: Operation.withdrawal(
         mint: mint,
         recipient: recipient,
         amount: amount,
@@ -252,7 +246,7 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<String> submit({
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required List<Uint8List> signatures,
   }) async {
     submitted.add((pending, signatures));
@@ -261,7 +255,7 @@ class FakeWallet implements MobileWallet {
 
   @override
   Future<void> confirm({
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required String signature,
   }) async {
     confirmed.add((pending, signature));
@@ -400,9 +394,7 @@ openWallet() async {
   return (wallet, native, signer, backend);
 }
 
-Matcher throwsWalletError(WalletError error) => throwsA(
-  isA<ZolanaWalletException>().having((e) => e.error, 'error', error),
-);
+Matcher throwsWalletError(WalletError error) => throwsA(error);
 
 void main() {
   test('opens from a signature over the derivation message', () async {
@@ -1034,7 +1026,7 @@ void main() {
       ),
       throwsA(isA<StateError>()),
     );
-    expect((native.released.single as FakePending).bytes, [7, 8]);
+    expect((native.released.single as FakePending).message, [7, 8]);
     expect(native.submitted, isEmpty);
 
     final prepared = await wallet.prepareTransfer(
@@ -1064,7 +1056,7 @@ void main() {
 
     await wallet.submit(refreshed, [Uint8List(64)]);
     expect(
-      (native.submitted.single.$1 as FakePending).bytes,
+      (native.submitted.single.$1 as FakePending).message,
       refreshed.message,
     );
     await wallet.close();
@@ -1373,13 +1365,7 @@ void main() {
     native.keys.holdPart!.complete();
     await done;
     expect(native.keys.answers, [false]);
-    expect(errors, [
-      isA<ZolanaWalletException>().having(
-        (e) => e.error,
-        'error',
-        const WalletError.walletClosed(),
-      ),
-    ]);
+    expect(errors, [const WalletError.walletClosed()]);
     expect(
       () => wallet.prefetchProvingKeys(maxInputs: 1).drain<void>(),
       throwsWalletError(const WalletError.walletClosed()),
@@ -1394,12 +1380,8 @@ void main() {
     await expectLater(
       wallet.prefetchProvingKeys(maxInputs: 1),
       emitsError(
-        isA<ZolanaWalletException>().having(
-          (e) => e.error,
-          'error',
-          const WalletError.provingKeyDownloadFailed(
-            name: 'transfer_confidential_1_2.key',
-          ),
+        const WalletError.provingKeyDownloadFailed(
+          name: 'transfer_confidential_1_2.key',
         ),
       ),
     );
@@ -1420,7 +1402,7 @@ void main() {
 
     native.holdBalances!.complete();
     await balances;
-    await expectLater(transfer, throwsA(isA<ZolanaWalletException>()));
+    await expectLater(transfer, throwsA(isA<WalletError>()));
     expect(await deposit, 'signature');
     expect(native.events, ['balances start', 'balances end', 'transfer SOL']);
   });

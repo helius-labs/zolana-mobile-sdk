@@ -68,7 +68,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
   Future<void> confirm({
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required String signature,
   });
 
@@ -112,7 +112,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
-  Future<PendingTransaction> prepareDeposit({
+  Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
   });
@@ -131,7 +131,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// nullifier secret, which a remote prover receives. The proof expires
   /// after ten minutes, so a merge cannot be sent later by whoever holds it;
   /// [`Self::refresh`] does not extend it.
-  Future<PendingTransaction> prepareMerge({
+  Future<PreparedTransaction> prepareMerge({
     String? mint,
     int? maxInputs,
     String? feePayer,
@@ -143,12 +143,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// proved with this wallet's nullifier secret is valid without this
   /// account's signature: whoever holds the secret and the notes, such as a
   /// prover that proved its spends, can merge them. It cannot move funds.
-  Future<PendingTransaction?> prepareMerging({required bool enabled});
+  Future<PreparedTransaction?> prepareMerging({required bool enabled});
 
   /// `None` when the registry already holds this wallet's address. Fails
   /// with [`WalletError::RegistrationConflict`] when it holds other keys:
   /// this wallet never replaces them.
-  Future<PendingTransaction?> prepareRegistration();
+  Future<PreparedTransaction?> prepareRegistration();
 
   /// Build and prove a private transfer of `mint` (SOL for `None`) to one
   /// or more registered wallets, each receiving its payment as a private
@@ -171,7 +171,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// itself before the message is built: a response that is not a proof of
   /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
   /// does not verify with [`WalletError::ProofInvalid`].
-  Future<PendingTransaction> prepareTransfer({
+  Future<PreparedTransaction> prepareTransfer({
     required List<Payment> payments,
     String? mint,
     String? feePayer,
@@ -185,7 +185,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// creates the account with its own Solana client.
   ///
   /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
-  Future<PendingTransaction> prepareWithdrawal({
+  Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     String? mint,
     required BigInt amount,
@@ -202,7 +202,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<ProvingKeys> provingKeys();
 
   /// `pending` with a new blockhash and the same proof, for an approval that
-  /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
+  /// outlived [`PreparedTransaction::last_valid_block_height`]. Signatures
   /// over the old message do not apply to the new one.
   ///
   /// The proof stays valid while the trees still hold the roots it was built
@@ -212,7 +212,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   ///
   /// A refreshed spend reserves its notes again until its new last valid
   /// block height.
-  Future<PendingTransaction> refresh({required PendingTransaction pending});
+  Future<PreparedTransaction> refresh({required PreparedTransaction pending});
 
   /// Whether the user registry publishes this wallet's shielded address.
   /// Others can only send to a registered wallet.
@@ -221,17 +221,17 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// Release the notes `pending` reserves, so the next spend can select
   /// them: for a prepared spend that will not be sent, such as one the user
   /// declined. Submitting or confirming it does this too.
-  Future<void> release({required PendingTransaction pending});
+  Future<void> release({required PreparedTransaction pending});
 
   Future<String> shieldedAddress();
 
   /// Attach the signatures, send, and wait as [`Self::confirm`] does.
   /// Returns the signature.
   ///
-  /// `signatures` follows [`PendingTransaction::signers`]; each is checked
+  /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
   /// before anything is sent.
   Future<String> submit({
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required List<Uint8List> signatures,
   });
 
@@ -242,22 +242,24 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<void> waitForTransaction({required String signature});
 }
 
-// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PendingTransaction>>
-abstract class PendingTransaction implements RustOpaqueInterface {
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreparedTransaction>>
+abstract class PreparedTransaction implements RustOpaqueInterface {
   /// The base58 account that pays the network fee: the first signer.
-  Future<String> feePayer();
+  String get feePayer;
 
   /// The last block height at which the message can still land. Past it,
   /// [`MobileWallet::refresh`] gives it a new blockhash.
-  Future<BigInt> lastValidBlockHeight();
+  BigInt get lastValidBlockHeight;
 
-  /// The bytes every signer signs with Ed25519.
-  Future<Uint8List> messageBytes();
+  /// The serialized Solana message every signer signs with Ed25519.
+  Uint8List get message;
 
-  Future<Operation> operation();
+  /// What it does, with what it moves and to whom.
+  Operation get operation;
 
-  /// Base58 public keys that must sign, in signature order.
-  Future<List<String>> signers();
+  /// Base58 public keys that must sign, in signature order. The first is
+  /// the fee payer, whose signature is the transaction signature.
+  List<String> get signers;
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ProvingKeys>>

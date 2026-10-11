@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -765510182;
+  int get rustContentHash => -1187796946;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -90,7 +90,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> zolanaMobileMobileWalletConfirm({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required String signature,
   });
 
@@ -116,13 +116,13 @@ abstract class RustLibApi extends BaseApi {
     required Transport transport,
   });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareDeposit({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareDeposit({
     required MobileWallet that,
     String? mint,
     required BigInt amount,
   });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareMerge({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareMerge({
     required MobileWallet that,
     String? mint,
     int? maxInputs,
@@ -130,16 +130,16 @@ abstract class RustLibApi extends BaseApi {
     Proving? proving,
   });
 
-  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareMerging({
+  Future<PreparedTransaction?> zolanaMobileMobileWalletPrepareMerging({
     required MobileWallet that,
     required bool enabled,
   });
 
-  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({
+  Future<PreparedTransaction?> zolanaMobileMobileWalletPrepareRegistration({
     required MobileWallet that,
   });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareTransfer({
     required MobileWallet that,
     required List<Payment> payments,
     String? mint,
@@ -147,7 +147,7 @@ abstract class RustLibApi extends BaseApi {
     Proving? proving,
   });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareWithdrawal({
     required MobileWallet that,
     required String recipient,
     String? mint,
@@ -165,9 +165,9 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
   });
 
-  Future<PendingTransaction> zolanaMobileMobileWalletRefresh({
+  Future<PreparedTransaction> zolanaMobileMobileWalletRefresh({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
   });
 
   Future<RegistrationStatus> zolanaMobileMobileWalletRegistrationStatus({
@@ -176,7 +176,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> zolanaMobileMobileWalletRelease({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
   });
 
   Future<String> zolanaMobileMobileWalletShieldedAddress({
@@ -185,7 +185,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> zolanaMobileMobileWalletSubmit({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required List<Uint8List> signatures,
   });
 
@@ -194,24 +194,24 @@ abstract class RustLibApi extends BaseApi {
     required String signature,
   });
 
-  Future<String> zolanaMobilePendingTransactionFeePayer({
-    required PendingTransaction that,
+  String zolanaMobilePreparedTransactionFeePayer({
+    required PreparedTransaction that,
   });
 
-  Future<BigInt> zolanaMobilePendingTransactionLastValidBlockHeight({
-    required PendingTransaction that,
+  BigInt zolanaMobilePreparedTransactionLastValidBlockHeight({
+    required PreparedTransaction that,
   });
 
-  Future<Uint8List> zolanaMobilePendingTransactionMessageBytes({
-    required PendingTransaction that,
+  Uint8List zolanaMobilePreparedTransactionMessage({
+    required PreparedTransaction that,
   });
 
-  Future<Operation> zolanaMobilePendingTransactionOperation({
-    required PendingTransaction that,
+  Operation zolanaMobilePreparedTransactionOperation({
+    required PreparedTransaction that,
   });
 
-  Future<List<String>> zolanaMobilePendingTransactionSigners({
-    required PendingTransaction that,
+  List<String> zolanaMobilePreparedTransactionSigners({
+    required PreparedTransaction that,
   });
 
   Future<void> zolanaMobileProvingKeysClear({required ProvingKeys that});
@@ -269,13 +269,13 @@ abstract class RustLibApi extends BaseApi {
   CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_MobileWalletPtr;
 
   RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_PendingTransaction;
+  get rust_arc_increment_strong_count_PreparedTransaction;
 
   RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_PendingTransaction;
+  get rust_arc_decrement_strong_count_PreparedTransaction;
 
   CrossPlatformFinalizerArg
-  get rust_arc_decrement_strong_count_PendingTransactionPtr;
+  get rust_arc_decrement_strong_count_PreparedTransactionPtr;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_ProvingKeys;
@@ -377,7 +377,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<void> zolanaMobileMobileWalletConfirm({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required String signature,
   }) {
     return handler.executeNormal(
@@ -388,7 +388,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             pending,
             serializer,
           );
@@ -581,7 +581,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareDeposit({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareDeposit({
     required MobileWallet that,
     String? mint,
     required BigInt amount,
@@ -605,7 +605,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareDepositConstMeta,
@@ -622,7 +622,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareMerge({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareMerge({
     required MobileWallet that,
     String? mint,
     int? maxInputs,
@@ -650,7 +650,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareMergeConstMeta,
@@ -667,7 +667,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareMerging({
+  Future<PreparedTransaction?> zolanaMobileMobileWalletPrepareMerging({
     required MobileWallet that,
     required bool enabled,
   }) {
@@ -689,7 +689,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareMergingConstMeta,
@@ -706,7 +706,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction?> zolanaMobileMobileWalletPrepareRegistration({
+  Future<PreparedTransaction?> zolanaMobileMobileWalletPrepareRegistration({
     required MobileWallet that,
   }) {
     return handler.executeNormal(
@@ -726,7 +726,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareRegistrationConstMeta,
@@ -743,7 +743,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareTransfer({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareTransfer({
     required MobileWallet that,
     required List<Payment> payments,
     String? mint,
@@ -771,7 +771,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareTransferConstMeta,
@@ -788,7 +788,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction> zolanaMobileMobileWalletPrepareWithdrawal({
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareWithdrawal({
     required MobileWallet that,
     required String recipient,
     String? mint,
@@ -818,7 +818,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareWithdrawalConstMeta,
@@ -917,9 +917,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTransaction> zolanaMobileMobileWalletRefresh({
+  Future<PreparedTransaction> zolanaMobileMobileWalletRefresh({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -929,7 +929,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             pending,
             serializer,
           );
@@ -942,7 +942,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         },
         codec: SseCodec(
           decodeSuccessData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction,
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletRefreshConstMeta,
@@ -997,7 +997,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<void> zolanaMobileMobileWalletRelease({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1007,7 +1007,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             pending,
             serializer,
           );
@@ -1074,7 +1074,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<String> zolanaMobileMobileWalletSubmit({
     required MobileWallet that,
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required List<Uint8List> signatures,
   }) {
     return handler.executeNormal(
@@ -1085,7 +1085,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             pending,
             serializer,
           );
@@ -1153,65 +1153,56 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> zolanaMobilePendingTransactionFeePayer({
-    required PendingTransaction that,
+  String zolanaMobilePreparedTransactionFeePayer({
+    required PreparedTransaction that,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             that,
             serializer,
           );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 22,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 22)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
           decodeErrorData: null,
         ),
-        constMeta: kZolanaMobilePendingTransactionFeePayerConstMeta,
+        constMeta: kZolanaMobilePreparedTransactionFeePayerConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionFeePayerConstMeta =>
+  TaskConstMeta get kZolanaMobilePreparedTransactionFeePayerConstMeta =>
       const TaskConstMeta(
-        debugName: "PendingTransaction_fee_payer",
+        debugName: "PreparedTransaction_fee_payer",
         argNames: ["that"],
       );
 
   @override
-  Future<BigInt> zolanaMobilePendingTransactionLastValidBlockHeight({
-    required PendingTransaction that,
+  BigInt zolanaMobilePreparedTransactionLastValidBlockHeight({
+    required PreparedTransaction that,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             that,
             serializer,
           );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 23,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 23)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
           decodeErrorData: null,
         ),
-        constMeta: kZolanaMobilePendingTransactionLastValidBlockHeightConstMeta,
+        constMeta:
+            kZolanaMobilePreparedTransactionLastValidBlockHeightConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
@@ -1219,117 +1210,102 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   TaskConstMeta
-  get kZolanaMobilePendingTransactionLastValidBlockHeightConstMeta =>
+  get kZolanaMobilePreparedTransactionLastValidBlockHeightConstMeta =>
       const TaskConstMeta(
-        debugName: "PendingTransaction_last_valid_block_height",
+        debugName: "PreparedTransaction_last_valid_block_height",
         argNames: ["that"],
       );
 
   @override
-  Future<Uint8List> zolanaMobilePendingTransactionMessageBytes({
-    required PendingTransaction that,
+  Uint8List zolanaMobilePreparedTransactionMessage({
+    required PreparedTransaction that,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             that,
             serializer,
           );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 24,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 24)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: null,
         ),
-        constMeta: kZolanaMobilePendingTransactionMessageBytesConstMeta,
+        constMeta: kZolanaMobilePreparedTransactionMessageConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionMessageBytesConstMeta =>
+  TaskConstMeta get kZolanaMobilePreparedTransactionMessageConstMeta =>
       const TaskConstMeta(
-        debugName: "PendingTransaction_message_bytes",
+        debugName: "PreparedTransaction_message",
         argNames: ["that"],
       );
 
   @override
-  Future<Operation> zolanaMobilePendingTransactionOperation({
-    required PendingTransaction that,
+  Operation zolanaMobilePreparedTransactionOperation({
+    required PreparedTransaction that,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             that,
             serializer,
           );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 25,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 25)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_operation,
           decodeErrorData: null,
         ),
-        constMeta: kZolanaMobilePendingTransactionOperationConstMeta,
+        constMeta: kZolanaMobilePreparedTransactionOperationConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionOperationConstMeta =>
+  TaskConstMeta get kZolanaMobilePreparedTransactionOperationConstMeta =>
       const TaskConstMeta(
-        debugName: "PendingTransaction_operation",
+        debugName: "PreparedTransaction_operation",
         argNames: ["that"],
       );
 
   @override
-  Future<List<String>> zolanaMobilePendingTransactionSigners({
-    required PendingTransaction that,
+  List<String> zolanaMobilePreparedTransactionSigners({
+    required PreparedTransaction that,
   }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             that,
             serializer,
           );
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 26,
-            port: port_,
-          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
           decodeErrorData: null,
         ),
-        constMeta: kZolanaMobilePendingTransactionSignersConstMeta,
+        constMeta: kZolanaMobilePreparedTransactionSignersConstMeta,
         argValues: [that],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kZolanaMobilePendingTransactionSignersConstMeta =>
+  TaskConstMeta get kZolanaMobilePreparedTransactionSignersConstMeta =>
       const TaskConstMeta(
-        debugName: "PendingTransaction_signers",
+        debugName: "PreparedTransaction_signers",
         argNames: ["that"],
       );
 
@@ -1810,12 +1786,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet;
 
   RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_PendingTransaction => wire
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
+  get rust_arc_increment_strong_count_PreparedTransaction => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction;
 
   RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_PendingTransaction => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction;
+  get rust_arc_decrement_strong_count_PreparedTransaction => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_ProvingKeys => wire
@@ -1849,12 +1825,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+    return PreparedTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1894,12 +1870,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+    return PreparedTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -1954,12 +1930,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
+    return PreparedTransactionImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2014,12 +1990,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
-    return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
       raw,
     );
   }
@@ -2223,14 +2199,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction?
-  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction?
+  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null
         ? null
-        : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+        : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             raw,
           );
   }
@@ -2646,12 +2622,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalSseDecode(
+    return PreparedTransactionImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -2706,12 +2682,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalSseDecode(
+    return PreparedTransactionImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -2758,12 +2734,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return PendingTransactionImpl.frbInternalSseDecode(
+    return PreparedTransactionImpl.frbInternalSseDecode(
       sse_decode_usize(deserializer),
       sse_decode_i_32(deserializer),
     );
@@ -2831,12 +2807,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction
-  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction
+  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
       deserializer,
     ));
   }
@@ -3118,14 +3094,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  PendingTransaction?
-  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+  PreparedTransaction?
+  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
-      return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+      return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
         deserializer,
       ));
     } else {
@@ -3607,13 +3583,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+    PreparedTransaction self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
-      (self as PendingTransactionImpl).frbInternalSseEncode(move: true),
+      (self as PreparedTransactionImpl).frbInternalSseEncode(move: true),
       serializer,
     );
   }
@@ -3672,13 +3648,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+    PreparedTransaction self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
-      (self as PendingTransactionImpl).frbInternalSseEncode(move: false),
+      (self as PreparedTransactionImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -3768,13 +3744,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+    PreparedTransaction self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
-      (self as PendingTransactionImpl).frbInternalSseEncode(move: null),
+      (self as PreparedTransactionImpl).frbInternalSseEncode(move: null),
       serializer,
     );
   }
@@ -3835,12 +3811,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction self,
+  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+    PreparedTransaction self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+    sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
       self,
       serializer,
     );
@@ -4117,15 +4093,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
-  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
-    PendingTransaction? self,
+  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+    PreparedTransaction? self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
     if (self != null) {
-      sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPendingTransaction(
+      sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
         self,
         serializer,
       );
@@ -4583,7 +4559,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
   Future<void> confirm({
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required String signature,
   }) => RustLib.instance.api.zolanaMobileMobileWalletConfirm(
     that: this,
@@ -4602,7 +4578,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
-  Future<PendingTransaction> prepareDeposit({
+  Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
   }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareDeposit(
@@ -4625,7 +4601,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// nullifier secret, which a remote prover receives. The proof expires
   /// after ten minutes, so a merge cannot be sent later by whoever holds it;
   /// [`Self::refresh`] does not extend it.
-  Future<PendingTransaction> prepareMerge({
+  Future<PreparedTransaction> prepareMerge({
     String? mint,
     int? maxInputs,
     String? feePayer,
@@ -4643,15 +4619,16 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// proved with this wallet's nullifier secret is valid without this
   /// account's signature: whoever holds the secret and the notes, such as a
   /// prover that proved its spends, can merge them. It cannot move funds.
-  Future<PendingTransaction?> prepareMerging({required bool enabled}) => RustLib
-      .instance
-      .api
-      .zolanaMobileMobileWalletPrepareMerging(that: this, enabled: enabled);
+  Future<PreparedTransaction?> prepareMerging({required bool enabled}) =>
+      RustLib.instance.api.zolanaMobileMobileWalletPrepareMerging(
+        that: this,
+        enabled: enabled,
+      );
 
   /// `None` when the registry already holds this wallet's address. Fails
   /// with [`WalletError::RegistrationConflict`] when it holds other keys:
   /// this wallet never replaces them.
-  Future<PendingTransaction?> prepareRegistration() => RustLib.instance.api
+  Future<PreparedTransaction?> prepareRegistration() => RustLib.instance.api
       .zolanaMobileMobileWalletPrepareRegistration(that: this);
 
   /// Build and prove a private transfer of `mint` (SOL for `None`) to one
@@ -4675,7 +4652,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// itself before the message is built: a response that is not a proof of
   /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
   /// does not verify with [`WalletError::ProofInvalid`].
-  Future<PendingTransaction> prepareTransfer({
+  Future<PreparedTransaction> prepareTransfer({
     required List<Payment> payments,
     String? mint,
     String? feePayer,
@@ -4695,7 +4672,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// creates the account with its own Solana client.
   ///
   /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
-  Future<PendingTransaction> prepareWithdrawal({
+  Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     String? mint,
     required BigInt amount,
@@ -4721,7 +4698,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
       RustLib.instance.api.zolanaMobileMobileWalletProvingKeys(that: this);
 
   /// `pending` with a new blockhash and the same proof, for an approval that
-  /// outlived [`PendingTransaction::last_valid_block_height`]. Signatures
+  /// outlived [`PreparedTransaction::last_valid_block_height`]. Signatures
   /// over the old message do not apply to the new one.
   ///
   /// The proof stays valid while the trees still hold the roots it was built
@@ -4731,7 +4708,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   ///
   /// A refreshed spend reserves its notes again until its new last valid
   /// block height.
-  Future<PendingTransaction> refresh({required PendingTransaction pending}) =>
+  Future<PreparedTransaction> refresh({required PreparedTransaction pending}) =>
       RustLib.instance.api.zolanaMobileMobileWalletRefresh(
         that: this,
         pending: pending,
@@ -4745,7 +4722,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// Release the notes `pending` reserves, so the next spend can select
   /// them: for a prepared spend that will not be sent, such as one the user
   /// declined. Submitting or confirming it does this too.
-  Future<void> release({required PendingTransaction pending}) => RustLib
+  Future<void> release({required PreparedTransaction pending}) => RustLib
       .instance
       .api
       .zolanaMobileMobileWalletRelease(that: this, pending: pending);
@@ -4756,10 +4733,10 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// Attach the signatures, send, and wait as [`Self::confirm`] does.
   /// Returns the signature.
   ///
-  /// `signatures` follows [`PendingTransaction::signers`]; each is checked
+  /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
   /// before anything is sent.
   Future<String> submit({
-    required PendingTransaction pending,
+    required PreparedTransaction pending,
     required List<Uint8List> signatures,
   }) => RustLib.instance.api.zolanaMobileMobileWalletSubmit(
     that: this,
@@ -4779,47 +4756,54 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
 }
 
 @sealed
-class PendingTransactionImpl extends RustOpaque implements PendingTransaction {
+class PreparedTransactionImpl extends RustOpaque
+    implements PreparedTransaction {
   // Not to be used by end users
-  PendingTransactionImpl.frbInternalDcoDecode(List<dynamic> wire)
+  PreparedTransactionImpl.frbInternalDcoDecode(List<dynamic> wire)
     : super.frbInternalDcoDecode(wire, _kStaticData);
 
   // Not to be used by end users
-  PendingTransactionImpl.frbInternalSseDecode(
+  PreparedTransactionImpl.frbInternalSseDecode(
     BigInt ptr,
     int externalSizeOnNative,
   ) : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
 
   static final _kStaticData = RustArcStaticData(
-    rustArcIncrementStrongCount:
-        RustLib.instance.api.rust_arc_increment_strong_count_PendingTransaction,
-    rustArcDecrementStrongCount:
-        RustLib.instance.api.rust_arc_decrement_strong_count_PendingTransaction,
+    rustArcIncrementStrongCount: RustLib
+        .instance
+        .api
+        .rust_arc_increment_strong_count_PreparedTransaction,
+    rustArcDecrementStrongCount: RustLib
+        .instance
+        .api
+        .rust_arc_decrement_strong_count_PreparedTransaction,
     rustArcDecrementStrongCountPtr: RustLib
         .instance
         .api
-        .rust_arc_decrement_strong_count_PendingTransactionPtr,
+        .rust_arc_decrement_strong_count_PreparedTransactionPtr,
   );
 
   /// The base58 account that pays the network fee: the first signer.
-  Future<String> feePayer() =>
-      RustLib.instance.api.zolanaMobilePendingTransactionFeePayer(that: this);
+  String get feePayer =>
+      RustLib.instance.api.zolanaMobilePreparedTransactionFeePayer(that: this);
 
   /// The last block height at which the message can still land. Past it,
   /// [`MobileWallet::refresh`] gives it a new blockhash.
-  Future<BigInt> lastValidBlockHeight() => RustLib.instance.api
-      .zolanaMobilePendingTransactionLastValidBlockHeight(that: this);
+  BigInt get lastValidBlockHeight => RustLib.instance.api
+      .zolanaMobilePreparedTransactionLastValidBlockHeight(that: this);
 
-  /// The bytes every signer signs with Ed25519.
-  Future<Uint8List> messageBytes() => RustLib.instance.api
-      .zolanaMobilePendingTransactionMessageBytes(that: this);
+  /// The serialized Solana message every signer signs with Ed25519.
+  Uint8List get message =>
+      RustLib.instance.api.zolanaMobilePreparedTransactionMessage(that: this);
 
-  Future<Operation> operation() =>
-      RustLib.instance.api.zolanaMobilePendingTransactionOperation(that: this);
+  /// What it does, with what it moves and to whom.
+  Operation get operation =>
+      RustLib.instance.api.zolanaMobilePreparedTransactionOperation(that: this);
 
-  /// Base58 public keys that must sign, in signature order.
-  Future<List<String>> signers() =>
-      RustLib.instance.api.zolanaMobilePendingTransactionSigners(that: this);
+  /// Base58 public keys that must sign, in signature order. The first is
+  /// the fee payer, whose signature is the transaction signature.
+  List<String> get signers =>
+      RustLib.instance.api.zolanaMobilePreparedTransactionSigners(that: this);
 }
 
 @sealed

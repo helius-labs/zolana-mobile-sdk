@@ -190,9 +190,8 @@ await wallet.transfer(
   the indexer when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
   has the transaction, so notes spent by another session or device are never
   picked.
-- **Errors** are `ZolanaWalletException`s. Their `error` is a `WalletError`
-  that says what happened, with its data; the table below lists them. Errors
-  never contain key material.
+- **Errors** are `WalletError`s that say what happened, with its data; the
+  table below lists them. Errors never contain key material.
 
 - **Lock and account switch**: call `wallet.close()`. Operations not yet
   started fail with `WalletError.walletClosed`, and so does the running one,
@@ -209,8 +208,7 @@ await wallet.transfer(
 
 ### Errors
 
-Every failure is a `ZolanaWalletException` whose `error` is one of these
-`WalletError` variants. Amounts are in base units, accounts and mints base58.
+Every failure throws one of these `WalletError` variants. Amounts are in base units, accounts and mints base58.
 
 | Variant | Data | When |
 |---|---|---|
@@ -261,12 +259,12 @@ on, to read the data:
 ```dart
 try {
   await wallet.transfer(payments: [Payment(recipient: account, amount: amount)]);
-} on ZolanaWalletException catch (e) {
-  final text = switch (e.error) {
+} on WalletError catch (e) {
+  final text = switch (e) {
     WalletError_InsufficientPrivateBalance(:final available) =>
       'Only $available lamports available',
     WalletError_RecipientNotRegistered() => 'Recipient not registered',
-    _ => e.message,
+    _ => '$e',
   };
 }
 ```

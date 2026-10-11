@@ -47,8 +47,8 @@ String approvalText(Operation operation) {
 /// A sentence for the wallet's failures, amounts in [asset]; other errors
 /// pass through.
 String friendlyError(Object error, {DemoAsset asset = sol}) {
-  if (error is! ZolanaWalletException) return '$error';
-  return switch (error.error) {
+  if (error is! WalletError) return '$error';
+  return switch (error) {
     WalletError_RecipientNotRegistered() =>
       "That account hasn't set up a private wallet yet.",
     WalletError_RegistrationConflict() =>
