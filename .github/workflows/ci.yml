@@ -104,6 +104,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run clean consumer on an API 35 emulator
+        # A green run takes 2-7 minutes; a hung emulator fails here, not
+        # after the job's 6 hours.
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -115,6 +118,9 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
       - name: Run clean consumer on an API 26 emulator
+        # A green run takes 2-7 minutes; a hung emulator fails here, not
+        # after the job's 6 hours.
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 26
