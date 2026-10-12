@@ -220,20 +220,26 @@ jobs:
 
   # When the release for the crate hash has the iOS binaries, cargokit builds
   # nothing: the macOS jobs then skip the compiler cache, which they would not
-  # use, and the consumer builds in a fresh temporary directory as before.
+  # use. Flutter's debug pods build every simulator architecture unless ARCHS
+  # is set, so each job builds one and checks its iOS 16 minimum: ios the
+  # runner's arm64, which its simulator runs, and ios-example x86_64.
   ios:
     runs-on: macos-latest
     env:
       SCCACHE_CACHE_SIZE: 1G
       SCCACHE_IDLE_TIMEOUT: "0"
+      FLUTTER_XCODE_ARCHS: arm64
     steps:
       - uses: actions/checkout@v6
+      - run: echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v7
         with:
           go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
+        with:
+          targets: aarch64-apple-ios-sim
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.4
@@ -241,7 +247,7 @@ jobs:
       - name: Look for precompiled iOS binaries
         id: precompiled
         run: |
-          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios-sim x86_64-apple-ios; then
+          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios-sim; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.precompiled.outputs.found != 'true'
@@ -252,7 +258,6 @@ jobs:
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
-          echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
       - if: steps.precompiled.outputs.found != 'true'
         uses: actions/cache/restore@v6
         id: native-cache
@@ -260,15 +265,20 @@ jobs:
           path: |
             ${{ runner.temp }}/sccache
             ~/Library/Caches/go-build
-          key: native-ios-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-ios-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-ios-arm64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-ios-arm64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
       - if: steps.precompiled.outputs.found != 'true'
         run: sccache --start-server
       - run: bash scripts/patch-flutter-tool.sh
       - run: ./scripts/stage-demo-assets.sh
-      - run: bash scripts/test-consumer.sh ios
-      # Saved before the simulator test, which builds nothing new and is the
-      # step most likely to fail on a hosted runner.
+      # The only build of the packaged consumer: `flutter test` builds it after
+      # the boot. Building before the boot, or during it, makes the job slower.
+      - name: Run clean consumer on an iOS simulator
+        timeout-minutes: 85
+        run: bash scripts/test-ios-simulator.sh
+      - name: Check that the native library runs on iOS 16
+        run: bash scripts/check-ios-minimum.sh "$(find "$ZOLANA_CONSUMER_DIR/consumer/build/ios" -name libmopro_flutter_bindings.a | head -1)" 16.0
+      # Saved after a green test, as in the Android emulator jobs.
       - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
@@ -276,9 +286,6 @@ jobs:
             ${{ runner.temp }}/sccache
             ~/Library/Caches/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
-      - name: Run clean consumer on an iOS simulator
-        timeout-minutes: 85
-        run: bash scripts/test-ios-simulator.sh
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
@@ -299,6 +306,8 @@ jobs:
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
+        with:
+          targets: x86_64-apple-ios
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.4
@@ -306,7 +315,7 @@ jobs:
       - name: Look for precompiled iOS binaries
         id: precompiled
         run: |
-          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios-sim x86_64-apple-ios; then
+          if bash scripts/has-precompiled-ios-binaries.sh x86_64-apple-ios; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.precompiled.outputs.found != 'true'
@@ -324,13 +333,17 @@ jobs:
           path: |
             ${{ runner.temp }}/sccache
             ~/Library/Caches/go-build
-          key: native-ios-example-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-ios-example-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-ios-example-x86_64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-ios-example-x86_64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
       - if: steps.precompiled.outputs.found != 'true'
         run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
+      # The arm64 simulator build is the ios job's.
       - run: flutter pub get && flutter build ios --simulator
         working-directory: packages/zolana_mobile/example
+        env:
+          FLUTTER_XCODE_ARCHS: x86_64
+          FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "NO"
       - name: Check that the native library runs on iOS 16
         run: bash scripts/check-ios-minimum.sh "$(find packages/zolana_mobile/example/build/ios -name libmopro_flutter_bindings.a | head -1)" 16.0
       - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'

@@ -2,16 +2,17 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# ZOLANA_CONSUMER_DIR builds the consumer at a fixed path, deleted first. CI
-# uses it because a compiler cache keys Rust outputs on the build paths.
+# ZOLANA_CONSUMER_DIR builds the consumer at a fixed path, deleted first and
+# kept afterwards. CI uses it because a compiler cache keys Rust outputs on the
+# build paths, and to check the built native library.
 if [[ -n "${ZOLANA_CONSUMER_DIR:-}" ]]; then
   temporary="$ZOLANA_CONSUMER_DIR"
   rm -rf "$temporary"
   mkdir -p "$temporary"
 else
   temporary="$(mktemp -d "${TMPDIR:-/tmp}/zolana-mobile-consumer.XXXXXX")"
+  trap 'rm -rf "$temporary"' EXIT
 fi
-trap 'rm -rf "$temporary"' EXIT
 package="$temporary/package"
 consumer="$temporary/consumer"
 mkdir -p "$package"
