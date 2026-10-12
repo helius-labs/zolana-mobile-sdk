@@ -394,6 +394,41 @@ sends through the wallet's RPC instead.
   `WalletError.notesAlreadySpent`, before or after sending; prepare it
   again once the indexer has the spend.
 
+### Recovery
+
+`example/lib/recovery.dart` covers three cases, and
+`example/integration_test/recovery_test.dart` runs them on devnet:
+
+- **A new phone**: open the wallet with `ZolanaWallet.open(signer: ...)`,
+  exactly as on first use. The same account derives the same keys, and every
+  note and the history are read from the indexer; nothing from the old phone
+  is needed.
+- **Reopening without a signature**: after that first open, save
+  `exportKeys()` in the platform keystore and open with
+  `ZolanaWallet.openWithKeys` from then on (see
+  [Opening from saved keys](#opening-from-saved-keys)). Keys that fail with
+  `WalletError.invalidWalletKeys` are derived again from the signature.
+- **The app closed while sending**: sign the prepared transaction in the
+  application and, before `submit`, save its signature (the fee payer's,
+  base58) in storage that survives a restart. Keep it when `submit` fails
+  with `WalletError.transactionOutcomeUnknown`, or with
+  `WalletError.walletClosed` because the app locked during the send; drop it
+  on any other result. After a restart, call `waitForTransaction(signature)`
+  before anything else is sent. With the example's `saveAndSend` and
+  `settlePendingSend`:
+
+```dart
+try {
+  await saveAndSend(wallet, signer, pending, tx);
+} on WalletError_TransactionExpired {
+  // It can no longer land: the same proof under a new blockhash is safe.
+  await saveAndSend(wallet, signer, pending, await wallet.refresh(tx));
+} on WalletError_TransactionOutcomeUnknown {
+  // It may still land: wait for it before sending again.
+  await settlePendingSend(wallet, pending);
+}
+```
+
 ### Backend proving
 
 A transfer or withdrawal can be proved by a remote prover instead of the
