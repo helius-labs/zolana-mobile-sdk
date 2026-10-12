@@ -958,7 +958,7 @@ impl MobileWallet {
             Err(_) => reconcile(
                 &self.client,
                 signature,
-                pending.last_valid_block_height,
+                Some(pending.last_valid_block_height),
                 self.send_lookup,
             )?,
         }
@@ -987,13 +987,30 @@ impl MobileWallet {
         self.settle(pending, signature)
     }
 
-    /// Wait for a shielded-pool transaction by its signature alone, such as one
-    /// sent before the application restarted: until Solana confirms it and the
-    /// indexer has it, so the next balance reads its notes. A transaction that
-    /// failed on chain fails here with the chain's error.
-    pub fn wait_for_transaction(&self, signature: String) -> Result<(), WalletError> {
+    /// Wait for a shielded-pool transaction by its signature, such as one sent
+    /// before the application restarted, until its outcome is known, as
+    /// [`Self::submit`] tells a send whose response was lost: done once Solana
+    /// confirms it and the indexer has it, so the next balance reads its
+    /// notes; the chain's error when the chain refused it;
+    /// [`WalletError::TransactionExpired`] when it did not land before
+    /// `last_valid_block_height`, so sending it again is safe; and
+    /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
+    /// Save the prepared transaction's last valid block height with its
+    /// signature: without it, a transaction never seen cannot be told expired
+    /// and ends unknown.
+    pub fn wait_for_transaction(
+        &self,
+        signature: String,
+        last_valid_block_height: Option<u64>,
+    ) -> Result<(), WalletError> {
         let signature =
             Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
+        reconcile(
+            &self.client,
+            signature,
+            last_valid_block_height,
+            self.send_lookup,
+        )?;
         Ok(self.client.confirm_private_transaction_sync(signature)?)
     }
 
@@ -1088,12 +1105,13 @@ enum SendStatus {
 
 /// What became of `signature`, whose send went unanswered: looked up until it
 /// is confirmed, refused by the chain or expired. Lookups that fail one after
-/// another, or a landed transaction that does not confirm, end after `poll`'s
-/// retries as [`WalletError::TransactionOutcomeUnknown`].
+/// another, a landed transaction that does not confirm, and, without
+/// `last_valid_block_height`, one never seen, end after `poll`'s retries as
+/// [`WalletError::TransactionOutcomeUnknown`].
 fn reconcile(
     rpc: &impl Rpc,
     signature: Signature,
-    last_valid_block_height: u64,
+    last_valid_block_height: Option<u64>,
     poll: IndexerPollConfig,
 ) -> Result<(), WalletError> {
     let unknown = |message: String| WalletError::TransactionOutcomeUnknown {
@@ -1103,7 +1121,7 @@ fn reconcile(
     let mut delays = poll
         .backoff()
         .chain(std::iter::repeat(Duration::from_millis(poll.max_delay_ms)));
-    let (mut failed_lookups, mut processed_lookups) = (0, 0);
+    let (mut failed_lookups, mut processed_lookups, mut unseen_lookups) = (0, 0, 0);
     loop {
         match send_status(rpc, signature, last_valid_block_height) {
             Ok(SendStatus::Confirmed) => return Ok(()),
@@ -1119,7 +1137,16 @@ fn reconcile(
                     signature: signature.to_string(),
                 })
             }
-            Ok(SendStatus::Pending) => failed_lookups = 0,
+            Ok(SendStatus::Pending) => {
+                failed_lookups = 0;
+                unseen_lookups += 1;
+                if last_valid_block_height.is_none() && unseen_lookups > poll.num_retries {
+                    return Err(unknown(
+                        "not seen, and without its last valid block height it cannot be told expired"
+                            .to_string(),
+                    ));
+                }
+            }
             Ok(SendStatus::Processed) => {
                 failed_lookups = 0;
                 processed_lookups += 1;
@@ -1144,7 +1171,7 @@ fn reconcile(
 fn send_status(
     rpc: &impl Rpc,
     signature: Signature,
-    last_valid_block_height: u64,
+    last_valid_block_height: Option<u64>,
 ) -> Result<SendStatus, ClientError> {
     let status = rpc
         .get_signature_statuses(vec![signature])?
@@ -1159,7 +1186,13 @@ fn send_status(
             }
         }
         Some(_) => SendStatus::Processed,
-        None if rpc.get_block_height()? > last_valid_block_height => SendStatus::Expired,
+        None if last_valid_block_height
+            .map(|height| Ok::<_, ClientError>(rpc.get_block_height()? > height))
+            .transpose()?
+            .unwrap_or(false) =>
+        {
+            SendStatus::Expired
+        }
         None => SendStatus::Pending,
     })
 }
@@ -1451,7 +1484,7 @@ mod tests {
     };
 
     fn reconciled(rpc: &Lookups) -> Result<(), WalletError> {
-        reconcile(rpc, Signature::from([3; 64]), 100, QUICK)
+        reconcile(rpc, Signature::from([3; 64]), Some(100), QUICK)
     }
 
     /// The lookups last until the blockhash expires, however short the
@@ -1780,18 +1813,47 @@ mod tests {
 
     #[test]
     fn waits_for_a_transaction_by_its_signature() {
-        let wallet = open(&Keypair::new()).unwrap();
+        let mut wallet = open(&Keypair::new()).unwrap();
+        wallet.send_lookup = QUICK;
         assert_eq!(
             wallet
-                .wait_for_transaction("not-a-signature".to_string())
+                .wait_for_transaction("not-a-signature".to_string(), None)
                 .unwrap_err(),
             WalletError::SignatureInvalid
         );
-        // A real signature gets as far as the transport.
+        // A real signature gets as far as the transport, which answers no
+        // lookup.
         let error = wallet
-            .wait_for_transaction(Signature::default().to_string())
+            .wait_for_transaction(Signature::default().to_string(), Some(100))
             .unwrap_err();
-        assert_ne!(error, WalletError::SignatureInvalid);
+        assert!(
+            matches!(error, WalletError::TransactionOutcomeUnknown { .. }),
+            "{error:?}"
+        );
+
+        // Not seen, and past its blockhash: sending again is safe.
+        let signer = Keypair::new();
+        let (wallet, _) = rpc_wallet(&signer, |method| match method {
+            "getBlockHeight" => serde_json::json!({"result": 10}),
+            _ => status(false),
+        });
+        assert!(matches!(
+            wallet.wait_for_transaction(Signature::default().to_string(), Some(5)),
+            Err(WalletError::TransactionExpired { .. })
+        ));
+    }
+
+    /// Without its last valid block height, a transaction never seen cannot
+    /// be told expired, so it ends unknown rather than waiting forever.
+    #[test]
+    fn a_transaction_never_seen_without_its_height_is_unknown() {
+        let unseen = Lookups::new(&[Lookup::Missing], 1_000);
+        assert!(matches!(
+            reconcile(&unseen, Signature::from([3; 64]), None, QUICK),
+            Err(WalletError::TransactionOutcomeUnknown { message, .. })
+                if message.contains("last valid block height")
+        ));
+        assert_eq!(*unseen.asked.lock().unwrap(), QUICK.num_retries + 1);
     }
 
     #[test]

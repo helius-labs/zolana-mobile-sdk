@@ -246,11 +246,21 @@ abstract class MobileWallet implements RustOpaqueInterface {
     required List<Uint8List> signatures,
   });
 
-  /// Wait for a shielded-pool transaction by its signature alone, such as one
-  /// sent before the application restarted: until Solana confirms it and the
-  /// indexer has it, so the next balance reads its notes. A transaction that
-  /// failed on chain fails here with the chain's error.
-  Future<void> waitForTransaction({required String signature});
+  /// Wait for a shielded-pool transaction by its signature, such as one sent
+  /// before the application restarted, until its outcome is known, as
+  /// [`Self::submit`] tells a send whose response was lost: done once Solana
+  /// confirms it and the indexer has it, so the next balance reads its
+  /// notes; the chain's error when the chain refused it;
+  /// [`WalletError::TransactionExpired`] when it did not land before
+  /// `last_valid_block_height`, so sending it again is safe; and
+  /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
+  /// Save the prepared transaction's last valid block height with its
+  /// signature: without it, a transaction never seen cannot be told expired
+  /// and ends unknown.
+  Future<void> waitForTransaction({
+    required String signature,
+    BigInt? lastValidBlockHeight,
+  });
 }
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreparedTransaction>>

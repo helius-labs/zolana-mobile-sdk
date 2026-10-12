@@ -85,7 +85,7 @@ class FakePending implements PreparedTransaction {
 class FakeWallet implements MobileWallet {
   final submitted = <(PreparedTransaction, List<Uint8List>)>[];
   final released = <PreparedTransaction>[];
-  final waited = <String>[];
+  final waited = <(String, BigInt?)>[];
   final confirmed = <(PreparedTransaction, String)>[];
   final events = <String>[];
   Completer<void>? holdBalances;
@@ -117,8 +117,10 @@ class FakeWallet implements MobileWallet {
       released.add(pending);
 
   @override
-  Future<void> waitForTransaction({required String signature}) async =>
-      waited.add(signature);
+  Future<void> waitForTransaction({
+    required String signature,
+    BigInt? lastValidBlockHeight,
+  }) async => waited.add((signature, lastValidBlockHeight));
 
   /// A new blockhash: new message bytes and a later height, same signers.
   @override
@@ -1041,7 +1043,14 @@ void main() {
     await wallet.release(prepared);
     expect(native.released, hasLength(2));
     await wallet.waitForTransaction('signature');
-    expect(native.waited, ['signature']);
+    await wallet.waitForTransaction(
+      'expiring',
+      lastValidBlockHeight: BigInt.from(100),
+    );
+    expect(native.waited, [
+      ('signature', null),
+      ('expiring', BigInt.from(100)),
+    ]);
   });
 
   test('refreshes the blockhash of a prepared transaction', () async {

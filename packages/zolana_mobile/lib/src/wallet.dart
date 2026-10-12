@@ -410,12 +410,26 @@ class ZolanaWallet {
   Future<void> release(PreparedTransaction transaction) =>
       _serial(() => _wallet.release(pending: transaction));
 
-  /// Wait for a shielded-pool transaction by its [signature] alone, such as
-  /// one sent before the application restarted: until Solana confirms it and
-  /// the indexer has it, so the next balance reads its notes. A transaction
-  /// that failed on chain fails here with the chain's error.
-  Future<void> waitForTransaction(String signature) =>
-      _serial(() => _wallet.waitForTransaction(signature: signature));
+  /// Wait for a shielded-pool transaction by its [signature], such as one
+  /// sent before the application restarted, until its outcome is known, as
+  /// [submit] tells a send whose response was lost: done once Solana
+  /// confirms it and the indexer has it, so the next balance reads its
+  /// notes; the chain's error when the chain refused it;
+  /// [WalletError.transactionExpired] when it did not land before
+  /// [lastValidBlockHeight], so sending it again is safe; and
+  /// [WalletError.transactionOutcomeUnknown] when that cannot be told. Save
+  /// the prepared transaction's [PreparedTransaction.lastValidBlockHeight]
+  /// with its signature: without it, a transaction never seen cannot be told
+  /// expired and ends unknown.
+  Future<void> waitForTransaction(
+    String signature, {
+    BigInt? lastValidBlockHeight,
+  }) => _serial(
+    () => _wallet.waitForTransaction(
+      signature: signature,
+      lastValidBlockHeight: lastValidBlockHeight,
+    ),
+  );
 
   /// [prepareRegistration], signed and submitted. `null` when already
   /// registered.

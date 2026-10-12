@@ -57,8 +57,9 @@ Unreleased.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
 * Prepared spends reserve their notes, so the next spend selects others;
-  `release(tx)` frees them. `waitForTransaction(signature)` waits for a
-  transaction sent before a restart.
+  `release(tx)` frees them. `waitForTransaction(signature,
+  lastValidBlockHeight:)` waits for a transaction sent before a restart and
+  ends confirmed, refused, expired or unknown, as `submit` does.
 * `refresh(tx)`: a prepared transaction with a new blockhash and the same
   proof, for slow approvals. Every prepared transaction carries its
   `operation`, `feePayer`, `signers`, `message` and `lastValidBlockHeight`.

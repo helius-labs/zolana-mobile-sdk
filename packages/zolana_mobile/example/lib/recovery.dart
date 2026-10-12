@@ -76,30 +76,35 @@ Future<ZolanaWallet> openWallet({
   return wallet;
 }
 
-/// Where the application keeps the signature of each account's send until
-/// its outcome is known: storage that survives a restart, such as a file.
+/// A send whose outcome is not known yet: its signature, and the last block
+/// height at which it can land, which tells a send that never went out from
+/// one still on its way.
+typedef PendingSend = ({String signature, BigInt lastValidBlockHeight});
+
+/// Where the application keeps each account's [PendingSend] until its
+/// outcome is known: storage that survives a restart, such as a file.
 abstract interface class PendingSends {
-  Future<String?> read(String account);
-  Future<void> write(String account, String signature);
+  Future<PendingSend?> read(String account);
+  Future<void> write(String account, PendingSend send);
   Future<void> delete(String account);
 }
 
 /// [PendingSends] in memory: the demo's stand-in for the application's
 /// storage.
 class MemoryPendingSends implements PendingSends {
-  final _signatures = <String, String>{};
+  final _sends = <String, PendingSend>{};
 
   @override
-  Future<String?> read(String account) async => _signatures[account];
+  Future<PendingSend?> read(String account) async => _sends[account];
 
   @override
-  Future<void> write(String account, String signature) async {
-    _signatures[account] = signature;
+  Future<void> write(String account, PendingSend send) async {
+    _sends[account] = send;
   }
 
   @override
   Future<void> delete(String account) async {
-    _signatures.remove(account);
+    _sends.remove(account);
   }
 }
 
@@ -135,7 +140,10 @@ Future<String> saveAndSend(
     rethrow;
   }
   final signature = base58Encode(signed);
-  await pending.write(account, signature);
+  await pending.write(account, (
+    signature: signature,
+    lastValidBlockHeight: transaction.lastValidBlockHeight,
+  ));
   try {
     await wallet.submit(transaction, [signed]);
   } on WalletError catch (error) {
@@ -150,21 +158,36 @@ Future<String> saveAndSend(
 }
 
 /// Waits for the send [pending] holds for [wallet]'s account, such as one
-/// the application was closed during: until Solana confirms it and the
-/// indexer has it, so that balances include it. Returns its signature, or
-/// `null` when no send is pending. Call it after opening and before the next
-/// spend.
+/// the application was closed during, until its outcome is known: Solana
+/// confirmed it and the indexer has it, so balances include it. Returns its
+/// signature, or `null` when no send is pending. Call it after opening and
+/// before the next spend.
 ///
-/// Fails, the signature still saved, while the wallet cannot confirm the
-/// transaction: look it up again before sending anything else.
+/// Fails as `ZolanaWallet.waitForTransaction` does. The saved send is
+/// dropped once the outcome is known, including the chain's refusal and
+/// [WalletError.transactionExpired], after which sending again is safe; it
+/// stays saved after [WalletError.transactionOutcomeUnknown] or
+/// [WalletError.walletClosed], to look it up again before anything else is
+/// sent.
 Future<String?> settlePendingSend(
   ZolanaWallet wallet,
   PendingSends pending,
 ) async {
   final account = wallet.solanaPublicKey;
-  final signature = await pending.read(account);
-  if (signature == null) return null;
-  await wallet.waitForTransaction(signature);
+  final send = await pending.read(account);
+  if (send == null) return null;
+  try {
+    await wallet.waitForTransaction(
+      send.signature,
+      lastValidBlockHeight: send.lastValidBlockHeight,
+    );
+  } on WalletError catch (error) {
+    if (error is! WalletError_TransactionOutcomeUnknown &&
+        error is! WalletError_WalletClosed) {
+      await pending.delete(account);
+    }
+    rethrow;
+  }
   await pending.delete(account);
-  return signature;
+  return send.signature;
 }

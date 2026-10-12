@@ -321,9 +321,10 @@ fn register_deposit_transfer_and_receive() {
         recipient_before + TRANSFER
     );
     newest(&mut sender_wallet, &transfer, ActivityKind::Sent, TRANSFER);
-    // After a restart the signature alone is enough to wait for it.
+    // After a restart the signature alone is enough to wait for one that
+    // landed.
     recipient_wallet
-        .wait_for_transaction(transfer.clone())
+        .wait_for_transaction(transfer.clone(), None)
         .expect("wait for a landed transaction");
     newest(
         &mut recipient_wallet,
