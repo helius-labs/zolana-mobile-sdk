@@ -166,5 +166,5 @@ ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device
 
 These build a separate extracted-package consumer with fresh Dart dependency
 resolution. The device check initializes the native bridge, generates a real
-proof, checks safe errors, and closes a prover during a warm proof. CI configures
-Android emulator and iOS simulator checks as well as consumer release builds.
+proof, checks safe errors, and closes a prover during a warm proof. CI runs the
+device check on Android emulators and an iOS simulator.
