@@ -20,7 +20,7 @@ mkdir -p "$package"
 tar -C "$repo_root/packages/zolana_mobile" \
   --exclude=target --exclude=build --exclude=.dart_tool \
   -czf "$temporary/zolana_mobile.tar.gz" \
-  pubspec.yaml README.md CHANGELOG.md LICENSE lib android ios rust native cargokit
+  pubspec.yaml README.md CHANGELOG.md LICENSE lib hook android rust native cargokit
 tar -xzf "$temporary/zolana_mobile.tar.gz" -C "$package"
 cargo metadata --manifest-path "$package/rust/Cargo.toml" --format-version 1 > "$temporary/metadata.json"
 
