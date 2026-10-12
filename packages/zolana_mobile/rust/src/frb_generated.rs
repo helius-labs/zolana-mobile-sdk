@@ -1386,6 +1386,7 @@ fn wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
             >>::sse_decode(&mut deserializer);
             let api_signature = <String>::sse_decode(&mut deserializer);
+            let api_last_valid_block_height = <Option<u64>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, zolana_mobile::WalletError>((move || {
@@ -1406,6 +1407,7 @@ fn wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
                     let output_ok = zolana_mobile::MobileWallet::wait_for_transaction(
                         &*api_that_guard,
                         api_signature,
+                        api_last_valid_block_height,
                     )?;
                     Ok(output_ok)
                 })())
@@ -2876,6 +2878,17 @@ impl SseDecode for Option<u32> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<u32>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<u64>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -4612,6 +4625,16 @@ impl SseEncode for Option<u32> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <u32>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <u64>::sse_encode(value, serializer);
         }
     }
 }

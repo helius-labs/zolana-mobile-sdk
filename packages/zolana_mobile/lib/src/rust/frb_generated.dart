@@ -211,6 +211,7 @@ abstract class RustLibApi extends BaseApi {
   Future<void> zolanaMobileMobileWalletWaitForTransaction({
     required MobileWallet that,
     required String signature,
+    BigInt? lastValidBlockHeight,
   });
 
   String zolanaMobilePreparedTransactionFeePayer({
@@ -1301,6 +1302,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<void> zolanaMobileMobileWalletWaitForTransaction({
     required MobileWallet that,
     required String signature,
+    BigInt? lastValidBlockHeight,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1311,6 +1313,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_String(signature, serializer);
+          sse_encode_opt_box_autoadd_u_64(lastValidBlockHeight, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -1323,7 +1326,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletWaitForTransactionConstMeta,
-        argValues: [that, signature],
+        argValues: [that, signature, lastValidBlockHeight],
         apiImpl: this,
       ),
     );
@@ -1332,7 +1335,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kZolanaMobileMobileWalletWaitForTransactionConstMeta =>
       const TaskConstMeta(
         debugName: "MobileWallet_wait_for_transaction",
-        argNames: ["that", "signature"],
+        argNames: ["that", "signature", "lastValidBlockHeight"],
       );
 
   @override
@@ -2151,6 +2154,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_u_64(raw);
+  }
+
+  @protected
   WalletConfig dco_decode_box_autoadd_wallet_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_wallet_config(raw);
@@ -2361,6 +2370,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
   }
 
   @protected
@@ -3017,6 +3032,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_64(deserializer));
+  }
+
+  @protected
   WalletConfig sse_decode_box_autoadd_wallet_config(
     SseDeserializer deserializer,
   ) {
@@ -3328,6 +3349,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_64(deserializer));
     } else {
       return null;
     }
@@ -4071,6 +4103,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_wallet_config(
     WalletConfig self,
     SseSerializer serializer,
@@ -4376,6 +4414,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_64(self, serializer);
     }
   }
 
@@ -5009,15 +5057,25 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
     signatures: signatures,
   );
 
-  /// Wait for a shielded-pool transaction by its signature alone, such as one
-  /// sent before the application restarted: until Solana confirms it and the
-  /// indexer has it, so the next balance reads its notes. A transaction that
-  /// failed on chain fails here with the chain's error.
-  Future<void> waitForTransaction({required String signature}) =>
-      RustLib.instance.api.zolanaMobileMobileWalletWaitForTransaction(
-        that: this,
-        signature: signature,
-      );
+  /// Wait for a shielded-pool transaction by its signature, such as one sent
+  /// before the application restarted, until its outcome is known, as
+  /// [`Self::submit`] tells a send whose response was lost: done once Solana
+  /// confirms it and the indexer has it, so the next balance reads its
+  /// notes; the chain's error when the chain refused it;
+  /// [`WalletError::TransactionExpired`] when it did not land before
+  /// `last_valid_block_height`, so sending it again is safe; and
+  /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
+  /// Save the prepared transaction's last valid block height with its
+  /// signature: without it, a transaction never seen cannot be told expired
+  /// and ends unknown.
+  Future<void> waitForTransaction({
+    required String signature,
+    BigInt? lastValidBlockHeight,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletWaitForTransaction(
+    that: this,
+    signature: signature,
+    lastValidBlockHeight: lastValidBlockHeight,
+  );
 }
 
 @sealed

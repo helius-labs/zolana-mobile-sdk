@@ -162,7 +162,7 @@ void main() {
       saveAndSend(wallet, await signer(), pending, transaction),
       throwsA(isA<WalletError_TransactionOutcomeUnknown>()),
     );
-    final signature = await pending.read(_account.publicKey);
+    final signature = (await pending.read(_account.publicKey))?.signature;
     expect(signature, isNotNull);
     await wallet.close();
 
@@ -218,6 +218,42 @@ void main() {
     final sent = (await wallet.activity()).map((entry) => entry.signature);
     expect(sent, contains(signature));
     expect(sent, isNot(contains(expired)));
+  }, skip: !_enabled);
+
+  testWidgets('drops a send that never went out once it expired', (
+    tester,
+  ) async {
+    final pending = MemoryPendingSends();
+    final vault = MemoryKeyVault();
+    final wallet = await openWallet(
+      config: await config(),
+      signer: await signer(),
+      vault: vault,
+    );
+    final transaction = await payItself(wallet);
+    // The application saved the send and was closed before it went out.
+    final signed = await (await signer()).signMessage(
+      transaction.message,
+      transaction: transaction,
+    );
+    await pending.write(_account.publicKey, (
+      signature: base58Encode(signed),
+      lastValidBlockHeight: transaction.lastValidBlockHeight,
+    ));
+    await wallet.close();
+
+    // The next launch finds it never landed: sending again is safe.
+    final restarted = await openWallet(
+      config: await config(),
+      signer: await signer(),
+      vault: vault,
+    );
+    addTearDown(restarted.close);
+    await expectLater(
+      settlePendingSend(restarted, pending),
+      throwsA(isA<WalletError_TransactionExpired>()),
+    );
+    expect(await pending.read(_account.publicKey), isNull);
   }, skip: !_enabled);
 }
 

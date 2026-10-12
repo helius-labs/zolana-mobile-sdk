@@ -371,9 +371,14 @@ sends through the wallet's RPC instead.
   `lastValidBlockHeight`. A spend that needs a reserved note fails with
   `WalletError.notesReserved`. `register`, `deposit`, `transfer` and `withdraw`
   release the notes themselves when signing fails.
-- After a restart the prepared transaction is gone, but its signature is
-  enough: `wallet.waitForTransaction(signature)` waits until Solana confirms
-  it and the indexer has it, and fails with the chain's error if it failed.
+- After a restart the prepared transaction is gone, but its signature and
+  its `lastValidBlockHeight`, saved before sending, are enough:
+  `wallet.waitForTransaction(signature, lastValidBlockHeight: height)` ends
+  as `submit` does after a lost send: done once Solana confirms it and the
+  indexer has it, the chain's error when the chain refused it,
+  `WalletError.transactionExpired` when it can no longer land, or
+  `WalletError.transactionOutcomeUnknown`. Without the height, a transaction
+  never seen ends unknown, since it cannot be told expired.
 - A send can fail after the transaction went out, for example when the RPC
   loses its confirmation. `submit` then looks the signature up until the
   outcome is known, and the result says whether sending again is safe: the
@@ -413,8 +418,9 @@ sends through the wallet's RPC instead.
   base58) in storage that survives a restart. Keep it when `submit` fails
   with `WalletError.transactionOutcomeUnknown`, or with
   `WalletError.walletClosed` because the app locked during the send; drop it
-  on any other result. After a restart, call `waitForTransaction(signature)`
-  before anything else is sent. With the example's `saveAndSend` and
+  on any other result. Save the transaction's `lastValidBlockHeight` with
+  it. After a restart, call `waitForTransaction(signature,
+  lastValidBlockHeight: height)` before anything else is sent. With the example's `saveAndSend` and
   `settlePendingSend`:
 
 ```dart
