@@ -10,7 +10,8 @@ require a sibling Zolana checkout.
 - Flutter with Dart 3.13.0 or newer. CI checks Flutter 3.47.2 (Dart 3.13.2) and
   3.47.4.
 - Android: the NDK named by the app's `android.ndkVersion`.
-- iOS: Xcode with its license accepted and CocoaPods.
+- iOS: Xcode with its license accepted. The app may use Swift Package Manager
+  or CocoaPods.
 - Android API 24 or newer and iOS 15 or newer, the Flutter minimums. The Go
   prover archive targets iOS 13. CI runs the clean consumer on Android API 26
   and 35 emulators, and checks that every object in the iOS native library runs
@@ -34,7 +35,9 @@ this repository:
   pages as Google Play requires. Builds from source are aligned too, with any
   NDK. CI checks the alignment of the APK built from the released libraries
   and of one built from source.
-- iOS: device (`arm64`) and simulator (`arm64`, `x86_64`).
+- iOS: device (`arm64`) and simulator (`arm64`, `x86_64`), static libraries. The
+  package's build hook links the library into `mopro_flutter_bindings.framework`,
+  which Flutter bundles with the app.
 
 Each file is signed. Cargokit checks the signature with the Ed25519 public key
 in `rust/cargokit.yaml` and ignores a file with an invalid signature.
@@ -46,12 +49,16 @@ the library from source. A build from source needs:
 - Rust stable with the target of the platform, and Go 1.27.1 or newer.
 - Android: an installed NDK. Set `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to its
   directory if the SDK installation cannot be discovered automatically.
+- iOS: rustup's default `~/.cargo` and `~/.rustup`. Flutter runs the build hook
+  with few environment variables, without `CARGO_HOME` and `RUSTUP_HOME`.
 
 To always build from source, add `cargokit_options.yaml` to the app directory:
 
 ```yaml
 use_precompiled_binaries: false
 ```
+
+iOS builds read a new options file after `flutter clean`.
 
 ## Private wallet
 
@@ -673,9 +680,7 @@ It verifies the proof locally before returning. The SDK does not acquire wallet
 state, authorize a transaction, sign, or submit it; `ZolanaWallet` does all of
 that except signing.
 
-Load the native library with `initZolanaMobile()`, not `RustLib.init()`. On iOS
-the pod links the Rust library into the plugin framework, which the default
-loader does not look in.
+Load the native library with `initZolanaMobile()` before any other call.
 
 The structured adapter supports `transfer-confidential`, `transfer-ring`,
 `transfer-ring-authority`, `merge`, and `merge-ring`, with a matching supported
@@ -741,9 +746,10 @@ commit it.
 
 ### From Xcode
 
-Install Go 1.27.1 or newer (`brew install go`) and Flutter; the pod builds the
-Rust and Go sources and finds Go outside Xcode's `PATH` (or set `GO`). Then, with
-the workspace closed:
+Install Go 1.27.1 or newer (`brew install go`) and Flutter; the build hook
+builds the Rust and Go sources when no release matches them, and finds Go in its
+standard install locations outside Xcode's `PATH`. Then, with the workspace
+closed:
 
 ```sh
 cd packages/zolana_mobile/example

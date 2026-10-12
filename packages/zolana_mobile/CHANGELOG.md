@@ -104,3 +104,6 @@ Unreleased.
 * Android native libraries are aligned for 16 KB memory pages.
 * Signed precompiled native libraries for Android (API 24+) and iOS (15+);
   building from source with Rust and Go is the fallback.
+* iOS: a build hook bundles the native library as
+  `mopro_flutter_bindings.framework`, so apps build with Swift Package
+  Manager or CocoaPods.

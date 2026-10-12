@@ -254,9 +254,11 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.11
         with:
           version: v0.18.0
+      # Flutter runs the iOS build hook, and cargo in it, without RUSTC_WRAPPER;
+      # cargo reads the wrapper from its configuration instead.
       - if: steps.precompiled.outputs.found != 'true'
         run: |
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          mkdir -p ~/.cargo && printf '[build]\nrustc-wrapper = "sccache"\n' >> ~/.cargo/config.toml
           echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
       - if: steps.precompiled.outputs.found != 'true'
         uses: actions/cache/restore@v6
@@ -277,7 +279,10 @@ jobs:
         timeout-minutes: 85
         run: bash scripts/test-ios-simulator.sh
       - name: Check that the native library runs on iOS 16
-        run: bash scripts/check-ios-minimum.sh "$(find "$ZOLANA_CONSUMER_DIR/consumer/build/ios" -name libmopro_flutter_bindings.a | head -1)" 16.0
+        run: |
+          for archive in "$ZOLANA_CONSUMER_DIR"/consumer/.dart_tool/hooks_runner/shared/zolana_mobile/build/*/static/libmopro_flutter_bindings.a; do
+            bash scripts/check-ios-minimum.sh "$archive" 16.0
+          done
       # Saved after a green test, as in the Android emulator jobs.
       - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -324,7 +329,7 @@ jobs:
           version: v0.18.0
       - if: steps.precompiled.outputs.found != 'true'
         run: |
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          mkdir -p ~/.cargo && printf '[build]\nrustc-wrapper = "sccache"\n' >> ~/.cargo/config.toml
           echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
       - if: steps.precompiled.outputs.found != 'true'
         uses: actions/cache/restore@v6
@@ -338,14 +343,25 @@ jobs:
       - if: steps.precompiled.outputs.found != 'true'
         run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
-      # The arm64 simulator build is the ios job's.
+      # The arm64 simulator build is the ios job's. Flutter builds with Swift
+      # Package Manager by default; the second build checks an app that uses
+      # CocoaPods. The build hook's outputs are cached, so it only rebuilds the
+      # app.
       - run: flutter pub get && flutter build ios --simulator
         working-directory: packages/zolana_mobile/example
         env:
           FLUTTER_XCODE_ARCHS: x86_64
           FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "NO"
+      - run: flutter config --no-enable-swift-package-manager && flutter build ios --simulator
+        working-directory: packages/zolana_mobile/example
+        env:
+          FLUTTER_XCODE_ARCHS: x86_64
+          FLUTTER_XCODE_ONLY_ACTIVE_ARCH: "NO"
       - name: Check that the native library runs on iOS 16
-        run: bash scripts/check-ios-minimum.sh "$(find packages/zolana_mobile/example/build/ios -name libmopro_flutter_bindings.a | head -1)" 16.0
+        run: |
+          for archive in packages/zolana_mobile/example/.dart_tool/hooks_runner/shared/zolana_mobile/build/*/static/libmopro_flutter_bindings.a; do
+            bash scripts/check-ios-minimum.sh "$archive" 16.0
+          done
       - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
