@@ -3,7 +3,7 @@
 
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, Mutex, PoisonError,
+    Arc,
 };
 
 use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
@@ -25,8 +25,7 @@ pub enum Proving {
 /// Proves each `/prove` body with the key the client names for it, loading
 /// that key into the shared prepared slot when it changes. Request bodies
 /// carry nullifier secrets and never leave the process. Clones share one
-/// prover: the wallet keeps one to read [`Self::take_failure`] after a spend
-/// its client proved with another.
+/// prover.
 #[derive(Clone)]
 pub(crate) struct NativeProver(Arc<Native>);
 
@@ -34,27 +33,27 @@ struct Native {
     keys: Arc<keys::KeyStore>,
     /// Id of the prepared system this prover loaded last; 0 before the first.
     loaded: AtomicU64,
-    /// Why the last proof failed, which the `ClientError` the client sees
-    /// cannot carry.
-    failure: Mutex<Option<WalletError>>,
 }
+
+/// Why a proof on the device failed, carried through the client as
+/// [`ClientError::ProverFailed`] and read back as the [`WalletError`] it is.
+#[derive(Debug)]
+pub(crate) struct DeviceProverFailure(pub(crate) WalletError);
+
+impl std::fmt::Display for DeviceProverFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:?}", self.0)
+    }
+}
+
+impl std::error::Error for DeviceProverFailure {}
 
 impl NativeProver {
     pub(crate) fn new(keys: Arc<keys::KeyStore>) -> Self {
         Self(Arc::new(Native {
             keys,
             loaded: AtomicU64::new(0),
-            failure: Mutex::default(),
         }))
-    }
-
-    /// Why the last proof on the device failed, once.
-    pub(crate) fn take_failure(&self) -> Option<WalletError> {
-        self.0
-            .failure
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take()
     }
 
     fn prove_json(&self, body: &str, key: &ExpectedProvingKey) -> Result<String, WalletError> {
@@ -110,15 +109,9 @@ impl Prover for NativeProver {
     fn prove(&self, request: &dyn ProveRequest) -> Result<Proof, ClientError> {
         let body = request.body()?;
         let key = request.proving_key()?;
-        let proof_json = self.prove_json(&body, &key).map_err(|failure| {
-            let message = format!("{failure:?}");
-            *self
-                .0
-                .failure
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner) = Some(failure);
-            ClientError::Prover(message)
-        })?;
+        let proof_json = self
+            .prove_json(&body, &key)
+            .map_err(|failure| ClientError::ProverFailed(Box::new(DeviceProverFailure(failure))))?;
         Proof::from_gnark_json(&proof_json)
     }
 }
@@ -451,6 +444,32 @@ mod tests {
         fn delivery(&self) -> Delivery {
             Delivery::InResponse
         }
+    }
+
+    /// A proof on the device that fails reaches the wallet as what happened,
+    /// through the client's typed prover failure: here the key cannot be
+    /// downloaded.
+    #[test]
+    fn a_device_failure_reaches_the_wallet_as_itself() {
+        let dir =
+            std::env::temp_dir().join(format!("zolana-mobile-unreachable-{}", std::process::id()));
+        let prover = NativeProver::new(Arc::new(keys::KeyStore::new(
+            dir.display().to_string(),
+            None,
+            crate::transport::tests::unreachable(),
+        )));
+        let failure = prover.prove(&Captured(transfer_2_2_key())).unwrap_err();
+        assert!(
+            matches!(failure, ClientError::ProverFailed(_)),
+            "{failure:?}"
+        );
+        assert_eq!(
+            WalletError::from(failure),
+            WalletError::ProvingKeyDownloadFailed {
+                name: "transfer_confidential_2_2.key".to_string()
+            }
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Downloads `transfer_confidential_2_2.key` into `ZOLANA_TEST_KEY_DIR`
