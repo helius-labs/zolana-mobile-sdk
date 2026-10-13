@@ -313,9 +313,11 @@ jobs:
         id: rust
         with:
           targets: x86_64-apple-ios
+      # The oldest supported Flutter, which gives the build hook iOS 13; the
+      # ios job's gives it iOS 15.
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.47.4
+          flutter-version: 3.47.2
           cache: true
       - name: Look for precompiled iOS binaries
         id: precompiled
@@ -362,6 +364,13 @@ jobs:
           for archive in packages/zolana_mobile/example/.dart_tool/hooks_runner/shared/zolana_mobile/build/*/static/libmopro_flutter_bindings.a; do
             bash scripts/check-ios-minimum.sh "$archive" 16.0
           done
+      # App Store Connect rejects a framework whose binary needs a newer iOS
+      # than its Info.plist names (ITMS-90208).
+      - name: Check the iOS minimum in the framework's Info.plist
+        run: |
+          framework=packages/zolana_mobile/example/build/ios/iphonesimulator/Runner.app/Frameworks/mopro_flutter_bindings.framework
+          bash scripts/check-ios-minimum.sh "$framework/mopro_flutter_bindings" \
+            "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$framework/Info.plist")"
       - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
