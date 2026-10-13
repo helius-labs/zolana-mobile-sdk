@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
-/// The oldest iOS the library runs on. The precompiled binaries are built for
-/// it (`IPHONEOS_DEPLOYMENT_TARGET` in the precompile workflow).
+/// The oldest iOS the library runs on, and Flutter's. The precompiled binaries
+/// are built for it (`IPHONEOS_DEPLOYMENT_TARGET` in the precompile workflow).
 const _minimumIOS = 15;
 
 /// The Rust library, `[package] name` in rust/Cargo.toml.
@@ -27,14 +27,6 @@ void main(List<String> args) async {
     if (code.targetOS != OS.iOS) return;
 
     final ios = code.iOS;
-    if (ios.targetVersion < _minimumIOS) {
-      throw BuildError(
-        message:
-            'zolana_mobile needs iOS $_minimumIOS or newer, and the app '
-            'targets iOS ${ios.targetVersion}. Set IPHONEOS_DEPLOYMENT_TARGET '
-            'of the app to $_minimumIOS.0 or newer.',
-      );
-    }
     final simulator = ios.targetSdk == IOSSdk.iPhoneSimulator;
     final sdk = simulator ? 'iphonesimulator' : 'iphoneos';
     final arch = switch (code.targetArchitecture) {
@@ -67,6 +59,13 @@ void main(List<String> args) async {
       },
     );
 
+    // Flutter writes the iOS version it gives the hook into the framework's
+    // Info.plist as MinimumOSVersion, and App Store Connect rejects a
+    // framework whose binary needs a newer iOS (ITMS-90208), so the library
+    // is linked for that version. The version is a constant of the Flutter
+    // release, not the app's deployment target: 13 before Flutter 3.47.4, 15
+    // since. Below 15 the linker warns that the objects need iOS 15; Flutter
+    // itself needs iOS 15, so no app runs the library on an older iOS.
     final dylib = input.outputDirectory.resolve('lib$_library.dylib');
     await _run('xcrun', [
       '--sdk',
@@ -74,7 +73,7 @@ void main(List<String> args) async {
       'clang',
       '-dynamiclib',
       '-target',
-      '$arch-apple-ios$_minimumIOS.0${simulator ? '-simulator' : ''}',
+      '$arch-apple-ios${ios.targetVersion}.0${simulator ? '-simulator' : ''}',
       '-install_name',
       '@rpath/lib$_library.dylib',
       '-Wl,-force_load,${staticDir.resolve('lib$_library.a').toFilePath()}',
