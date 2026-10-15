@@ -277,7 +277,7 @@ fn register_deposit_transfer_and_receive() {
     let sender_before = private_sol(&mut sender_wallet);
     let recipient_before = private_sol(&mut recipient_wallet);
 
-    let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
+    let pending = sender_wallet.prepare_deposit(None, DEPOSIT, None).unwrap();
     let deposit = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(private_sol(&mut sender_wallet), sender_before + DEPOSIT);
     newest(&mut sender_wallet, &deposit, ActivityKind::Deposit, DEPOSIT);
@@ -343,6 +343,7 @@ fn register_deposit_transfer_and_receive() {
             WITHDRAWAL,
             Some(recipient.pubkey().to_string()),
             None,
+            None,
         )
         .expect("another session still builds a spendable withdrawal");
     let withdrawal = submit(&stale, &[&recipient, &sender], pending);
@@ -363,7 +364,7 @@ fn register_deposit_transfer_and_receive() {
 
     // Two transfers prepared before either is sent take different notes, so
     // both land: the first reserves the notes it spends.
-    let pending = sender_wallet.prepare_deposit(None, SPLIT).unwrap();
+    let pending = sender_wallet.prepare_deposit(None, SPLIT, None).unwrap();
     submit(&sender_wallet, &[&sender], pending);
     let recipient_before = private_sol(&mut recipient_wallet);
     let prepare = |wallet: &mut MobileWallet| {
@@ -416,6 +417,10 @@ fn register_deposit_transfer_and_receive() {
 const TOKEN_DEPOSIT: u64 = 5_000_000;
 const TOKEN_TRANSFER: u64 = 2_000_000;
 const TOKEN_WITHDRAWAL: u64 = 1_000_000;
+/// The application's public fee on a token deposit and on a token withdrawal.
+const TOKEN_FEE: u64 = 100_000;
+/// A public SOL fee: above the rent a new collector account needs.
+const SOL_FEE: u64 = 1_000_000;
 
 fn send_instructions(
     rpc: &SolanaRpc,
@@ -544,8 +549,16 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     }
     let mint = test_mint(&rpc, &sender);
     let sender_tokens = token_account(&rpc, &sender, sender.pubkey(), mint);
-    mint_to(&rpc, &sender, mint, sender_tokens, TOKEN_DEPOSIT);
+    mint_to(
+        &rpc,
+        &sender,
+        mint,
+        sender_tokens,
+        TOKEN_DEPOSIT + TOKEN_FEE,
+    );
     let recipient_tokens = token_account(&rpc, &sender, recipient.pubkey(), mint);
+    let collector = Keypair::new();
+    let collector_tokens = token_account(&rpc, &sender, collector.pubkey(), mint);
 
     let with_mint = || WalletConfig {
         mints: vec![MintConfig {
@@ -563,11 +576,22 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     let sender_before = private(&mut sender_wallet);
     let recipient_before = private(&mut recipient_wallet);
 
+    // The deposit and the application's public fee are one transaction.
+    let fee = payment(&collector, TOKEN_FEE);
     let pending = sender_wallet
-        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT)
+        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT, Some(fee.clone()))
         .unwrap();
+    assert_eq!(
+        pending.operation(),
+        Operation::Deposit {
+            mint: Some(name.clone()),
+            amount: TOKEN_DEPOSIT,
+            fee: Some(fee.clone())
+        }
+    );
     let deposit = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(private(&mut sender_wallet), sender_before + TOKEN_DEPOSIT);
+    assert_eq!(public_tokens(&rpc, collector_tokens), TOKEN_FEE);
     newest_of(
         &mut sender_wallet,
         &deposit,
@@ -609,13 +633,16 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
             TOKEN_WITHDRAWAL,
             None,
             None,
+            Some(fee.clone()),
         )
         .expect("prove a token withdrawal");
     let withdrawal = submit(&recipient_wallet, &[&recipient], pending);
+    // The fee is paid from the tokens the withdrawal has just delivered.
     assert_eq!(
         public_tokens(&rpc, recipient_tokens),
-        public_before + TOKEN_WITHDRAWAL
+        public_before + TOKEN_WITHDRAWAL - TOKEN_FEE
     );
+    assert_eq!(public_tokens(&rpc, collector_tokens), 2 * TOKEN_FEE);
     assert_eq!(
         private(&mut recipient_wallet),
         recipient_before + TOKEN_TRANSFER - TOKEN_WITHDRAWAL
@@ -635,6 +662,67 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         .any(|balance| balance.mint.as_deref() == Some(name.as_str())));
 }
 
+/// The application's public fee rides in the deposit's or the withdrawal's
+/// transaction: both land, or neither does.
+#[test]
+#[ignore = "needs a Zolana cluster and indexer"]
+fn a_public_fee_lands_with_its_deposit_and_withdrawal_or_not_at_all() {
+    let sender = account("ZOLANA_E2E_SENDER_SEED");
+    let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
+    if rpc.get_balance(sender.pubkey()).expect("balance") < 2 * DEPOSIT {
+        rpc.airdrop(&sender.pubkey(), FUNDING).expect("airdrop");
+    }
+    let mut wallet = open(&sender);
+    register(&mut wallet, &sender);
+    let collector = Keypair::new();
+    let collected = |rpc: &SolanaRpc| {
+        rpc.get_balance(collector.pubkey())
+            .expect("collector balance")
+    };
+    let fee = payment(&collector, SOL_FEE);
+    let before = private_sol(&mut wallet);
+
+    let pending = wallet
+        .prepare_deposit(None, SPLIT * 5, Some(fee.clone()))
+        .unwrap();
+    submit(&wallet, &[&sender], pending);
+    assert_eq!(private_sol(&mut wallet), before + SPLIT * 5);
+    assert_eq!(collected(&rpc), SOL_FEE);
+
+    // A withdrawal to the account itself pays the fee after the pool
+    // instruction, from the lamports it delivered.
+    let pending = wallet
+        .prepare_withdrawal(
+            sender.pubkey().to_string(),
+            None,
+            SPLIT * 2,
+            None,
+            None,
+            Some(fee.clone()),
+        )
+        .expect("prove a withdrawal with a fee");
+    assert_eq!(
+        pending.operation(),
+        Operation::Withdrawal {
+            mint: None,
+            recipient: sender.pubkey().to_string(),
+            amount: SPLIT * 2,
+            fee: Some(fee)
+        }
+    );
+    submit(&wallet, &[&sender], pending);
+    assert_eq!(private_sol(&mut wallet), before + SPLIT * 3);
+    assert_eq!(collected(&rpc), 2 * SOL_FEE);
+
+    // A fee the account cannot pay fails the whole deposit.
+    let too_much = payment(&collector, u64::MAX);
+    let pending = wallet.prepare_deposit(None, SPLIT, Some(too_much)).unwrap();
+    let signature = sender.sign_message(&pending.message()).as_ref().to_vec();
+    assert!(wallet.submit(&pending, vec![signature]).is_err());
+    assert_eq!(private_sol(&mut wallet), before + SPLIT * 3);
+    assert_eq!(collected(&rpc), 2 * SOL_FEE);
+}
+
 /// Two payments in one proof, as an application pays a recipient and its own
 /// fee collector: here both go to the recipient, which is registered.
 #[test]
@@ -647,7 +735,7 @@ fn pays_two_recipients_in_one_transfer() {
     register(&mut sender_wallet, &sender);
     register(&mut recipient_wallet, &recipient);
     if private_sol(&mut sender_wallet) < SPLIT * 3 {
-        let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
+        let pending = sender_wallet.prepare_deposit(None, DEPOSIT, None).unwrap();
         submit(&sender_wallet, &[&sender], pending);
     }
     let sender_before = private_sol(&mut sender_wallet);
@@ -705,7 +793,7 @@ fn merges_notes_proved_remotely_and_on_the_device() {
     );
     // Notes to merge on a fresh account too.
     for _ in 0..2 {
-        let pending = wallet.prepare_deposit(None, SPLIT).unwrap();
+        let pending = wallet.prepare_deposit(None, SPLIT, None).unwrap();
         submit(&wallet, &[&owner], pending);
     }
 

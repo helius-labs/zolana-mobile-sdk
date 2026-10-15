@@ -123,9 +123,15 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
+  ///
+  /// `public_fee` is the application's fee: a public transfer of the same
+  /// asset from this account to the collector, in the same transaction, so
+  /// the deposit and the fee both land or neither does. See
+  /// [`Self::prepare_withdrawal`] for what is checked.
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
+    Payment? publicFee,
   });
 
   /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -196,12 +202,26 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// creates the account with its own Solana client.
   ///
   /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
+  ///
+  /// `public_fee` is the application's fee: a public transfer of the same
+  /// asset from this account to the collector, after the withdrawal in the
+  /// same transaction, so both land or neither does. The account signs it
+  /// with the withdrawal, and pays it from its public balance, which a
+  /// withdrawal to itself has just filled. Before proving, a zero amount
+  /// fails with [`WalletError::AmountZero`], and a token fee whose
+  /// collector has no associated token account with
+  /// [`WalletError::RecipientTokenAccountMissing`] naming the collector. A
+  /// SOL fee to a collector that does not exist must cover its rent. The
+  /// proof does not bind the fee, so it adds nothing to the proof; it adds
+  /// accounts to the message, which a very wide spend may not have room
+  /// for.
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     String? mint,
     required BigInt amount,
     String? feePayer,
     Proving? proving,
+    Payment? publicFee,
   });
 
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -456,9 +476,13 @@ sealed class Operation with _$Operation {
   const factory Operation.registration() = Operation_Registration;
 
   /// Moves public funds into the private balance. Public: sender, asset,
-  /// amount.
-  const factory Operation.deposit({String? mint, required BigInt amount}) =
-      Operation_Deposit;
+  /// amount. `fee` is the application's public fee, paid from the same
+  /// account in the same transaction.
+  const factory Operation.deposit({
+    String? mint,
+    required BigInt amount,
+    Payment? fee,
+  }) = Operation_Deposit;
 
   /// Private transfer of one asset to registered wallets, in the order
   /// given. Reveals neither amounts nor recipients.
@@ -468,11 +492,13 @@ sealed class Operation with _$Operation {
   }) = Operation_Transfer;
 
   /// Moves private funds to a public account. Public: recipient, asset,
-  /// amount.
+  /// amount. `fee` is the application's public fee, paid from this wallet's
+  /// account in the same transaction.
   const factory Operation.withdrawal({
     String? mint,
     required String recipient,
     required BigInt amount,
+    Payment? fee,
   }) = Operation_Withdrawal;
 
   /// Turns merges of this account's notes on or off. Public: the account

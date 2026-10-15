@@ -12,6 +12,7 @@ use zolana_hasher::{Hasher, Poseidon};
 mod activity;
 mod asset;
 mod error;
+mod fee;
 mod keys;
 mod prover;
 mod transport;

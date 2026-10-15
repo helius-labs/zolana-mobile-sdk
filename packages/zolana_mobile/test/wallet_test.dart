@@ -202,9 +202,10 @@ class FakeWallet implements MobileWallet {
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
+    Payment? publicFee,
   }) async => FakePending(
     Uint8List.fromList([1, 2]),
-    operation: Operation.deposit(mint: mint, amount: amount),
+    operation: Operation.deposit(mint: mint, amount: amount, fee: publicFee),
   );
 
   @override
@@ -234,6 +235,7 @@ class FakeWallet implements MobileWallet {
     required BigInt amount,
     String? feePayer,
     Proving? proving,
+    Payment? publicFee,
   }) async {
     proved.add(proving);
     return FakePending(
@@ -242,6 +244,7 @@ class FakeWallet implements MobileWallet {
         mint: mint,
         recipient: recipient,
         amount: amount,
+        fee: publicFee,
       ),
     );
   }
@@ -1181,6 +1184,46 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'a public fee rides with a deposit or withdrawal, in its operation',
+    () async {
+      final (wallet, _, _, _) = await openWallet();
+      final fee = Payment(recipient: 'Collector', amount: BigInt.two);
+
+      final deposit = await wallet.prepareDeposit(BigInt.one, publicFee: fee);
+      expect(
+        deposit.operation,
+        Operation.deposit(amount: BigInt.one, fee: fee),
+      );
+      final withdrawal = await wallet.prepareWithdrawal(
+        recipient: 'R',
+        amount: BigInt.one,
+        publicFee: fee,
+      );
+      expect(
+        withdrawal.operation,
+        Operation.withdrawal(recipient: 'R', amount: BigInt.one, fee: fee),
+      );
+      // Without a fee the operation has none.
+      expect(
+        (await wallet.prepareDeposit(BigInt.one)).operation,
+        Operation.deposit(amount: BigInt.one),
+      );
+    },
+  );
+
+  test('a signed deposit or withdrawal shows the signer its fee', () async {
+    final (wallet, _, signer, _) = await openWallet();
+    final fee = Payment(recipient: 'Collector', amount: BigInt.two);
+
+    await wallet.deposit(BigInt.one, publicFee: fee);
+    await wallet.withdraw(recipient: 'R', amount: BigInt.one, publicFee: fee);
+    expect(signer.requests.skip(1).map((request) => request.$2?.operation), [
+      Operation.deposit(amount: BigInt.one, fee: fee),
+      Operation.withdrawal(recipient: 'R', amount: BigInt.one, fee: fee),
+    ]);
+  });
 
   test('refuses a transaction another key must sign', () async {
     final (wallet, native, signer, _) = await openWallet();

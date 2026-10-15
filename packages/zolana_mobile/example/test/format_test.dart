@@ -57,6 +57,26 @@ void main() {
       'Unshield 2.5 TEST to 8JEE…sS8E',
     );
     expect(
+      approvalText(
+        Operation.withdrawal(
+          mint: demoToken.mint,
+          recipient: b,
+          amount: BigInt.from(2500000),
+          fee: Payment(recipient: collector, amount: BigInt.from(12500)),
+        ),
+      ),
+      'Unshield 2.5 TEST to 8JEE…sS8E, plus a public fee of 0.0125 TEST to CWhA…gCdt',
+    );
+    expect(
+      approvalText(
+        Operation.deposit(
+          amount: BigInt.from(1000000000),
+          fee: Payment(recipient: collector, amount: BigInt.from(5000000)),
+        ),
+      ),
+      'Shield 1 SOL, plus a public fee of 0.005 SOL to CWhA…gCdt',
+    );
+    expect(
       approvalText(const Operation.merging(enabled: false)),
       'Stop merges of your notes',
     );
