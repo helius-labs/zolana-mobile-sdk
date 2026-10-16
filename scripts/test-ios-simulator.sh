@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs the clean consumer integration test on an iOS simulator with a deadline
-# on every phase. Hosted macOS runners sometimes never finish a simulator boot,
+# Runs the clean consumer integration test, or with `bench` the proof timing
+# runs, on an iOS simulator with a deadline on every phase. Hosted macOS runners sometimes never finish a simulator boot,
 # and an unpatched Flutter tool can miss the app's VM Service URL and wait
 # forever (see scripts/patch-flutter-tool.sh); without a deadline the job waits
 # for the 6-hour runner limit. The simulator is ready once it has booted and
@@ -8,13 +8,17 @@
 # once by a fresh device. A test that misses its deadline fails, and prints the
 # process tree and simulator log so the stuck phase is visible. The test
 # deadline covers the Xcode build, which takes up to 18 minutes on a slow
-# runner.
+# runner, and the two proof timing runs of a bench.
+#
+#   test-ios-simulator.sh [device|bench]
 set -euo pipefail
+
+mode="${1:-device}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 boot_seconds="${ZOLANA_BOOT_SECONDS:-900}"
 log_seconds="${ZOLANA_LOG_STREAM_SECONDS:-300}"
-test_seconds="${ZOLANA_TEST_SECONDS:-2400}"
+test_seconds="${ZOLANA_TEST_SECONDS:-3600}"
 diagnostics="${ZOLANA_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ios-simulator-diagnostics}"
 mkdir -p "$diagnostics"
 
@@ -148,5 +152,5 @@ done
 log "booted $device"
 
 export ZOLANA_TEST_DEVICE="$device"
-bounded "$test_seconds" test bash "$repo_root/scripts/test-consumer.sh" device
+bounded "$test_seconds" test bash "$repo_root/scripts/test-consumer.sh" "$mode"
 log "test passed"

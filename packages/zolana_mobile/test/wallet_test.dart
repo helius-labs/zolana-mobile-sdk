@@ -345,6 +345,28 @@ class FakeProvingKeys implements ProvingKeys {
   @override
   Future<void> clear() async {}
 
+  /// What `prove` was asked: key name and request.
+  final proved = <(String, String)>[];
+
+  @override
+  Future<ProvedRequest> prove({
+    required String keyName,
+    required String requestJson,
+  }) async {
+    proved.add((keyName, requestJson));
+    return ProvedRequest(
+      proofJson: '{"ar":[]}',
+      key: keyName,
+      downloadedBytes: BigInt.zero,
+      downloadMs: BigInt.zero,
+      loadMs: BigInt.from(12),
+      witnessMs: BigInt.one,
+      proveMs: BigInt.from(300),
+      verifyMs: BigInt.one,
+      totalMs: BigInt.from(314),
+    );
+  }
+
   @override
   void dispose() => disposed = true;
 
@@ -1393,6 +1415,32 @@ void main() {
       expect(updates, [0, 10, 20, 30].map(BigInt.from));
       expect(native.keys.answers, [true, true, true, true]);
       expect(await wallet.provingKeys(), hasLength(1));
+    },
+  );
+
+  test(
+    'proveRequest proves through the proving keys and reports timings',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+      final proved = await wallet.proveRequest(
+        keyName: 'transfer_confidential_1_2.key',
+        requestJson: '{"circuitType":"transfer-confidential"}',
+      );
+      expect(native.keys.proved, [
+        (
+          'transfer_confidential_1_2.key',
+          '{"circuitType":"transfer-confidential"}',
+        ),
+      ]);
+      expect(
+        (proved.key, proved.proveMs, proved.totalMs),
+        ('transfer_confidential_1_2.key', BigInt.from(300), BigInt.from(314)),
+      );
+      await wallet.close();
+      await expectLater(
+        wallet.proveRequest(keyName: 'k', requestJson: '{}'),
+        throwsA(const WalletError.walletClosed()),
+      );
     },
   );
 

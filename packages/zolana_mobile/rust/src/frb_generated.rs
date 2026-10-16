@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1408143600;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1608780066;
 
 // Section: executor
 
@@ -1823,6 +1823,61 @@ fn wire__zolana_mobile__ProvingKeys_prefetch_impl(
         },
     )
 }
+fn wire__zolana_mobile__ProvingKeys_prove_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ProvingKeys_prove",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<ProvingKeys>,
+            >>::sse_decode(&mut deserializer);
+            let api_key_name = <String>::sse_decode(&mut deserializer);
+            let api_request_json = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, zolana_mobile::WalletError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let output_ok = zolana_mobile::ProvingKeys::prove(
+                        &*api_that_guard,
+                        api_key_name,
+                        api_request_json,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__zolana_mobile__ProvingKeys_status_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2107,6 +2162,18 @@ const _: fn() = || {
         let Payment = None::<zolana_mobile::Payment>.unwrap();
         let _: String = Payment.recipient;
         let _: u64 = Payment.amount;
+    }
+    {
+        let ProvedRequest = None::<zolana_mobile::ProvedRequest>.unwrap();
+        let _: String = ProvedRequest.proof_json;
+        let _: String = ProvedRequest.key;
+        let _: u64 = ProvedRequest.downloaded_bytes;
+        let _: u64 = ProvedRequest.download_ms;
+        let _: u64 = ProvedRequest.load_ms;
+        let _: u64 = ProvedRequest.witness_ms;
+        let _: u64 = ProvedRequest.prove_ms;
+        let _: u64 = ProvedRequest.verify_ms;
+        let _: u64 = ProvedRequest.total_ms;
     }
     {
         let ProvingKeyProgress = None::<zolana_mobile::ProvingKeyProgress>.unwrap();
@@ -2936,6 +3003,32 @@ impl SseDecode for zolana_mobile::Payment {
     }
 }
 
+impl SseDecode for zolana_mobile::ProvedRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_proofJson = <String>::sse_decode(deserializer);
+        let mut var_key = <String>::sse_decode(deserializer);
+        let mut var_downloadedBytes = <u64>::sse_decode(deserializer);
+        let mut var_downloadMs = <u64>::sse_decode(deserializer);
+        let mut var_loadMs = <u64>::sse_decode(deserializer);
+        let mut var_witnessMs = <u64>::sse_decode(deserializer);
+        let mut var_proveMs = <u64>::sse_decode(deserializer);
+        let mut var_verifyMs = <u64>::sse_decode(deserializer);
+        let mut var_totalMs = <u64>::sse_decode(deserializer);
+        return zolana_mobile::ProvedRequest {
+            proof_json: var_proofJson,
+            key: var_key,
+            downloaded_bytes: var_downloadedBytes,
+            download_ms: var_downloadMs,
+            load_ms: var_loadMs,
+            witness_ms: var_witnessMs,
+            prove_ms: var_proveMs,
+            verify_ms: var_verifyMs,
+            total_ms: var_totalMs,
+        };
+    }
+}
+
 impl SseDecode for zolana_mobile::Proving {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3525,12 +3618,13 @@ fn pde_ffi_dispatcher_primary_impl(
         32 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
         33 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
         34 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        40 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        41 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3811,6 +3905,34 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::Payment>>
     for zolana_mobile::Payment
 {
     fn into_into_dart(self) -> FrbWrapper<zolana_mobile::Payment> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::ProvedRequest> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.proof_json.into_into_dart().into_dart(),
+            self.0.key.into_into_dart().into_dart(),
+            self.0.downloaded_bytes.into_into_dart().into_dart(),
+            self.0.download_ms.into_into_dart().into_dart(),
+            self.0.load_ms.into_into_dart().into_dart(),
+            self.0.witness_ms.into_into_dart().into_dart(),
+            self.0.prove_ms.into_into_dart().into_dart(),
+            self.0.verify_ms.into_into_dart().into_dart(),
+            self.0.total_ms.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::ProvedRequest>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::ProvedRequest>>
+    for zolana_mobile::ProvedRequest
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::ProvedRequest> {
         self.into()
     }
 }
@@ -4712,6 +4834,21 @@ impl SseEncode for zolana_mobile::Payment {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.recipient, serializer);
         <u64>::sse_encode(self.amount, serializer);
+    }
+}
+
+impl SseEncode for zolana_mobile::ProvedRequest {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.proof_json, serializer);
+        <String>::sse_encode(self.key, serializer);
+        <u64>::sse_encode(self.downloaded_bytes, serializer);
+        <u64>::sse_encode(self.download_ms, serializer);
+        <u64>::sse_encode(self.load_ms, serializer);
+        <u64>::sse_encode(self.witness_ms, serializer);
+        <u64>::sse_encode(self.prove_ms, serializer);
+        <u64>::sse_encode(self.verify_ms, serializer);
+        <u64>::sse_encode(self.total_ms, serializer);
     }
 }
 

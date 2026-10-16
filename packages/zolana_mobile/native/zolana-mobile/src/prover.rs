@@ -1,14 +1,17 @@
 //! Where the wallet proves a spend: on the device with its own [`Prover`], or
 //! with the Zolana SDK's prover client through the application's transport.
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Instant,
 };
 
 use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
 
-use crate::{error::WalletError, init_gnark, keys, Loaded, PREPARED};
+use crate::{elapsed_ms, error::WalletError, init_gnark, keys, Loaded, ProvedRequest, PREPARED};
 
 /// Where a spend is proved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,12 +60,25 @@ impl NativeProver {
     }
 
     fn prove_json(&self, body: &str, key: &ExpectedProvingKey) -> Result<String, WalletError> {
+        Ok(self.prove_request(body, key)?.proof_json)
+    }
+
+    /// Prove `body` with `key`, fetched and loaded as needed, and say where
+    /// the time went.
+    pub(crate) fn prove_request(
+        &self,
+        body: &str,
+        key: &ExpectedProvingKey,
+    ) -> Result<ProvedRequest, WalletError> {
+        let started = Instant::now();
         let name = key.name.as_str();
-        let path = self.0.keys.ensure(key)?;
+        let (path, downloaded_bytes) = self.0.keys.ensure(key)?;
+        let download_ms = elapsed_ms(started);
         let mut state = PREPARED
             .lock()
             .map_err(|_| WalletError::ProverUnavailable)?;
         let loaded_key = state.loaded.as_ref().map(|loaded| loaded.key.as_deref());
+        let loading = Instant::now();
         if loaded_key != Some(Some(name)) {
             if loaded_key == Some(None) {
                 // The application holds its own prepared system; leave it.
@@ -85,12 +101,23 @@ impl NativeProver {
                 prover,
             });
         }
+        let load_ms = elapsed_ms(loading);
         let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
         let proof = loaded
             .prover
             .prove_request(body)
             .map_err(|_| WalletError::ProofFailed)?;
-        Ok(proof.proof_json)
+        Ok(ProvedRequest {
+            proof_json: proof.proof_json,
+            key: name.to_string(),
+            downloaded_bytes,
+            download_ms,
+            load_ms,
+            witness_ms: proof.witness_ms,
+            prove_ms: proof.prove_ms,
+            verify_ms: proof.verify_ms,
+            total_ms: elapsed_ms(started),
+        })
     }
 }
 
@@ -500,10 +527,63 @@ mod tests {
             "the eddsa rail has no BSB22 commitment"
         );
         // The key's image is beside it for the next session.
-        let image = keys::image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap());
+        let image = keys::image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap().0);
         assert!(image.is_file(), "{}", image.display());
         // The same key serves the next proof without reloading.
         prover.prove(&Captured(transfer_2_2_key())).unwrap();
+    }
+
+    /// Proves every `fixtures/prove-request-<n>x<m>.json` with its pinned
+    /// key through [`crate::ProvingKeys::prove`]. The keys must be in
+    /// `ZOLANA_TEST_KEY_DIR` (or a temp directory) already, the widest of
+    /// them 180 MB: this transport downloads nothing.
+    #[test]
+    #[ignore = "needs the proving keys of every fixture"]
+    fn proves_every_fixture_with_its_pinned_key() {
+        let dir = std::env::var("ZOLANA_TEST_KEY_DIR").unwrap_or_else(|_| {
+            std::env::temp_dir()
+                .join("zolana-mobile-keys")
+                .display()
+                .to_string()
+        });
+        let store = Arc::new(keys::KeyStore::new(
+            dir,
+            None,
+            crate::transport::tests::unreachable(),
+        ));
+        let keys = crate::ProvingKeys {
+            prover: NativeProver::new(Arc::clone(&store)),
+            store,
+        };
+        let fixtures =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../fixtures");
+        let mut proved = 0;
+        for entry in std::fs::read_dir(&fixtures).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_str().unwrap();
+            let Some(shape) = name
+                .strip_prefix("prove-request-")
+                .and_then(|rest| rest.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            let request = std::fs::read_to_string(&path).unwrap();
+            let key = match shape.strip_prefix("merge-") {
+                Some(merge) => format!("merge_{}.key", merge.replace('x', "_")),
+                None => format!("transfer_confidential_{}.key", shape.replace('x', "_")),
+            };
+            let result = keys
+                .prove(key.clone(), request)
+                .unwrap_or_else(|failure| panic!("{name} with {key}: {failure:?}"));
+            assert!(!result.proof_json.is_empty() && result.key == key, "{name}");
+            println!(
+                "{name}: download {} ms ({} bytes), load {} ms, witness {} ms, prove {} ms, verify {} ms",
+                result.download_ms, result.downloaded_bytes, result.load_ms,
+                result.witness_ms, result.prove_ms, result.verify_ms
+            );
+            proved += 1;
+        }
+        assert!(proved >= 4, "{proved} fixtures proved");
     }
 
     fn transfer_2_2_key() -> ExpectedProvingKey {

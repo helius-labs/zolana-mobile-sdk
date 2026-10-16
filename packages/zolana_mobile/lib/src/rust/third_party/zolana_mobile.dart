@@ -10,7 +10,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'zolana_mobile.freezed.dart';
 
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Loaded`, `ProverState`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `drop`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `drop`, `eq`, `fmt`, `fmt`
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
 Future<Uint8List> derivationMessage({required String solanaPubkey}) => RustLib
@@ -329,6 +329,18 @@ abstract class ProvingKeys implements RustOpaqueInterface {
     required FutureOr<bool> Function(ProvingKeyProgress) progress,
   });
 
+  /// Prove `request_json`, a Zolana `/prove` request, with the pinned key
+  /// `key_name` (such as `transfer_confidential_1_2.key`), as the wallet
+  /// proves a spend: the key downloads when it is not on the device, loads
+  /// when it is not the loaded one, and the proof is verified. The result
+  /// says where the time went, so an application can time proofs on a
+  /// device with a fixed request. One proof at a time with the wallet's
+  /// own; a `LocalProver` loaded meanwhile fails it with `prover_busy`.
+  Future<ProvedRequest> prove({
+    required String keyName,
+    required String requestJson,
+  });
+
   /// Every key the wallet can prove with on the device, smallest first.
   Future<List<ProvingKeyStatus>> status();
 }
@@ -535,6 +547,69 @@ class Payment {
           runtimeType == other.runtimeType &&
           recipient == other.recipient &&
           amount == other.amount;
+}
+
+/// A proof of a `/prove` request through the wallet's key store, by
+/// [`ProvingKeys::prove`], and where its time went. Milliseconds; the
+/// stages add up to about `total_ms`.
+class ProvedRequest {
+  final String proofJson;
+
+  /// The key it was proved with.
+  final String key;
+
+  /// Bytes of the key downloaded for this proof: its size when it was not
+  /// on the device, what a partial download lacked, or none.
+  final BigInt downloadedBytes;
+
+  /// Fetching and checking the key, download included.
+  final BigInt downloadMs;
+
+  /// Loading the key into the prover; none when it was the loaded one.
+  final BigInt loadMs;
+  final BigInt witnessMs;
+  final BigInt proveMs;
+  final BigInt verifyMs;
+  final BigInt totalMs;
+
+  const ProvedRequest({
+    required this.proofJson,
+    required this.key,
+    required this.downloadedBytes,
+    required this.downloadMs,
+    required this.loadMs,
+    required this.witnessMs,
+    required this.proveMs,
+    required this.verifyMs,
+    required this.totalMs,
+  });
+
+  @override
+  int get hashCode =>
+      proofJson.hashCode ^
+      key.hashCode ^
+      downloadedBytes.hashCode ^
+      downloadMs.hashCode ^
+      loadMs.hashCode ^
+      witnessMs.hashCode ^
+      proveMs.hashCode ^
+      verifyMs.hashCode ^
+      totalMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ProvedRequest &&
+          runtimeType == other.runtimeType &&
+          proofJson == other.proofJson &&
+          key == other.key &&
+          downloadedBytes == other.downloadedBytes &&
+          downloadMs == other.downloadMs &&
+          loadMs == other.loadMs &&
+          witnessMs == other.witnessMs &&
+          proveMs == other.proveMs &&
+          verifyMs == other.verifyMs &&
+          totalMs == other.totalMs;
 }
 
 /// Where a spend is proved.

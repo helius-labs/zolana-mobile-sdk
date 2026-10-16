@@ -818,3 +818,51 @@ From the repository root, `bash scripts/test-consumer.sh android` extracts the
 package into a separate temporary consumer and builds it with fresh pub
 resolution. `ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device`
 also runs initialization, a real proof, sanitized failure, and lock/drain tests.
+
+### Proof timing
+
+The same harness times proofs on CI and on a phone, so numbers compare. It
+proves the fixture requests of `fixtures/` through the wallet's key store,
+as a spend is proved, and reports each stage: the key's download when it
+was not on the device, its load, the witness, the proof and its
+verification. The shapes are transfers of 1, 2, 4, 8, 16 and 24 notes to
+two outputs (`1x2` to `24x2`) and a merge of 24 notes (`merge-24x1`).
+
+```sh
+cd packages/zolana_mobile/example
+../../../scripts/stage-demo-assets.sh   # the fixture requests into assets/
+flutter test integration_test/proof_timing_test.dart -d DEVICE --no-uninstall \
+  --dart-define=ZOLANA_TIMING_RUN=fresh --dart-define=ZOLANA_TIMING_SHAPES=1x2,8x2 \
+  | tee /tmp/timing/phone-fresh.log
+flutter test integration_test/proof_timing_test.dart -d DEVICE \
+  --dart-define=ZOLANA_TIMING_RUN=restart --dart-define=ZOLANA_TIMING_SHAPES=1x2,8x2 \
+  | tee /tmp/timing/phone-restart.log
+../../../scripts/proof-timing-report.py --logs /tmp/timing
+```
+
+The `fresh` run starts from an empty key directory and gives the first two
+rows of the report (first run including the download, then warm); the
+`restart` run is a new process with the keys on the device and gives the
+other two (first run after a restart, then repeated). `--no-uninstall`
+keeps the app, and its keys, for the restart run, which fails when a key
+is missing. The keys download from the key host (9 MB for one note, 59 MB
+for 8, 180 MB for 24, 173 MB for the merge), so the first run needs the
+network. Without `ZOLANA_TIMING_SHAPES` the harness runs every shape.
+`ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per
+shape and run; the report takes medians.
+
+CI benches every shape on an Android emulator and an iOS simulator for
+every pull request, beside the tests, and comments the report with the
+change against the last commit of `main`. After each push to `main` the
+reports are commented on the commit, against the commit before it, and join
+the history on the
+[`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing)
+branch, a table of the last commits per runner. Those numbers say whether a
+change made proving faster or slower; what a phone takes comes from the
+same harness on that phone.
+
+`wallet.proveRequest(keyName, requestJson)` is what the harness calls: it
+proves any Zolana `/prove` request with a pinned key, and returns the
+proof and the stage timings. `tools/prove-fixtures` wrote the fixture
+requests, on trees of its own: they prove with the pinned keys and land
+nowhere.

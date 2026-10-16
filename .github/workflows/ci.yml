@@ -97,15 +97,30 @@ jobs:
             ~/.cache/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
+  # The device tests, and a bench: the proof timing report of every shape
+  # (README, "Proof timing"), which comments on the pull request. A newer push
+  # to a pull request cancels its bench; every push to main is benched.
   android-emulator:
+    name: android-emulator (${{ matrix.api-level }}${{ matrix.mode == 'bench' && ', bench' || '' }})
     strategy:
       fail-fast: false
       matrix:
-        api-level: [35, 26]
+        include:
+          - { api-level: 35, mode: device }
+          - { api-level: 26, mode: device }
+          - { api-level: 35, mode: bench }
     runs-on: ubuntu-latest
+    concurrency:
+      group: android-${{ matrix.mode }}-${{ matrix.api-level }}-${{ matrix.mode == 'bench' && github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_CACHE_SIZE: 2500M
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/.timing
+      ZOLANA_TIMING_LABEL: android-api${{ matrix.api-level }}
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
@@ -144,22 +159,38 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run clean consumer on an API ${{ matrix.api-level }} emulator
-        # A green run takes 2-7 minutes after the build; a hung emulator fails
-        # here, not after the job's 6 hours.
-        timeout-minutes: 25
+      - name: Run clean consumer (${{ matrix.mode }}) on an API ${{ matrix.api-level }} emulator
+        # A green test takes 2-7 minutes after the build, a bench about 25; a
+        # hung emulator fails here, not after the job's 6 hours. The bench's
+        # largest keys need the memory and their images the disk.
+        timeout-minutes: ${{ matrix.mode == 'bench' && 100 || 40 }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh device
+          ram-size: ${{ matrix.mode == 'bench' && '4096M' || '' }}
+          disk-size: ${{ matrix.mode == 'bench' && '8G' || '' }}
+          script: ZOLANA_TEST_DEVICE=emulator-5554 bash scripts/test-consumer.sh ${{ matrix.mode }}
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
-      # One job of the matrix saves the cache both restore.
-      - if: matrix.api-level == 35 && steps.native-cache.outputs.cache-hit != 'true'
+      - name: Proof timing report
+        if: matrix.mode == 'bench' && (success() || failure())
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-ci.sh "$ZOLANA_TIMING_LABEL"
+      - if: matrix.mode == 'bench' && (success() || failure())
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-timing-android-api${{ matrix.api-level }}
+          path: |
+            .timing/report.json
+            .timing/report.md
+          if-no-files-found: ignore
+      # One job of the matrix saves the cache all restore.
+      - if: matrix.api-level == 35 && matrix.mode == 'device' && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -223,12 +254,27 @@ jobs:
   # use. Flutter's debug pods build every simulator architecture unless ARCHS
   # is set, so each job builds one and checks its iOS 16 minimum: ios the
   # runner's arm64, which its simulator runs, and ios-example x86_64.
+  #
+  # As on Android, ios runs the device test and a bench, cancelled as there.
   ios:
+    name: ios${{ matrix.mode == 'bench' && ' (bench)' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [device, bench]
     runs-on: macos-latest
+    concurrency:
+      group: ios-${{ matrix.mode }}-${{ matrix.mode == 'bench' && github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       SCCACHE_CACHE_SIZE: 1G
       SCCACHE_IDLE_TIMEOUT: "0"
       FLUTTER_XCODE_ARCHS: arm64
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/.timing
+      ZOLANA_TIMING_LABEL: ios-simulator
     steps:
       - uses: actions/checkout@v6
       - run: echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
@@ -275,16 +321,32 @@ jobs:
       - run: ./scripts/stage-demo-assets.sh
       # The only build of the packaged consumer: `flutter test` builds it after
       # the boot. Building before the boot, or during it, makes the job slower.
-      - name: Run clean consumer on an iOS simulator
-        timeout-minutes: 85
-        run: bash scripts/test-ios-simulator.sh
+      - name: Run clean consumer (${{ matrix.mode }}) on an iOS simulator
+        timeout-minutes: ${{ matrix.mode == 'bench' && 130 || 85 }}
+        env:
+          ZOLANA_TEST_SECONDS: ${{ matrix.mode == 'bench' && 7200 || 3600 }}
+        run: bash scripts/test-ios-simulator.sh ${{ matrix.mode }}
+      - name: Proof timing report
+        if: matrix.mode == 'bench' && (success() || failure())
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-ci.sh "$ZOLANA_TIMING_LABEL"
+      - if: matrix.mode == 'bench' && (success() || failure())
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-timing-ios-simulator
+          path: |
+            .timing/report.json
+            .timing/report.md
+          if-no-files-found: ignore
       - name: Check that the native library runs on iOS 16
+        if: matrix.mode == 'device'
         run: |
           for archive in "$ZOLANA_CONSUMER_DIR"/consumer/.dart_tool/hooks_runner/shared/zolana_mobile/build/*/static/libmopro_flutter_bindings.a; do
             bash scripts/check-ios-minimum.sh "$archive" 16.0
           done
       # Saved after a green test, as in the Android emulator jobs.
-      - if: steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
+      - if: matrix.mode == 'device' && steps.precompiled.outputs.found != 'true' && steps.native-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -294,7 +356,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: ios-simulator-diagnostics
+          name: ios-simulator-diagnostics-${{ matrix.mode }}
           path: ${{ runner.temp }}/ios-simulator-diagnostics
           if-no-files-found: ignore
 
@@ -384,3 +446,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: bash scripts/check-upstream.sh
+
+  # After each push to main, the bench reports join the history on the
+  # proof-timing branch, which pull requests compare against. One push at a
+  # time writes it.
+  proof-timing-history:
+    if: github.event_name == 'push' && !cancelled()
+    needs: [android-emulator, ios]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: proof-timing-history
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: proof-timing-*
+          path: ${{ runner.temp }}/reports
+      - run: bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
+        env:
+          GH_TOKEN: ${{ github.token }}
