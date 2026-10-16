@@ -234,7 +234,13 @@ await wallet.transfer(
   has the transaction, so notes spent by another session or device are never
   picked. Each of those reads is a full read of the wallet's notes: a screen
   that shows balances and history calls `overview()`, which returns both from
-  one read, and filters by asset itself.
+  one read, and filters by asset itself. With `WalletConfig.reuseNotesMs`, a
+  spend prepared within that many milliseconds of the last read takes its
+  notes from that read instead of reading again, which saves a send screen
+  that just showed the balance the indexer round trips; a send or a
+  confirmation ends the reuse. A note spent elsewhere in that window fails
+  the spend when it is sent, with `WalletError.notesAlreadySpent`, as one
+  spent right after a read would.
 - **Errors** are `WalletError`s that say what happened, with its data; the
   table below lists them. Errors never contain key material.
 
@@ -274,6 +280,7 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `invalidMint` | `mint` | not a base58 key |
 | `invalidTokenProgram` | `mint`, `tokenProgram` | the configured token program is neither SPL Token nor Token-2022 |
 | `invalidPubkey` | `value` | not a base58 public key |
+| `invalidMaxSpendInputs` | `maxInputs`, `limit` | `WalletConfig.maxSpendInputs` is outside 1 to 40 |
 | `invalidDerivationSignature` | | the signature is not the account's over the derivation message |
 | `invalidWalletKeys` | | saved keys are malformed or do not match their public keys |
 | `rpcUrlInsecure`, `indexerUrlInsecure`, `provingKeyUrlInsecure`, `proverUrlInsecure` | `url` | with the default transport, a plaintext URL off loopback without `allowInsecureHttp` |
@@ -545,17 +552,23 @@ await wallet.transfer(
   instead, so the prover does not prove the same spend twice (see
   `TransportResponseLost` below).
 
-Current limits: a spend takes at most 40 notes from at most two trees and
-fails with `WalletError.mergeRequired` or `WalletError.tooManyInputTrees`
-beyond that (see [Merges](#merges)); one prepared prover is loaded per
-process, so close a `LocalProver` before the wallet proves. A spend of zero
-fails with `WalletError.amountZero`.
+Current limits: a spend takes at most `WalletConfig.maxSpendInputs` notes
+(40 when unset, the most a key supports) from at most two trees and fails
+with `WalletError.mergeRequired` or `WalletError.tooManyInputTrees` beyond
+that (see [Merges](#merges)); one prepared prover is loaded per process, so
+close a `LocalProver` before the wallet proves. A spend of zero fails with
+`WalletError.amountZero`. Proof time and memory grow with the notes a spend
+takes, so set the cap to what the phones you support prove in the time you
+accept, and merge before spends need more: `TokenBalance.notes` says how
+many notes each balance is in.
 
 ### Merges
 
 A merge combines up to 54 notes of one asset on one tree into one note of
 their sum. Merge when a spend fails with `WalletError.mergeRequired` or
-`WalletError.tooManyInputTrees`, then prepare the spend again.
+`WalletError.tooManyInputTrees`, then prepare the spend again; or before
+that, when `TokenBalance.notes` grows past what a spend should take, so
+that spends stay narrow and fast.
 
 ```dart
 await wallet.setMerging(true); // once per account; this account signs

@@ -87,7 +87,9 @@ abstract interface class WalletBackend {
 /// never contains key material.
 ///
 /// The wallet keeps no chain state: [balances], [privateBalance], [activity]
-/// and every spend read the wallet's notes from the indexer when they run.
+/// and every spend read the wallet's notes from the indexer when they run,
+/// unless `WalletConfig.reuseNotesMs` lets a spend take them from a read
+/// made that recently.
 /// Only the notes its prepared spends reserve are kept, in memory: the next
 /// spend selects other notes until a prepared spend is submitted or
 /// confirmed, [release]d, or past its

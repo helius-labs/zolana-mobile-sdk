@@ -64,6 +64,9 @@ pub enum WalletError {
     InvalidTokenProgram { mint: String, token_program: String },
     /// `value` is not a base58 public key.
     InvalidPubkey { value: String },
+    /// [`WalletConfig::max_spend_inputs`](crate::WalletConfig::max_spend_inputs)
+    /// is `max_inputs`, outside 1 to `limit`.
+    InvalidMaxSpendInputs { max_inputs: u64, limit: u64 },
     /// The derivation signature is not the account's signature over the
     /// derivation message.
     InvalidDerivationSignature,

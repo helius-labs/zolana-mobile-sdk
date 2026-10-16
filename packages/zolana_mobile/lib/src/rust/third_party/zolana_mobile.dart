@@ -648,10 +648,14 @@ class TokenBalance {
   final String? mint;
   final BigInt amount;
 
-  const TokenBalance({this.mint, required this.amount});
+  /// How many spendable notes the amount is in: what a spend of all of it
+  /// takes, and what a merge reduces.
+  final BigInt notes;
+
+  const TokenBalance({this.mint, required this.amount, required this.notes});
 
   @override
-  int get hashCode => mint.hashCode ^ amount.hashCode;
+  int get hashCode => mint.hashCode ^ amount.hashCode ^ notes.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -659,7 +663,8 @@ class TokenBalance {
       other is TokenBalance &&
           runtimeType == other.runtimeType &&
           mint == other.mint &&
-          amount == other.amount;
+          amount == other.amount &&
+          notes == other.notes;
 }
 
 /// Why the application's transport has no response.
@@ -821,6 +826,23 @@ class WalletConfig {
   /// nullifier secret included.
   final String? proverUrl;
 
+  /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
+  /// A spend that needs more fails with [`WalletError::MergeRequired`]
+  /// naming this cap, before proving. Proof time and memory grow with the
+  /// notes a spend takes: a low cap, with merges that keep the notes few,
+  /// keeps spends fast.
+  final int? maxSpendInputs;
+
+  /// For how many milliseconds a spend may take its notes from the last
+  /// read ([`MobileWallet::balances`], [`MobileWallet::overview`],
+  /// [`MobileWallet::private_balance`] or [`MobileWallet::activity`])
+  /// instead of reading the indexer again; `None` reads before every
+  /// spend. A send or a confirmation ends the reuse. A note spent
+  /// elsewhere since the read fails the spend when it is sent, with
+  /// [`WalletError::NotesAlreadySpent`], as a note spent right after a
+  /// read would.
+  final BigInt? reuseNotesMs;
+
   /// The SPL mints the wallet holds, each with its token program. A call
   /// that names another mint fails with [`WalletError::MintNotConfigured`].
   /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
@@ -835,6 +857,8 @@ class WalletConfig {
     this.provingKeyUrl,
     this.proving,
     this.proverUrl,
+    this.maxSpendInputs,
+    this.reuseNotesMs,
     required this.mints,
   });
 
@@ -846,6 +870,8 @@ class WalletConfig {
       provingKeyUrl.hashCode ^
       proving.hashCode ^
       proverUrl.hashCode ^
+      maxSpendInputs.hashCode ^
+      reuseNotesMs.hashCode ^
       mints.hashCode;
 
   @override
@@ -859,6 +885,8 @@ class WalletConfig {
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
           proverUrl == other.proverUrl &&
+          maxSpendInputs == other.maxSpendInputs &&
+          reuseNotesMs == other.reuseNotesMs &&
           mints == other.mints;
 }
 
@@ -957,6 +985,13 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// `value` is not a base58 public key.
   const factory WalletError.invalidPubkey({required String value}) =
       WalletError_InvalidPubkey;
+
+  /// [`WalletConfig::max_spend_inputs`](crate::WalletConfig::max_spend_inputs)
+  /// is `max_inputs`, outside 1 to `limit`.
+  const factory WalletError.invalidMaxSpendInputs({
+    required BigInt maxInputs,
+    required BigInt limit,
+  }) = WalletError_InvalidMaxSpendInputs;
 
   /// The derivation signature is not the account's signature over the
   /// derivation message.
