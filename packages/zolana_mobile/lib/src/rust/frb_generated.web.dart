@@ -284,6 +284,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Payment dco_decode_payment(dynamic raw);
 
   @protected
+  ProvedRequest dco_decode_proved_request(dynamic raw);
+
+  @protected
   Proving dco_decode_proving(dynamic raw);
 
   @protected
@@ -592,6 +595,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Payment sse_decode_payment(SseDeserializer deserializer);
+
+  @protected
+  ProvedRequest sse_decode_proved_request(SseDeserializer deserializer);
 
   @protected
   Proving sse_decode_proving(SseDeserializer deserializer);
@@ -977,6 +983,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_payment(Payment self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_proved_request(ProvedRequest self, SseSerializer serializer);
 
   @protected
   void sse_encode_proving(Proving self, SseSerializer serializer);

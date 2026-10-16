@@ -73,3 +73,6 @@ mkdir -p "$asset_dir"
 cp "$temporary_assets"/* "$asset_dir/"
 cp "$repo_root/fixtures/prove-request-2x2.json" "$asset_dir/prove-request-2x2.json"
 echo "staged demo proving assets in $asset_dir"
+
+# The fixture requests of every shape, for the proof timing harness.
+cp "$repo_root"/fixtures/prove-request-*.json "$asset_dir/"

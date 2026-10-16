@@ -1,0 +1,21 @@
+[package]
+name = "prove-fixtures"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Writes the /prove request fixtures the proof timing harness proves."
+
+# Built on its own, not with the SDK: it pulls the Zolana client's tree
+# crates for a one-off run.
+[workspace]
+
+[dependencies]
+num-bigint = "0.4"
+solana-address = "=2.6.1"
+solana-signature = "=3.4.1"
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2", features = ["client"] }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2", features = ["std"] }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
+zolana-merkle-tree = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }

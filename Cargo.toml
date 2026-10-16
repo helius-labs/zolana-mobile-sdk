@@ -2,7 +2,7 @@
 members = [
     "packages/zolana_mobile/native/zolana-mobile",
 ]
-exclude = ["packages/zolana_mobile/native/rust-gnark"]
+exclude = ["packages/zolana_mobile/native/rust-gnark", "tools/prove-fixtures"]
 resolver = "2"
 
 [workspace.package]

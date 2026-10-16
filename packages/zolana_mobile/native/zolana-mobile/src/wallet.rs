@@ -289,6 +289,9 @@ pub struct MobileWallet {
     /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
     send_lookup: IndexerPollConfig,
     proving_keys: Arc<KeyStore>,
+    /// The device prover, the client's too: [`Self::proving_keys`] proves
+    /// with it so that a key stays loaded between the two.
+    native_prover: NativeProver,
     /// The SDK's prover client of [`WalletConfig::prover_url`].
     remote_prover: Option<Arc<ProverClient>>,
     /// Proves nothing itself: each spend names its prover.
@@ -377,7 +380,7 @@ impl MobileWallet {
         let client = ZolanaClient::with_prover(
             transport.solana_rpc(config.rpc_url)?,
             transport.indexer(&config.indexer_url),
-            native_prover,
+            native_prover.clone(),
         );
         Ok(MobileWallet {
             owner,
@@ -390,6 +393,7 @@ impl MobileWallet {
             proving: config.proving.unwrap_or(Proving::Local),
             send_lookup: SEND_LOOKUP,
             proving_keys,
+            native_prover,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
             client,
         })
@@ -400,6 +404,7 @@ impl MobileWallet {
     pub fn proving_keys(&self) -> ProvingKeys {
         ProvingKeys {
             store: Arc::clone(&self.proving_keys),
+            prover: self.native_prover.clone(),
         }
     }
 

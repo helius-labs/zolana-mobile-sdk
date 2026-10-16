@@ -72,6 +72,27 @@ pub struct LocalProofResult {
     pub total_ms: u64,
 }
 
+/// A proof of a `/prove` request through the wallet's key store, by
+/// [`ProvingKeys::prove`], and where its time went. Milliseconds; the
+/// stages add up to about `total_ms`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvedRequest {
+    pub proof_json: String,
+    /// The key it was proved with.
+    pub key: String,
+    /// Bytes of the key downloaded for this proof: its size when it was not
+    /// on the device, what a partial download lacked, or none.
+    pub downloaded_bytes: u64,
+    /// Fetching and checking the key, download included.
+    pub download_ms: u64,
+    /// Loading the key into the prover; none when it was the loaded one.
+    pub load_ms: u64,
+    pub witness_ms: u64,
+    pub prove_ms: u64,
+    pub verify_ms: u64,
+    pub total_ms: u64,
+}
+
 pub fn sdk_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

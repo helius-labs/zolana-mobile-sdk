@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1408143600;
+  int get rustContentHash => 1608780066;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -249,6 +249,12 @@ abstract class RustLibApi extends BaseApi {
     required ProvingKeys that,
     required List<String> names,
     required FutureOr<bool> Function(ProvingKeyProgress) progress,
+  });
+
+  Future<ProvedRequest> zolanaMobileProvingKeysProve({
+    required ProvingKeys that,
+    required String keyName,
+    required String requestJson,
   });
 
   Future<List<ProvingKeyStatus>> zolanaMobileProvingKeysStatus({
@@ -1627,6 +1633,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<ProvedRequest> zolanaMobileProvingKeysProve({
+    required ProvingKeys that,
+    required String keyName,
+    required String requestJson,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerProvingKeys(
+            that,
+            serializer,
+          );
+          sse_encode_String(keyName, serializer);
+          sse_encode_String(requestJson, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_proved_request,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileProvingKeysProveConstMeta,
+        argValues: [that, keyName, requestJson],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileProvingKeysProveConstMeta =>
+      const TaskConstMeta(
+        debugName: "ProvingKeys_prove",
+        argNames: ["that", "keyName", "requestJson"],
+      );
+
+  @override
   Future<List<ProvingKeyStatus>> zolanaMobileProvingKeysStatus({
     required ProvingKeys that,
   }) {
@@ -1641,7 +1687,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1674,7 +1720,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1705,7 +1751,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1735,7 +1781,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1765,7 +1811,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1792,7 +1838,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 41,
             port: port_,
           );
         },
@@ -2416,6 +2462,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return Payment(
       recipient: dco_decode_String(arr[0]),
       amount: dco_decode_u_64(arr[1]),
+    );
+  }
+
+  @protected
+  ProvedRequest dco_decode_proved_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return ProvedRequest(
+      proofJson: dco_decode_String(arr[0]),
+      key: dco_decode_String(arr[1]),
+      downloadedBytes: dco_decode_u_64(arr[2]),
+      downloadMs: dco_decode_u_64(arr[3]),
+      loadMs: dco_decode_u_64(arr[4]),
+      witnessMs: dco_decode_u_64(arr[5]),
+      proveMs: dco_decode_u_64(arr[6]),
+      verifyMs: dco_decode_u_64(arr[7]),
+      totalMs: dco_decode_u_64(arr[8]),
     );
   }
 
@@ -3424,6 +3489,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_recipient = sse_decode_String(deserializer);
     var var_amount = sse_decode_u_64(deserializer);
     return Payment(recipient: var_recipient, amount: var_amount);
+  }
+
+  @protected
+  ProvedRequest sse_decode_proved_request(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_proofJson = sse_decode_String(deserializer);
+    var var_key = sse_decode_String(deserializer);
+    var var_downloadedBytes = sse_decode_u_64(deserializer);
+    var var_downloadMs = sse_decode_u_64(deserializer);
+    var var_loadMs = sse_decode_u_64(deserializer);
+    var var_witnessMs = sse_decode_u_64(deserializer);
+    var var_proveMs = sse_decode_u_64(deserializer);
+    var var_verifyMs = sse_decode_u_64(deserializer);
+    var var_totalMs = sse_decode_u_64(deserializer);
+    return ProvedRequest(
+      proofJson: var_proofJson,
+      key: var_key,
+      downloadedBytes: var_downloadedBytes,
+      downloadMs: var_downloadMs,
+      loadMs: var_loadMs,
+      witnessMs: var_witnessMs,
+      proveMs: var_proveMs,
+      verifyMs: var_verifyMs,
+      totalMs: var_totalMs,
+    );
   }
 
   @protected
@@ -4514,6 +4604,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_proved_request(ProvedRequest self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.proofJson, serializer);
+    sse_encode_String(self.key, serializer);
+    sse_encode_u_64(self.downloadedBytes, serializer);
+    sse_encode_u_64(self.downloadMs, serializer);
+    sse_encode_u_64(self.loadMs, serializer);
+    sse_encode_u_64(self.witnessMs, serializer);
+    sse_encode_u_64(self.proveMs, serializer);
+    sse_encode_u_64(self.verifyMs, serializer);
+    sse_encode_u_64(self.totalMs, serializer);
+  }
+
+  @protected
   void sse_encode_proving(Proving self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
@@ -5281,6 +5385,22 @@ class ProvingKeysImpl extends RustOpaque implements ProvingKeys {
     that: this,
     names: names,
     progress: progress,
+  );
+
+  /// Prove `request_json`, a Zolana `/prove` request, with the pinned key
+  /// `key_name` (such as `transfer_confidential_1_2.key`), as the wallet
+  /// proves a spend: the key downloads when it is not on the device, loads
+  /// when it is not the loaded one, and the proof is verified. The result
+  /// says where the time went, so an application can time proofs on a
+  /// device with a fixed request. One proof at a time with the wallet's
+  /// own; a `LocalProver` loaded meanwhile fails it with `prover_busy`.
+  Future<ProvedRequest> prove({
+    required String keyName,
+    required String requestJson,
+  }) => RustLib.instance.api.zolanaMobileProvingKeysProve(
+    that: this,
+    keyName: keyName,
+    requestJson: requestJson,
   );
 
   /// Every key the wallet can prove with on the device, smallest first.

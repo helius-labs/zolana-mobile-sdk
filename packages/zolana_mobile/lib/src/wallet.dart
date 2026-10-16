@@ -609,6 +609,18 @@ class ZolanaWallet {
     return _keys.clear();
   }
 
+  /// Prove [requestJson], a Zolana `/prove` request, with the pinned key
+  /// [keyName] (such as `transfer_confidential_1_2.key`), as a spend is
+  /// proved: the key downloads when it is not on the device, loads when it
+  /// is not the loaded one, and the proof is verified. The result says where
+  /// the time went, so an application can time proofs on a device with the
+  /// fixed requests of `fixtures/` (see the README, "Proof timing"). Runs
+  /// after the wallet's other calls, like them.
+  Future<native.ProvedRequest> proveRequest({
+    required String keyName,
+    required String requestJson,
+  }) => _serial(() => _keys.prove(keyName: keyName, requestJson: requestJson));
+
   /// The transaction [prepared] built, unless the wallet was closed while it
   /// was being built.
   Future<T> _prepare<T extends PreparedTransaction?>(

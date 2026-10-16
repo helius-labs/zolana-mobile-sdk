@@ -29,11 +29,14 @@ use std::{
 use flutter_rust_bridge::DartFnFuture;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 use zolana_client::prover::ExpectedProvingKey;
 use zolana_transaction::instructions::{merge::merge_circuit_width, transact::canonical_shape};
 
 use crate::error::WalletError;
+use crate::prover::NativeProver;
 use crate::transport::{Transport, TransportRequest};
+use crate::ProvedRequest;
 
 /// The upstream prover's default key host.
 pub const DEFAULT_PROVING_KEYS_URL: &str = "https://d3gbdb0egjwcw9.cloudfront.net";
@@ -111,6 +114,8 @@ pub struct ProvingKeyProgress {
 /// waits for that download instead of starting its own.
 pub struct ProvingKeys {
     pub(crate) store: Arc<KeyStore>,
+    /// The wallet's own prover, so that a key it loaded stays loaded.
+    pub(crate) prover: NativeProver,
 }
 
 impl ProvingKeys {
@@ -184,6 +189,31 @@ impl ProvingKeys {
     pub fn clear(&self) -> Result<(), WalletError> {
         self.store.clear()
     }
+
+    /// Prove `request_json`, a Zolana `/prove` request, with the pinned key
+    /// `key_name` (such as `transfer_confidential_1_2.key`), as the wallet
+    /// proves a spend: the key downloads when it is not on the device, loads
+    /// when it is not the loaded one, and the proof is verified. The result
+    /// says where the time went, so an application can time proofs on a
+    /// device with a fixed request. One proof at a time with the wallet's
+    /// own; a `LocalProver` loaded meanwhile fails it with `prover_busy`.
+    pub fn prove(
+        &self,
+        key_name: String,
+        request_json: String,
+    ) -> Result<ProvedRequest, WalletError> {
+        let request_json = Zeroizing::new(request_json);
+        let sha256 = sha256_bytes(&entry(&key_name)?.sha256).ok_or_else(|| {
+            WalletError::ProvingKeyUnknown {
+                name: key_name.clone(),
+            }
+        })?;
+        let key = ExpectedProvingKey {
+            name: key_name,
+            sha256,
+        };
+        self.prover.prove_request(&request_json, &key)
+    }
 }
 
 /// Downloads and verifies proving keys into one directory.
@@ -239,14 +269,19 @@ impl KeyStore {
     /// Path of `key` in the store, downloading it first if it is missing or
     /// does not match the lockfile. The lockfile must pin the sha256 that the
     /// client expects, the one next to the on-chain verifying key.
-    pub fn ensure(&self, key: &ExpectedProvingKey) -> Result<PathBuf, WalletError> {
+    /// Also says how many bytes it downloaded: what the device lacked of
+    /// the key.
+    pub fn ensure(&self, key: &ExpectedProvingKey) -> Result<(PathBuf, u64), WalletError> {
         let name = key.name.as_str();
         let entry = entry(name)?;
         if entry.sha256 != hex(&key.sha256) {
             return Err(WalletError::ProvingKeyMismatch { name: name.into() });
         }
-        self.fetch(name, entry, &mut |_| true)?
-            .ok_or_else(|| WalletError::ProvingKeyDownloadFailed { name: name.into() })
+        let on_device = self.on_disk(name, entry);
+        let path = self
+            .fetch(name, entry, &mut |_| true)?
+            .ok_or_else(|| WalletError::ProvingKeyDownloadFailed { name: name.into() })?;
+        Ok((path, entry.size - on_device))
     }
 
     fn status(&self) -> Vec<ProvingKeyStatus> {
@@ -503,6 +538,18 @@ pub(crate) fn image_path(key: &Path) -> PathBuf {
     key.with_extension("key.image")
 }
 
+/// The bytes of a lowercase hex SHA-256, as the lockfile writes it.
+fn sha256_bytes(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut bytes = [0; 32];
+    for (byte, pair) in bytes.iter_mut().zip(hex.as_bytes().chunks(2)) {
+        *byte = u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()?;
+    }
+    Some(bytes)
+}
+
 /// Remove the key sets of other lockfiles under `root`. Best effort: a set
 /// that cannot be removed now is removed by a later open.
 fn prune(root: &Path) {
@@ -644,8 +691,10 @@ mod tests {
         outputs: Vec<u32>,
         max_merge_inputs: u32,
     ) -> Result<Vec<String>, WalletError> {
+        let store = Arc::new(KeyStore::new(scratch("needed"), None, unreachable()));
         ProvingKeys {
-            store: Arc::new(KeyStore::new(scratch("needed"), None, unreachable())),
+            prover: NativeProver::new(Arc::clone(&store)),
+            store,
         }
         .needed(max_inputs, outputs, max_merge_inputs)
     }
