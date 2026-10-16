@@ -13,6 +13,17 @@ Unreleased.
   SDK selects them, and fails with `WalletError.mergeRequired` or
   `WalletError.tooManyInputTrees` beyond that and with
   `WalletError.amountZero` for a zero amount.
+* `WalletConfig.maxSpendInputs` caps the notes a spend takes on the device
+  (40 when unset); a spend that needs more fails with
+  `WalletError.mergeRequired` before proving. `TokenBalance.notes` counts
+  the notes a balance is in, for an application that merges before spends
+  grow wide.
+* `WalletConfig.reuseNotesMs` lets a spend take its notes from a read made
+  within that window instead of reading the indexer again; a send or a
+  confirmation ends the reuse. A spend's other lookups, the recipient's
+  registration or token account, run beside the read, and the wait for
+  the indexer to reach the RPC's slot is asked again after a tenth of a
+  second at first.
 * `activity()`: the wallet's history, newest first, as the Zolana SDK
   classifies it: `deposit`, `received`, `sent`, `withdrawal` or
   `selfTransfer`.

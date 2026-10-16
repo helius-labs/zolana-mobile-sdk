@@ -27,8 +27,8 @@ use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
     sync::{Arc, Mutex},
-    thread::sleep,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    thread::{self, sleep},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use solana_commitment_config::CommitmentConfig;
@@ -58,7 +58,7 @@ use zolana_program::instruction::{
 use zolana_transaction::{
     instructions::{
         merge::{MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT},
-        transact::{canonical_shape, ConfidentialTransaction, MAX_SPEND_INPUTS},
+        transact::{ConfidentialTransaction, MAX_SPEND_INPUTS},
     },
     select_merge, select_spend_excluding, LocalShieldedKeys, SpendableDecryptionResult,
     TransactionError, WalletUtxo,
@@ -90,6 +90,21 @@ pub struct WalletConfig {
     /// or a Zolana prover. It receives each spend's witness, the wallet's
     /// nullifier secret included.
     pub prover_url: Option<String>,
+    /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
+    /// A spend that needs more fails with [`WalletError::MergeRequired`]
+    /// naming this cap, before proving. Proof time and memory grow with the
+    /// notes a spend takes: a low cap, with merges that keep the notes few,
+    /// keeps spends fast.
+    pub max_spend_inputs: Option<u32>,
+    /// For how many milliseconds a spend may take its notes from the last
+    /// read ([`MobileWallet::balances`], [`MobileWallet::overview`],
+    /// [`MobileWallet::private_balance`] or [`MobileWallet::activity`])
+    /// instead of reading the indexer again; `None` reads before every
+    /// spend. A send or a confirmation ends the reuse. A note spent
+    /// elsewhere since the read fails the spend when it is sent, with
+    /// [`WalletError::NotesAlreadySpent`], as a note spent right after a
+    /// read would.
+    pub reuse_notes_ms: Option<u64>,
     /// The SPL mints the wallet holds, each with its token program. A call
     /// that names another mint fails with [`WalletError::MintNotConfigured`].
     /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
@@ -250,6 +265,7 @@ fn token_balances(spendable: &SpendableDecryptionResult) -> Vec<TokenBalance> {
         .map(|balance| TokenBalance {
             mint: mint_name(&balance.mint),
             amount: balance.amount,
+            notes: balance.utxos.len() as u64,
         })
         .collect()
 }
@@ -259,6 +275,15 @@ fn token_balances(spendable: &SpendableDecryptionResult) -> Vec<TokenBalance> {
 pub struct TokenBalance {
     pub mint: Option<String>,
     pub amount: u64,
+    /// How many spendable notes the amount is in: what a spend of all of it
+    /// takes, and what a merge reduces.
+    pub notes: u64,
+}
+
+/// A read of the wallet's notes and history, and when it finished.
+struct RecentRead {
+    at: Instant,
+    scan: UtxoScanResult,
 }
 
 /// Notes reserved by prepared spends. The next spend selects other notes
@@ -282,8 +307,14 @@ pub struct MobileWallet {
     nullifier_key: NullifierKey,
     viewing_key: ViewingKey,
     /// SOL and the configured mints.
-    assets: Assets,
+    assets: Mutex<Assets>,
     reservations: Mutex<Reservations>,
+    /// [`WalletConfig::max_spend_inputs`].
+    max_spend_inputs: usize,
+    /// [`WalletConfig::reuse_notes_ms`]; zero reads before every spend.
+    reuse_notes: Duration,
+    /// The last read, for the spends within `reuse_notes` of it.
+    recent: Mutex<Option<RecentRead>>,
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
     /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
@@ -365,7 +396,17 @@ impl MobileWallet {
         };
         let keys =
             LocalShieldedKeys::new(address, vec![viewing_key.clone()], nullifier_key.clone())?;
-        let assets = Assets::new(config.mints)?;
+        let assets = Mutex::new(Assets::new(config.mints)?);
+        let max_spend_inputs = match config.max_spend_inputs {
+            None => MAX_SPEND_INPUTS,
+            Some(max) if (1..=MAX_SPEND_INPUTS as u32).contains(&max) => max as usize,
+            Some(max) => {
+                return Err(WalletError::InvalidMaxSpendInputs {
+                    max_inputs: max.into(),
+                    limit: MAX_SPEND_INPUTS as u64,
+                })
+            }
+        };
         let proving_keys = Arc::new(KeyStore::new(
             config.proving_key_dir,
             config.proving_key_url,
@@ -387,6 +428,9 @@ impl MobileWallet {
             viewing_key,
             assets,
             reservations: Mutex::default(),
+            max_spend_inputs,
+            reuse_notes: Duration::from_millis(config.reuse_notes_ms.unwrap_or(0)),
+            recent: Mutex::new(None),
             proving: config.proving.unwrap_or(Proving::Local),
             send_lookup: SEND_LOOKUP,
             proving_keys,
@@ -500,7 +544,12 @@ impl MobileWallet {
         let max_inputs = max_inputs.map_or(MERGE_DEFAULT_INPUT_COUNT, |max| {
             usize::try_from(max).unwrap_or(MAX_MERGE_INPUTS)
         });
-        let inputs = select_merge(self.spendable()?.utxos(), asset.mint, max_inputs, &reserved)?;
+        let inputs = select_merge(
+            self.recent_notes()?.utxos(),
+            asset.mint,
+            max_inputs,
+            &reserved,
+        )?;
         let spends = nullifiers(&inputs);
         let tree_id = inputs[0].tree_id();
         let merge = MergeTransaction::new(inputs)?
@@ -659,24 +708,13 @@ impl MobileWallet {
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
         let asset = self.asset(mint)?;
-        let mut addresses = Vec::with_capacity(recipients.len());
-        for recipient in &recipients {
-            let Some(registered) = try_resolve_registered_address(&self.client, *recipient)? else {
-                return Err(WalletError::RecipientNotRegistered {
-                    recipient: recipient.to_string(),
-                });
-            };
-            addresses.push(registered.address);
-        }
-        let inputs = self.select_notes(asset, total)?;
         // The payments and a change output.
         let outputs = payments.len() + 1;
-        if canonical_shape(inputs.len(), outputs).is_err() {
-            return Err(WalletError::MergeRequired {
-                amount: total,
-                max_inputs: max_spend_inputs(outputs) as u64,
-            });
-        }
+        let (addresses, inputs) = beside(
+            || self.registered_addresses(&recipients),
+            || self.select_notes(asset, total, outputs),
+        );
+        let (addresses, inputs) = (addresses?, inputs?);
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         for (address, payment) in addresses.iter().zip(&payments) {
@@ -728,16 +766,24 @@ impl MobileWallet {
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
         let asset = self.asset(mint)?;
-        if let Some(token_account) = asset.token_account(&recipient) {
-            if self.client.get_account(token_account)?.is_none() {
-                return Err(WalletError::RecipientTokenAccountMissing {
-                    recipient: recipient.to_string(),
-                    mint: asset.mint.to_string(),
-                });
-            }
-        }
-        let fee_transfer = self.public_fee(asset, public_fee.as_ref())?;
-        let inputs = self.select_notes(asset, amount)?;
+        let token_account = asset.token_account(&recipient);
+        let (checks, inputs) = beside(
+            || -> Result<Option<Instruction>, WalletError> {
+                if let Some(token_account) = token_account {
+                    if self.client.get_account(token_account)?.is_none() {
+                        return Err(WalletError::RecipientTokenAccountMissing {
+                            recipient: recipient.to_string(),
+                            mint: asset.mint.to_string(),
+                        });
+                    }
+                }
+                self.public_fee(asset, public_fee.as_ref())
+            },
+            // A withdrawal pads its change to two outputs.
+            || self.select_notes(asset, amount, 2),
+        );
+        let fee_transfer = checks?;
+        let inputs = inputs?;
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         let settlement =
@@ -880,14 +926,43 @@ impl MobileWallet {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The notes a spend of `amount` takes, other than those prepared spends
-    /// reserve. Reservations past their last valid block height are dropped:
-    /// those spends can no longer land.
-    fn select_notes(&mut self, asset: Asset, amount: u64) -> Result<Vec<WalletUtxo>, WalletError> {
-        let spendable = self.spendable()?;
+    /// The notes a spend of `amount` with `outputs` outputs takes, other than
+    /// those prepared spends reserve: at most the configured cap and what the
+    /// pinned shapes allow, [`WalletError::MergeRequired`] beyond.
+    /// Reservations past their last valid block height are dropped: those
+    /// spends can no longer land.
+    fn select_notes(
+        &self,
+        asset: Asset,
+        amount: u64,
+        outputs: usize,
+    ) -> Result<Vec<WalletUtxo>, WalletError> {
+        let spendable = self.recent_notes()?;
         let reserved = self.reserved()?;
-        select_spend_excluding(spendable.utxos(), asset.mint, amount, &reserved)
-            .map_err(|failure| spend_failure(amount, failure))
+        let inputs = select_spend_excluding(spendable.utxos(), asset.mint, amount, &reserved)
+            .map_err(|failure| spend_failure(amount, failure))?;
+        within_cap(
+            inputs,
+            amount,
+            self.max_spend_inputs.min(max_spend_inputs(outputs)),
+        )
+    }
+
+    /// The shielded addresses of `recipients`, each registered.
+    fn registered_addresses(
+        &self,
+        recipients: &[Pubkey],
+    ) -> Result<Vec<ShieldedAddress>, WalletError> {
+        recipients
+            .iter()
+            .map(|recipient| {
+                try_resolve_registered_address(&self.client, *recipient)?
+                    .map(|registered| registered.address)
+                    .ok_or_else(|| WalletError::RecipientNotRegistered {
+                        recipient: recipient.to_string(),
+                    })
+            })
+            .collect()
     }
 
     /// The nullifiers of the notes prepared spends and merges reserve.
@@ -934,24 +1009,64 @@ impl MobileWallet {
     }
 
     /// SOL for `None`, otherwise a configured mint.
-    fn asset(&mut self, mint: Option<String>) -> Result<Asset, WalletError> {
-        self.assets.resolve(&self.client, mint.as_deref())
+    fn asset(&self, mint: Option<String>) -> Result<Asset, WalletError> {
+        self.assets().resolve(&self.client, mint.as_deref())
+    }
+
+    fn assets(&self) -> std::sync::MutexGuard<'_, Assets> {
+        self.assets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The wallet's spendable notes, in SOL and every configured mint, once
     /// the indexer has caught up with the RPC.
-    fn spendable(&mut self) -> Result<SpendableDecryptionResult, WalletError> {
+    fn spendable(&self) -> Result<SpendableDecryptionResult, WalletError> {
         Ok(self.scan()?.spendable)
     }
 
     /// The wallet's notes and history, in SOL and every configured mint, once
-    /// the indexer has caught up with the RPC.
-    fn scan(&mut self) -> Result<UtxoScanResult, WalletError> {
+    /// the indexer has caught up with the RPC. Kept for the spends
+    /// [`WalletConfig::reuse_notes_ms`] lets take their notes from it.
+    fn scan(&self) -> Result<UtxoScanResult, WalletError> {
         let indexed = self.indexed()?;
-        let assets = self.assets.registry(&self.client)?;
-        Ok(UtxoScan::new(&self.keys, assets)
-            .with_indexer_config(indexed)
-            .fetch(&self.client)?)
+        let scan = {
+            let mut assets = self.assets();
+            let registry = assets.registry(&self.client)?;
+            UtxoScan::new(&self.keys, registry)
+                .with_indexer_config(indexed)
+                .fetch(&self.client)?
+        };
+        if !self.reuse_notes.is_zero() {
+            *self.recent() = Some(RecentRead {
+                at: Instant::now(),
+                scan: scan.clone(),
+            });
+        }
+        Ok(scan)
+    }
+
+    /// The notes a spend selects from: the last read's, within
+    /// [`WalletConfig::reuse_notes_ms`] of it, or a read now.
+    fn recent_notes(&self) -> Result<SpendableDecryptionResult, WalletError> {
+        if let Some(read) = self.recent().as_ref() {
+            if read.at.elapsed() <= self.reuse_notes {
+                return Ok(read.scan.spendable.clone());
+            }
+        }
+        self.spendable()
+    }
+
+    /// The last read no longer stands for the chain: a transaction of this
+    /// wallet went out or landed.
+    fn forget_notes(&self) {
+        *self.recent() = None;
+    }
+
+    fn recent(&self) -> std::sync::MutexGuard<'_, Option<RecentRead>> {
+        self.recent
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Indexer reads wait for the RPC's confirmed slot, the commitment Photon
@@ -1026,6 +1141,7 @@ impl MobileWallet {
             signatures: transaction_signatures,
             message: pending.message.clone(),
         };
+        self.forget_notes();
         match self.client.process_transaction(transaction) {
             Ok(_) => {}
             Err(failure) if settles_the_send(&failure) => return Err(failure.into()),
@@ -1081,6 +1197,7 @@ impl MobileWallet {
     ) -> Result<(), WalletError> {
         let signature =
             Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
+        self.forget_notes();
         reconcile(
             &self.client,
             signature,
@@ -1096,6 +1213,7 @@ impl MobileWallet {
         pending: &PreparedTransaction,
         signature: Signature,
     ) -> Result<(), WalletError> {
+        self.forget_notes();
         if matches!(
             pending.operation,
             Operation::Registration | Operation::Merging { .. }
@@ -1132,6 +1250,34 @@ fn max_spend_inputs(outputs: usize) -> usize {
         .min(MAX_SPEND_INPUTS)
 }
 
+/// `inputs` when a spend may take that many notes, else what to merge for.
+fn within_cap(
+    inputs: Vec<WalletUtxo>,
+    amount: u64,
+    cap: usize,
+) -> Result<Vec<WalletUtxo>, WalletError> {
+    if inputs.len() > cap {
+        return Err(WalletError::MergeRequired {
+            amount,
+            max_inputs: cap as u64,
+        });
+    }
+    Ok(inputs)
+}
+
+/// Both, `first` on a thread of its own while `second` runs here: the
+/// network calls of a spend that need nothing from each other.
+fn beside<A: Send, B>(first: impl FnOnce() -> A + Send, second: impl FnOnce() -> B) -> (A, B) {
+    thread::scope(|scope| {
+        let first = scope.spawn(first);
+        let second = second();
+        let first = first
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        (first, second)
+    })
+}
+
 fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
     notes.iter().map(|note| note.nullifier).collect()
 }
@@ -1140,11 +1286,13 @@ fn nullifiers(notes: &[WalletUtxo]) -> Vec<[u8; 32]> {
 /// the program refuses it after this.
 const MERGE_LIFETIME: Duration = Duration::from_secs(600);
 
-/// About ten seconds for the indexer to reach the RPC's slot: a few slots of
-/// lag pass, a stalled indexer fails fast.
+/// About ten seconds for the indexer to reach the RPC's slot, asked again
+/// after a tenth of a second at first: the indexer is a slot or two behind
+/// at most times, and a spend waits for that, not for a stall. A stalled
+/// indexer fails after the schedule.
 const INDEXER_CATCH_UP: IndexerPollConfig = IndexerPollConfig {
-    num_retries: 5,
-    delay_ms: 400,
+    num_retries: 7,
+    delay_ms: 100,
     max_delay_ms: 4_000,
 };
 
@@ -1324,6 +1472,7 @@ mod tests {
         TransactionConfirmationStatus, TransactionStatus,
     };
     use zolana_client::{compile_message, ClientError, ComputeBudgetConfig};
+    use zolana_transaction::instructions::transact::canonical_shape;
 
     use super::*;
     use crate::transport::tests::unreachable;
@@ -1336,6 +1485,8 @@ mod tests {
             proving_key_url: None,
             proving: None,
             prover_url: None,
+            max_spend_inputs: None,
+            reuse_notes_ms: None,
             mints: Vec::new(),
         }
     }
@@ -1415,6 +1566,14 @@ mod tests {
         signer: &Keypair,
         answer: impl Fn(&str) -> serde_json::Value + Send + Sync + 'static,
     ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        rpc_wallet_with(signer, config(), answer)
+    }
+
+    fn rpc_wallet_with(
+        signer: &Keypair,
+        config: WalletConfig,
+        answer: impl Fn(&str) -> serde_json::Value + Send + Sync + 'static,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&asked);
         let (transport, _) = crate::transport::tests::fake(move |request| {
@@ -1429,7 +1588,7 @@ mod tests {
         let pubkey = signer.pubkey().to_string();
         let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
         let wallet =
-            MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), transport).unwrap();
+            MobileWallet::open(config, pubkey, signature.as_ref().to_vec(), transport).unwrap();
         (wallet, asked)
     }
 
@@ -1763,6 +1922,108 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn balances_count_their_notes() {
+        assert_eq!(
+            token_balances(&spendable(vec![note(50, 1, 0), note(30, 2, 0)])),
+            vec![TokenBalance {
+                mint: None,
+                amount: 80,
+                notes: 2
+            }]
+        );
+    }
+
+    #[test]
+    fn a_spend_takes_at_most_the_configured_notes() {
+        let notes = vec![note(50, 1, 0), note(30, 2, 0), note(20, 3, 0)];
+        assert_eq!(within_cap(notes.clone(), 100, 3).unwrap().len(), 3);
+        assert_eq!(
+            within_cap(notes, 100, 2).unwrap_err(),
+            WalletError::MergeRequired {
+                amount: 100,
+                max_inputs: 2
+            }
+        );
+
+        let signer = Keypair::new();
+        let with = |max_spend_inputs| {
+            open_with(
+                &signer,
+                WalletConfig {
+                    max_spend_inputs,
+                    ..config()
+                },
+            )
+        };
+        for (max, cap) in [(None, MAX_SPEND_INPUTS), (Some(4), 4), (Some(40), 40)] {
+            assert_eq!(with(max).unwrap().max_spend_inputs, cap);
+        }
+        for max in [0, 41] {
+            assert_eq!(
+                with(Some(max)).err(),
+                Some(WalletError::InvalidMaxSpendInputs {
+                    max_inputs: max.into(),
+                    limit: 40
+                })
+            );
+        }
+    }
+
+    /// With `reuse_notes_ms`, a spend takes its notes from a read made within
+    /// the window instead of reading again; a send or a confirmation ends
+    /// the reuse, and without the window every spend reads.
+    #[test]
+    fn a_spend_reuses_the_last_read_within_its_window() {
+        let signer = Keypair::new();
+        let caught_up = |method: &str| match method {
+            "getSlot" => serde_json::json!({"result": 100}),
+            "getBlockHeight" => serde_json::json!({"result": 5}),
+            _ => serde_json::json!({"result": {
+                "context": {"blockTime": 0, "slot": 100},
+                "transactions": [],
+                "matches": [],
+                "nextCursor": null,
+            }}),
+        };
+        let tag_reads = |asked: &Arc<Mutex<Vec<String>>>| {
+            asked
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|method| *method == "getShieldedTransactionsByTags")
+                .count()
+        };
+        let (mut wallet, asked) = rpc_wallet_with(
+            &signer,
+            WalletConfig {
+                reuse_notes_ms: Some(60_000),
+                ..config()
+            },
+            caught_up,
+        );
+        wallet.balances().unwrap();
+        assert_eq!(tag_reads(&asked), 1);
+        // The merge finds nothing to take, in the notes of the read.
+        assert!(matches!(
+            wallet.prepare_merge(None, None, None, None).err(),
+            Some(WalletError::NothingToMerge { .. })
+        ));
+        assert_eq!(tag_reads(&asked), 1, "no read within the window");
+        wallet.forget_notes();
+        let _ = wallet.prepare_merge(None, None, None, None);
+        assert_eq!(tag_reads(&asked), 2, "read again once forgotten");
+        let stale = Instant::now().checked_sub(Duration::from_secs(61)).unwrap();
+        wallet.recent().as_mut().unwrap().at = stale;
+        let _ = wallet.prepare_merge(None, None, None, None);
+        assert_eq!(tag_reads(&asked), 3, "a read older than the window");
+
+        let (mut wallet, asked) = rpc_wallet_with(&signer, config(), caught_up);
+        wallet.balances().unwrap();
+        let _ = wallet.prepare_merge(None, None, None, None);
+        assert_eq!(tag_reads(&asked), 2, "every spend reads without a window");
     }
 
     #[test]

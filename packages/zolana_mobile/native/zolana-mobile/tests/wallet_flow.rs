@@ -90,6 +90,8 @@ fn config() -> WalletConfig {
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
+        max_spend_inputs: None,
+        reuse_notes_ms: None,
         mints: Vec::new(),
     }
 }
