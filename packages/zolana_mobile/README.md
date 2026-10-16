@@ -145,7 +145,12 @@ await wallet.transfer(
   `WalletError.provingKeyDownloadFailed`. Keep the directory across launches:
   the keys of one lockfile live in a directory of their own there, and the
   wallet removes the directories of other lockfiles when it opens. A key
-  that was checked once is not hashed again unless its file changed.
+  that was checked once is not hashed again unless its file changed. After
+  its first load, the key's proving key is kept beside it in the device's
+  memory layout (`<key>.image`, about twice the key's size): later loads map
+  that file instead of decompressing the key, and the system can page the
+  key out under memory pressure instead of ending the app.
+  `clearProvingKeys()` removes the images with the keys.
 - **Tokens**: list each SPL Token or Token-2022 mint the wallet holds in
   `WalletConfig.mints`, with the token program that owns it, as your Solana
   SDK reads it:

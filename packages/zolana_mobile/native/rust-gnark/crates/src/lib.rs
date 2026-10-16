@@ -46,11 +46,21 @@ impl PreparedProver {
     /// Load a Zolana `.key` container (proving key, verifying key and
     /// constraint system in one file). Verify the file against the pinned
     /// proving-key lockfile first: the container is read before its sections
-    /// can be checked against each other.
-    pub fn load_key(key: &str) -> Result<Self> {
+    /// can be checked against each other, and its points are taken as the
+    /// lockfile vouches for them, without subgroup checks.
+    ///
+    /// With an `image` path, the proving key is mapped from the key image
+    /// there when one matches the container, and written there after a load
+    /// from the container otherwise: about twice the proving key's size on
+    /// disk, for a load that takes no time and memory the system can page
+    /// out. Remove the image with its container.
+    pub fn load_key(key: &str, image: Option<&str>) -> Result<Self> {
         init()?;
         let key = input_string(key)?;
-        let raw = unsafe { bind::gnark_prepared_load_key(key.as_ptr().cast_mut()) };
+        let image = input_string(image.unwrap_or_default())?;
+        let raw = unsafe {
+            bind::gnark_prepared_load_key(key.as_ptr().cast_mut(), image.as_ptr().cast_mut())
+        };
         Self::from_result(raw)
     }
 

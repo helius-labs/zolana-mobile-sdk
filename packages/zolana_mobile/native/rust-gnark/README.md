@@ -16,21 +16,29 @@ drop(prover);
 ```
 
 - `PreparedProver::load(r1cs: &str, pk: &str, vk: &str) -> anyhow::Result<Self>`
-- `PreparedProver::load_key(key: &str) -> anyhow::Result<Self>` loads an
-  upstream Zolana `.key` container (header, proving key, verifying key,
-  constraint system) as published, without splitting it. Its header must
-  name the shape the constraint system has, and the eddsa rail unless the
-  circuit is a merge, which carries the P-256 owner rail too. The
+- `PreparedProver::load_key(key: &str, image: Option<&str>) -> anyhow::Result<Self>`
+  loads an upstream Zolana `.key` container (header, proving key, verifying
+  key, constraint system) as published, without splitting it. Its header
+  must name the shape the constraint system has, and the eddsa rail unless
+  the circuit is a merge, which carries the P-256 owner rail too. The
   container is read before its sections can be checked against each other,
-  so verify the file against the pinned proving-key lockfile first.
+  so verify the file against the pinned proving-key lockfile first; the
+  lockfile also vouches for the points, which are read without subgroup
+  checks, as the upstream prover reads them. With an `image` path, the
+  proving key is mapped from the key image there when one matches the
+  container, and written there after a load from the container otherwise
+  (`go/image.go`): the device's memory layout, about twice the proving key's
+  size, loaded in milliseconds and paged by the system. An image of another
+  device, container or version is replaced. Remove it with its container.
 - `prove_request(&self, request_json: &str) -> anyhow::Result<Groth16ProofResult>`
 - `verify(&self, result: &Groth16ProofResult) -> anyhow::Result<bool>`
 - `Drop` releases the Go handle. The type is `Send`, not `Sync` or `Clone`.
 
 All three `load` paths are mandatory. Prepared proof calls verify using the
 loaded VK before returning; callers need not repeat verification.
-Load validates PK/VK curve points with `ReadFrom`, preflights the FFT domain
-before its parallel precomputation, and checks key/circuit dimensions.
+`load` validates PK/VK curve points with `ReadFrom`, preflights the FFT
+domain before its parallel precomputation, and checks key/circuit
+dimensions; `load_key` checks the dimensions and the container's header.
 Warm calls never reopen the assets. One prepared handle is permitted per
 process; drop it before loading another. IDs are not reused. A Go mutex
 serializes all backend operations, including release.

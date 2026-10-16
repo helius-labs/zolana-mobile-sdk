@@ -13,7 +13,9 @@
 //! `<key>.partial`, so an interrupted download resumes where it stopped, and
 //! is moved into place once it hashes to the lockfile. `<key>.verified` then
 //! records its size and modification time, so a later process uses it without
-//! hashing it again.
+//! hashing it again. `<key>.image` is the key's proving key in the device's
+//! memory layout, written by the native prover at the first load and mapped
+//! at later ones; it goes with its key.
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -371,7 +373,9 @@ impl KeyStore {
             return Ok(self.verified(name, path));
         }
         if !matches_entry(name, &path, entry)? {
+            // A key that is replaced takes its image with it.
             let _ = fs::remove_file(&path);
+            let _ = fs::remove_file(image_path(&path));
             self.create_dir()?;
             if !self.download(name, entry, &path, progress)? {
                 return Ok(None);
@@ -490,6 +494,13 @@ fn entry(name: &str) -> Result<&'static LockEntry, WalletError> {
 
 fn partial(path: &Path) -> PathBuf {
     path.with_extension("key.partial")
+}
+
+/// Where the native prover keeps the key's proving key in the device's
+/// memory layout after the first load (see its image.go): about twice the
+/// key's size, loaded by mapping it instead of decompressing the key.
+pub(crate) fn image_path(key: &Path) -> PathBuf {
+    key.with_extension("key.image")
 }
 
 /// Remove the key sets of other lockfiles under `root`. Best effort: a set
@@ -938,6 +949,40 @@ mod tests {
         Verified::record(&path, &entry);
         fs::write(&path, &data[..99]).unwrap();
         assert!(!Verified::matches(&path, &entry), "truncated");
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A key replaced by a download takes its image with it; the image of a
+    /// key that only lost its record stays, as the key does.
+    #[test]
+    fn a_replaced_key_takes_its_image_with_it() {
+        let root = scratch("image");
+        let (data, entry) = key();
+        let store = store(&root, host(data.clone(), |_| None).0);
+        let path = store
+            .fetch("k.key", &entry, &mut |_| true)
+            .unwrap()
+            .unwrap();
+        let image = image_path(&path);
+        assert_eq!(image, root.join(key_set()).join("k.key.image"));
+        fs::write(&image, b"image").unwrap();
+
+        fs::remove_file(Verified::path(&path)).unwrap();
+        store.shared.verified.lock().unwrap().clear();
+        store
+            .fetch("k.key", &entry, &mut |_| true)
+            .unwrap()
+            .unwrap();
+        assert!(image.is_file(), "hashed again and kept");
+
+        fs::write(&path, &data[..99]).unwrap();
+        store.shared.verified.lock().unwrap().clear();
+        store
+            .fetch("k.key", &entry, &mut |_| true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), data);
+        assert!(!image.exists(), "replaced");
         fs::remove_dir_all(&root).unwrap();
     }
 

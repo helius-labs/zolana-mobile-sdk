@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -60,6 +61,17 @@ type preparedProver struct {
 	cs *csbn254.R1CS
 	pk *native.ProvingKey
 	vk *native.VerifyingKey
+	// The key image the proving key is mapped from; nil for a key on the
+	// heap.
+	image *keyImage
+}
+
+// close releases what the prover holds outside the Go heap.
+func (prover *preparedProver) close() {
+	if prover.image != nil {
+		prover.image.close()
+		prover.image = nil
+	}
 }
 
 func init() {
@@ -212,58 +224,117 @@ func (prover *preparedProver) validateKeys() error {
 	return nil
 }
 
-// readKeyFile loads a Zolana `.key` container: nInputs, nOutputs and
-// requiresP256 as big-endian u32s, then the proving key, verifying key and
-// constraint system. The constraint system comes last, so the proving key
-// cannot be checked against its domain before it is read; the caller must
-// verify the file against the pinned proving-key lockfile before loading it.
-func readKeyFile(path string) (*preparedProver, error) {
+// The container's first twelve bytes: nInputs, nOutputs and requiresP256 as
+// big-endian u32s.
+type keyHeader [12]byte
+
+// readKeyFile loads a Zolana `.key` container: its header, then the proving
+// key, verifying key and constraint system. The constraint system comes
+// last, so the proving key cannot be checked against its domain before it is
+// read; the caller must verify the file against the pinned proving-key
+// lockfile before loading it. The lockfile is also what vouches for the
+// key's points, so they are read without subgroup checks, as the upstream
+// prover reads them.
+//
+// With an `imagePath`, the proving key is mapped from the key image there
+// when it matches the container, and written there after a load from the
+// container otherwise; see image.go. An image that maps but does not load
+// is removed.
+func readKeyFile(path, imagePath string) (*preparedProver, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, errKey
 	}
 	defer file.Close()
-	var header [12]byte
+	var header keyHeader
 	if _, err := io.ReadFull(file, header[:]); err != nil {
 		return nil, errKey
 	}
+	if imagePath != "" {
+		if image, err := openKeyImage(imagePath, file, header); err == nil {
+			prover, _, err := readKeySections(file, header, image)
+			if err == nil {
+				return prover, nil
+			}
+			image.close()
+			_ = os.Remove(imagePath)
+			if _, err := file.Seek(int64(len(header)), io.SeekStart); err != nil {
+				return nil, errKey
+			}
+		}
+	}
+	prover, pkLen, err := readKeySections(file, header, nil)
+	if err != nil || imagePath == "" {
+		return prover, err
+	}
+	// The key stays on the heap when its image cannot be written or mapped.
+	if writeKeyImage(imagePath, file, header, prover.pk, pkLen) != nil {
+		return prover, nil
+	}
+	image, err := openKeyImage(imagePath, file, header)
+	if err != nil {
+		return prover, nil
+	}
+	prover.pk, prover.image = image.pk, image
+	debug.FreeOSMemory()
+	return prover, nil
+}
+
+// readKeySections reads the sections after the container's header: the
+// proving key, or the rest from where `image` says the proving key ends, and
+// checks them against each other and the header. Returns the length of the
+// proving key section.
+func readKeySections(file *os.File, header keyHeader, image *keyImage) (*preparedProver, int64, error) {
 	inputs := binary.BigEndian.Uint32(header[0:4])
 	outputs := binary.BigEndian.Uint32(header[4:8])
 	requiresP256 := binary.BigEndian.Uint32(header[8:12])
 	if requiresP256 > 1 {
-		return nil, errKey
+		return nil, 0, errKey
 	}
 	prover := &preparedProver{
 		cs: groth16.NewCS(ecc.BN254).(*csbn254.R1CS),
-		pk: groth16.NewProvingKey(ecc.BN254).(*native.ProvingKey),
 		vk: groth16.NewVerifyingKey(ecc.BN254).(*native.VerifyingKey),
 	}
-	for _, section := range []io.ReaderFrom{prover.pk, prover.vk, prover.cs} {
+	var pkLen int64
+	if image != nil {
+		prover.pk, prover.image, pkLen = image.pk, image, image.pkLen
+		if _, err := file.Seek(int64(len(header))+pkLen, io.SeekStart); err != nil {
+			return nil, 0, errKey
+		}
+	} else {
+		prover.pk = groth16.NewProvingKey(ecc.BN254).(*native.ProvingKey)
+		read, err := prover.pk.UnsafeReadFrom(file)
+		if err != nil {
+			return nil, 0, errKey
+		}
+		pkLen = read
+	}
+	for _, section := range []io.ReaderFrom{prover.vk, prover.cs} {
 		if _, err := section.ReadFrom(file); err != nil {
-			return nil, errKey
+			return nil, 0, errKey
 		}
 	}
 	var extra [1]byte
 	if count, err := file.Read(extra[:]); count != 0 || err != io.EOF {
-		return nil, errKey
+		return nil, 0, errKey
 	}
 	if _, _, err := witnessNames(prover.cs); err != nil {
-		return nil, errKey
+		return nil, 0, errKey
 	}
 	if err := prover.validateKeys(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if shapeInputs, shapeOutputs, known := circuitShape(prover.cs); !known ||
 		shapeInputs != inputs || shapeOutputs != outputs {
-		return nil, errKey
+		return nil, 0, errKey
 	}
 	// Transfers are proved on device on the Solana-only (eddsa) rail. A
 	// default merge is one circuit for both owner rails, so its key carries
 	// the P-256 constraints.
 	if requiresP256 == 1 && !isMergeCircuit(prover.cs) {
-		return nil, errKey
+		return nil, 0, errKey
 	}
-	return prover, nil
+	return prover, pkLen, nil
 }
 
 func register(read func() (*preparedProver, error)) (uint64, error) {
@@ -290,18 +361,21 @@ func loadPrepared(r1csPath, pkPath, vkPath string) (uint64, error) {
 	})
 }
 
-func loadPreparedKey(path string) (uint64, error) {
+func loadPreparedKey(path, imagePath string) (uint64, error) {
 	return register(func() (*preparedProver, error) {
 		if path == "" {
 			return nil, errKey
 		}
-		return readKeyFile(path)
+		return readKeyFile(path, imagePath)
 	})
 }
 
 func releasePrepared(handle uint64) {
 	_, _ = backendCall(func() (bool, error) {
-		delete(prepared, handle)
+		if prover, ok := prepared[handle]; ok {
+			prover.close()
+			delete(prepared, handle)
+		}
 		return true, nil
 	})
 }

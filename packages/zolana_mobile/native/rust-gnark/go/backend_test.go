@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
@@ -590,20 +591,27 @@ func TestMergeKeyFileContainer(t *testing.T) {
 	prover := &preparedProver{cs: system, pk: pk.(*native.ProvingKey), vk: vk.(*native.VerifyingKey)}
 	path := filepath.Join(t.TempDir(), "merge_24_1.key")
 	writeKeyFile(t, path, [3]uint32{24, 1, 1}, prover, nil)
-	handle, err := loadPreparedKey(path)
-	if err != nil {
-		t.Fatal(err)
+	// From the container, which writes the image with the circuit's
+	// commitment key, and then from the image.
+	for _, source := range []string{"container", "image"} {
+		handle, err := loadPreparedKey(path, path+".image")
+		if err != nil {
+			t.Fatal(source, err)
+		}
+		if prepared[handle].image == nil {
+			t.Fatal(source, "the proving key is not mapped")
+		}
+		result, err := provePrepared(handle, request)
+		if err != nil || !result.shapeKnown || result.inputs != 24 || result.outputs != 1 {
+			t.Fatal(source, "merge container proof failed", err)
+		}
+		if valid, err := verifyPrepared(handle, result.proof, result.publicInputs); err != nil || !valid {
+			t.Fatal(source, "merge container proof did not verify")
+		}
+		releasePrepared(handle)
 	}
-	result, err := provePrepared(handle, request)
-	if err != nil || !result.shapeKnown || result.inputs != 24 || result.outputs != 1 {
-		t.Fatal("merge container proof failed", err)
-	}
-	if valid, err := verifyPrepared(handle, result.proof, result.publicInputs); err != nil || !valid {
-		t.Fatal("merge container proof did not verify")
-	}
-	releasePrepared(handle)
 	writeKeyFile(t, path, [3]uint32{24, 1, 2}, prover, nil)
-	if _, err := loadPreparedKey(path); err != errKey {
+	if _, err := loadPreparedKey(path, ""); err != errKey {
 		t.Fatal("unknown rail flag accepted")
 	}
 }
@@ -641,18 +649,74 @@ func TestKeyFileContainer(t *testing.T) {
 	}
 	prover := &preparedProver{cs: system, pk: pk.(*native.ProvingKey), vk: vk.(*native.VerifyingKey)}
 	path := filepath.Join(t.TempDir(), "transfer_confidential_2_2.key")
+	image := path + ".image"
 
 	writeKeyFile(t, path, [3]uint32{2, 2, 0}, prover, nil)
-	handle, err := loadPreparedKey(path)
+	// The first load reads the container and writes the image; the next
+	// maps the image as it is.
+	proveContainer := func(source string) {
+		t.Helper()
+		handle, err := loadPreparedKey(path, image)
+		if err != nil {
+			t.Fatal(source, err)
+		}
+		if prepared[handle].image == nil {
+			t.Fatal(source, "the proving key is not mapped")
+		}
+		result, err := provePrepared(handle, request)
+		if err != nil || !result.shapeKnown || result.inputs != 2 || result.outputs != 2 {
+			t.Fatal(source, "container proof failed", err)
+		}
+		if valid, err := verifyPrepared(handle, result.proof, result.publicInputs); err != nil || !valid {
+			t.Fatal(source, "container proof did not verify")
+		}
+		releasePrepared(handle)
+	}
+	proveContainer("container")
+	written, err := os.ReadFile(image)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := provePrepared(handle, request)
-	if err != nil || !result.shapeKnown || result.inputs != 2 || result.outputs != 2 {
-		t.Fatal("container proof failed", err)
+	stat, err := os.Stat(image)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if valid, err := verifyPrepared(handle, result.proof, result.publicInputs); err != nil || !valid {
-		t.Fatal("container proof did not verify")
+	proveContainer("image")
+	if again, err := os.Stat(image); err != nil || !again.ModTime().Equal(stat.ModTime()) {
+		t.Fatal("a matching image was written again")
+	}
+
+	// An image of another device, version or container, a cut one, or one
+	// whose key does not add up, is replaced by this device's.
+	for name, tamper := range map[string]func(*imageHeader){
+		"architecture":   func(header *imageHeader) { header.Arch[0] ^= 1 },
+		"byte order":     func(header *imageHeader) { header.Order[0], header.Order[7] = header.Order[7], header.Order[0] },
+		"version":        func(header *imageHeader) { header.Version++ },
+		"container":      func(header *imageHeader) { header.KeySize++ },
+		"length":         func(header *imageHeader) { header.Length-- },
+		"wires":          func(header *imageHeader) { header.NbWires++ },
+		"infinity count": func(header *imageHeader) { header.NbInfinityA++ },
+	} {
+		tamperImage(t, image, written, tamper)
+		proveContainer(name)
+		if replaced, err := os.ReadFile(image); err != nil || !bytes.Equal(replaced, written) {
+			t.Fatal(name, "the image was not replaced")
+		}
+	}
+	if err := os.WriteFile(image, written[:len(written)/2], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	proveContainer("truncated image")
+	if replaced, err := os.ReadFile(image); err != nil || !bytes.Equal(replaced, written) {
+		t.Fatal("the truncated image was not replaced")
+	}
+	// Without an image path, the container is read as it is.
+	handle, err := loadPreparedKey(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared[handle].image != nil {
+		t.Fatal("a proving key read from the container is mapped")
 	}
 	releasePrepared(handle)
 
@@ -665,7 +729,7 @@ func TestKeyFileContainer(t *testing.T) {
 		"trailing byte": {[3]uint32{2, 2, 0}, []byte{0}},
 	} {
 		writeKeyFile(t, path, tamper.header, prover, tamper.trailer)
-		if _, err := loadPreparedKey(path); err != errKey {
+		if _, err := loadPreparedKey(path, image); err != errKey {
 			t.Fatalf("%s: container accepted", name)
 		}
 	}
@@ -676,11 +740,29 @@ func TestKeyFileContainer(t *testing.T) {
 	if err := os.WriteFile(path, valid[:len(valid)/2], 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadPreparedKey(path); err != errKey {
+	if _, err := loadPreparedKey(path, image); err != errKey {
 		t.Fatal("truncated container accepted")
 	}
 	if len(prepared) != 0 {
 		t.Fatal("rejected containers leaked a handle")
+	}
+}
+
+// tamperImage writes `image` as `valid` with `change` applied to its header.
+func tamperImage(t *testing.T, image string, valid []byte, change func(*imageHeader)) {
+	t.Helper()
+	var header imageHeader
+	if err := binary.Read(bytes.NewReader(valid), binary.LittleEndian, &header); err != nil {
+		t.Fatal(err)
+	}
+	change(&header)
+	var encoded bytes.Buffer
+	if err := binary.Write(&encoded, binary.LittleEndian, &header); err != nil {
+		t.Fatal(err)
+	}
+	tampered := append(encoded.Bytes(), valid[encoded.Len():]...)
+	if err := os.WriteFile(image, tampered, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -689,16 +771,23 @@ func TestStagedKeyFile(t *testing.T) {
 	if path == "" {
 		t.Skip("set ZOLANA_TEST_KEY_FILE to a pinned transfer_confidential_2_2.key")
 	}
-	handle, err := loadPreparedKey(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer releasePrepared(handle)
-	result, err := provePrepared(handle, fixtureRequest(t))
-	if err != nil || result.inputs != 2 || result.outputs != 2 {
-		t.Fatal("staged key file proof failed", err)
-	}
-	if valid, err := verifyPrepared(handle, result.proof, result.publicInputs); err != nil || !valid {
-		t.Fatal("staged key file proof did not verify")
+	image := filepath.Join(t.TempDir(), filepath.Base(path)+".image")
+	for _, source := range []string{"container", "image"} {
+		started := time.Now()
+		handle, err := loadPreparedKey(path, image)
+		if err != nil {
+			t.Fatal(source, err)
+		}
+		t.Logf("load from %s: %v", source, time.Since(started))
+		result, err := provePrepared(handle, fixtureRequest(t))
+		if err != nil || result.inputs != 2 || result.outputs != 2 {
+			t.Fatal(source, "staged key file proof failed", err)
+		}
+		t.Logf("proof from %s: witness %d ms, prove %d ms, verify %d ms",
+			source, result.witnessMS, result.proveMS, result.verifyMS)
+		if valid, err := verifyPrepared(handle, result.proof, result.publicInputs); err != nil || !valid {
+			t.Fatal(source, "staged key file proof did not verify")
+		}
+		releasePrepared(handle)
 	}
 }

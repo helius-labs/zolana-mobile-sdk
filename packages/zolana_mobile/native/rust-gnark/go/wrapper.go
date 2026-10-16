@@ -108,7 +108,7 @@ func gnark_prepared_load(r1csPath, pkPath, vkPath *C.char) (output *C.C_Prepared
 }
 
 //export gnark_prepared_load_key
-func gnark_prepared_load_key(keyPath *C.char) (output *C.C_PreparedResult) {
+func gnark_prepared_load_key(keyPath, imagePath *C.char) (output *C.C_PreparedResult) {
 	output = (*C.C_PreparedResult)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_PreparedResult{}))))
 	if output == nil {
 		return nil
@@ -118,7 +118,7 @@ func gnark_prepared_load_key(keyPath *C.char) (output *C.C_PreparedResult) {
 			output.error = cError(errBackend)
 		}
 	}()
-	handle, err := loadPreparedKey(C.GoString(keyPath))
+	handle, err := loadPreparedKey(C.GoString(keyPath), C.GoString(imagePath))
 	output.handle = C.uint64_t(handle)
 	output.error = cError(err)
 	return output
