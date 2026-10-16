@@ -139,6 +139,7 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
     String? mint,
     required BigInt amount,
+    Payment? publicFee,
   });
 
   Future<PreparedTransaction> zolanaMobileMobileWalletPrepareMerge({
@@ -173,6 +174,7 @@ abstract class RustLibApi extends BaseApi {
     required BigInt amount,
     String? feePayer,
     Proving? proving,
+    Payment? publicFee,
   });
 
   Future<BigInt> zolanaMobileMobileWalletPrivateBalance({
@@ -769,6 +771,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required MobileWallet that,
     String? mint,
     required BigInt amount,
+    Payment? publicFee,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -780,6 +783,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
           sse_encode_opt_String(mint, serializer);
           sse_encode_u_64(amount, serializer);
+          sse_encode_opt_box_autoadd_payment(publicFee, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -793,7 +797,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareDepositConstMeta,
-        argValues: [that, mint, amount],
+        argValues: [that, mint, amount, publicFee],
         apiImpl: this,
       ),
     );
@@ -802,7 +806,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kZolanaMobileMobileWalletPrepareDepositConstMeta =>
       const TaskConstMeta(
         debugName: "MobileWallet_prepare_deposit",
-        argNames: ["that", "mint", "amount"],
+        argNames: ["that", "mint", "amount", "publicFee"],
       );
 
   @override
@@ -979,6 +983,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required BigInt amount,
     String? feePayer,
     Proving? proving,
+    Payment? publicFee,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -993,6 +998,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_u_64(amount, serializer);
           sse_encode_opt_String(feePayer, serializer);
           sse_encode_opt_box_autoadd_proving(proving, serializer);
+          sse_encode_opt_box_autoadd_payment(publicFee, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -1006,7 +1012,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareWithdrawalConstMeta,
-        argValues: [that, recipient, mint, amount, feePayer, proving],
+        argValues: [
+          that,
+          recipient,
+          mint,
+          amount,
+          feePayer,
+          proving,
+          publicFee,
+        ],
         apiImpl: this,
       ),
     );
@@ -1022,6 +1036,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           "amount",
           "feePayer",
           "proving",
+          "publicFee",
         ],
       );
 
@@ -2124,6 +2139,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Payment dco_decode_box_autoadd_payment(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_payment(raw);
+  }
+
+  @protected
   Proving dco_decode_box_autoadd_proving(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_proving(raw);
@@ -2295,6 +2316,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         return Operation_Deposit(
           mint: dco_decode_opt_String(raw[1]),
           amount: dco_decode_u_64(raw[2]),
+          fee: dco_decode_opt_box_autoadd_payment(raw[3]),
         );
       case 2:
         return Operation_Transfer(
@@ -2306,6 +2328,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           mint: dco_decode_opt_String(raw[1]),
           recipient: dco_decode_String(raw[2]),
           amount: dco_decode_u_64(raw[3]),
+          fee: dco_decode_opt_box_autoadd_payment(raw[4]),
         );
       case 4:
         return Operation_Merging(enabled: dco_decode_bool(raw[1]));
@@ -2338,6 +2361,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             raw,
           );
+  }
+
+  @protected
+  Payment? dco_decode_opt_box_autoadd_payment(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_payment(raw);
   }
 
   @protected
@@ -2998,6 +3027,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Payment sse_decode_box_autoadd_payment(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_payment(deserializer));
+  }
+
+  @protected
   Proving sse_decode_box_autoadd_proving(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_proving(deserializer));
@@ -3239,7 +3274,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 1:
         var var_mint = sse_decode_opt_String(deserializer);
         var var_amount = sse_decode_u_64(deserializer);
-        return Operation_Deposit(mint: var_mint, amount: var_amount);
+        var var_fee = sse_decode_opt_box_autoadd_payment(deserializer);
+        return Operation_Deposit(
+          mint: var_mint,
+          amount: var_amount,
+          fee: var_fee,
+        );
       case 2:
         var var_mint = sse_decode_opt_String(deserializer);
         var var_payments = sse_decode_list_payment(deserializer);
@@ -3248,10 +3288,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_mint = sse_decode_opt_String(deserializer);
         var var_recipient = sse_decode_String(deserializer);
         var var_amount = sse_decode_u_64(deserializer);
+        var var_fee = sse_decode_opt_box_autoadd_payment(deserializer);
         return Operation_Withdrawal(
           mint: var_mint,
           recipient: var_recipient,
           amount: var_amount,
+          fee: var_fee,
         );
       case 4:
         var var_enabled = sse_decode_bool(deserializer);
@@ -3290,6 +3332,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
         deserializer,
       ));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Payment? sse_decode_opt_box_autoadd_payment(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_payment(deserializer));
     } else {
       return null;
     }
@@ -4067,6 +4120,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_payment(Payment self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_payment(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_proving(Proving self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_proving(self, serializer);
@@ -4301,10 +4360,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     switch (self) {
       case Operation_Registration():
         sse_encode_i_32(0, serializer);
-      case Operation_Deposit(mint: final mint, amount: final amount):
+      case Operation_Deposit(
+        mint: final mint,
+        amount: final amount,
+        fee: final fee,
+      ):
         sse_encode_i_32(1, serializer);
         sse_encode_opt_String(mint, serializer);
         sse_encode_u_64(amount, serializer);
+        sse_encode_opt_box_autoadd_payment(fee, serializer);
       case Operation_Transfer(mint: final mint, payments: final payments):
         sse_encode_i_32(2, serializer);
         sse_encode_opt_String(mint, serializer);
@@ -4313,11 +4377,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         mint: final mint,
         recipient: final recipient,
         amount: final amount,
+        fee: final fee,
       ):
         sse_encode_i_32(3, serializer);
         sse_encode_opt_String(mint, serializer);
         sse_encode_String(recipient, serializer);
         sse_encode_u_64(amount, serializer);
+        sse_encode_opt_box_autoadd_payment(fee, serializer);
       case Operation_Merging(enabled: final enabled):
         sse_encode_i_32(4, serializer);
         sse_encode_bool(enabled, serializer);
@@ -4355,6 +4421,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         self,
         serializer,
       );
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_payment(
+    Payment? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_payment(self, serializer);
     }
   }
 
@@ -4891,13 +4970,20 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
+  ///
+  /// `public_fee` is the application's fee: a public transfer of the same
+  /// asset from this account to the collector, in the same transaction, so
+  /// the deposit and the fee both land or neither does. See
+  /// [`Self::prepare_withdrawal`] for what is checked.
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
+    Payment? publicFee,
   }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareDeposit(
     that: this,
     mint: mint,
     amount: amount,
+    publicFee: publicFee,
   );
 
   /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -4985,12 +5071,26 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// creates the account with its own Solana client.
   ///
   /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
+  ///
+  /// `public_fee` is the application's fee: a public transfer of the same
+  /// asset from this account to the collector, after the withdrawal in the
+  /// same transaction, so both land or neither does. The account signs it
+  /// with the withdrawal, and pays it from its public balance, which a
+  /// withdrawal to itself has just filled. Before proving, a zero amount
+  /// fails with [`WalletError::AmountZero`], and a token fee whose
+  /// collector has no associated token account with
+  /// [`WalletError::RecipientTokenAccountMissing`] naming the collector. A
+  /// SOL fee to a collector that does not exist must cover its rent. The
+  /// proof does not bind the fee, so it adds nothing to the proof; it adds
+  /// accounts to the message, which a very wide spend may not have room
+  /// for.
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     String? mint,
     required BigInt amount,
     String? feePayer,
     Proving? proving,
+    Payment? publicFee,
   }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareWithdrawal(
     that: this,
     recipient: recipient,
@@ -4998,6 +5098,7 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
     amount: amount,
     feePayer: feePayer,
     proving: proving,
+    publicFee: publicFee,
   );
 
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from

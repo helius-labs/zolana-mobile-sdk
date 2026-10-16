@@ -302,10 +302,26 @@ class ZolanaWallet {
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
-  Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
-      _serial(
-        () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),
-      );
+  ///
+  /// [publicFee] is the application's fee: a public transfer of the same
+  /// asset from this account to [native.Payment.recipient], in the same
+  /// transaction, so the deposit and the fee both land or neither does. The
+  /// account signs once. Fails before anything is sent with
+  /// [WalletError.amountZero] for a zero fee, [WalletError.invalidPubkey] for
+  /// a collector that is not a Solana public key, and, for a token,
+  /// [WalletError.recipientTokenAccountMissing] when the collector has no
+  /// associated token account for the mint. A SOL fee to a collector that
+  /// does not exist yet must cover its rent.
+  /// [native.Operation_Deposit.fee] shows it for the approval.
+  Future<PreparedTransaction> prepareDeposit(
+    BigInt amount, {
+    String? mint,
+    native.Payment? publicFee,
+  }) => _serial(
+    () => _prepare(
+      _wallet.prepareDeposit(mint: mint, amount: amount, publicFee: publicFee),
+    ),
+  );
 
   /// Send private funds to the registered wallets of [payments], each
   /// [Payment.recipient] a Solana public key, in one transaction: a second
@@ -351,12 +367,22 @@ class ZolanaWallet {
   /// [WalletError.recipientTokenAccountMissing] before proving. Create the
   /// account with the application's Solana client first. [feePayer] and
   /// [proving] work as in [prepareTransfer].
+  ///
+  /// [publicFee] is the application's fee: a public transfer of the same
+  /// asset from this account to [native.Payment.recipient], after the
+  /// withdrawal in the same transaction, so both land or neither does. This
+  /// account signs it with the withdrawal and pays it from its public
+  /// balance, which a withdrawal to itself has just filled. It is checked as
+  /// for [prepareDeposit], before proving. The proof does not cover it, but
+  /// the message gains its accounts, so a very wide spend may not have room
+  /// for it. [native.Operation_Withdrawal.fee] shows it for the approval.
   Future<PreparedTransaction> prepareWithdrawal({
     required String recipient,
     required BigInt amount,
     String? mint,
     String? feePayer,
     native.Proving? proving,
+    native.Payment? publicFee,
   }) => _serial(
     () => _prepare(
       _wallet.prepareWithdrawal(
@@ -365,6 +391,7 @@ class ZolanaWallet {
         amount: amount,
         feePayer: feePayer,
         proving: proving,
+        publicFee: publicFee,
       ),
     ),
   );
@@ -459,8 +486,15 @@ class ZolanaWallet {
   );
 
   /// [prepareDeposit], signed and submitted.
-  Future<String> deposit(BigInt amount, {String? mint}) =>
-      _serial(() => _send(_wallet.prepareDeposit(mint: mint, amount: amount)));
+  Future<String> deposit(
+    BigInt amount, {
+    String? mint,
+    native.Payment? publicFee,
+  }) => _serial(
+    () => _send(
+      _wallet.prepareDeposit(mint: mint, amount: amount, publicFee: publicFee),
+    ),
+  );
 
   /// [prepareTransfer], signed and submitted.
   Future<String> transfer({
@@ -479,6 +513,7 @@ class ZolanaWallet {
     required BigInt amount,
     String? mint,
     native.Proving? proving,
+    native.Payment? publicFee,
   }) => _serial(
     () => _send(
       _wallet.prepareWithdrawal(
@@ -486,6 +521,7 @@ class ZolanaWallet {
         mint: mint,
         amount: amount,
         proving: proving,
+        publicFee: publicFee,
       ),
     ),
   );

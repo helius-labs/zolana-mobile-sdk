@@ -21,6 +21,11 @@ Unreleased.
 * `transfer` / `prepareTransfer` take `payments`, one or more `Payment`s of
   the same asset proved together, such as a payment and the application's
   fee.
+* `deposit`, `withdraw`, `prepareDeposit` and `prepareWithdrawal` take
+  `publicFee`: a public transfer of the same asset from the account to the
+  application's collector, in the same transaction, so the deposit or
+  withdrawal and the fee both land or neither does. `Operation_Deposit` and
+  `Operation_Withdrawal` carry it as `fee`.
 * `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
   `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
   send transactions themselves. `feePayer` lets another account pay the

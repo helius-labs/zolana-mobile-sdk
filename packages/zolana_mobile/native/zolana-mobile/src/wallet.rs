@@ -68,6 +68,7 @@ use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
     error::{client_message, settles_the_send, WalletError},
+    fee,
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
@@ -124,8 +125,13 @@ pub enum Operation {
     /// Publishes the wallet's shielded address so others can pay it.
     Registration,
     /// Moves public funds into the private balance. Public: sender, asset,
-    /// amount.
-    Deposit { mint: Option<String>, amount: u64 },
+    /// amount. `fee` is the application's public fee, paid from the same
+    /// account in the same transaction.
+    Deposit {
+        mint: Option<String>,
+        amount: u64,
+        fee: Option<Payment>,
+    },
     /// Private transfer of one asset to registered wallets, in the order
     /// given. Reveals neither amounts nor recipients.
     Transfer {
@@ -133,11 +139,13 @@ pub enum Operation {
         payments: Vec<Payment>,
     },
     /// Moves private funds to a public account. Public: recipient, asset,
-    /// amount.
+    /// amount. `fee` is the application's public fee, paid from this wallet's
+    /// account in the same transaction.
     Withdrawal {
         mint: Option<String>,
         recipient: String,
         amount: u64,
+        fee: Option<Payment>,
     },
     /// Turns merges of this account's notes on or off. Public: the account
     /// and the setting.
@@ -457,8 +465,11 @@ impl MobileWallet {
             return Ok(None);
         }
         let instruction = set_merging_enabled_instruction(self.owner, enabled);
-        self.pending(Operation::Merging { enabled }, self.message(instruction)?)
-            .map(Some)
+        self.pending(
+            Operation::Merging { enabled },
+            self.message(&[instruction])?,
+        )
+        .map(Some)
     }
 
     /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -518,12 +529,19 @@ impl MobileWallet {
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
     /// its own private balance. Deposits carry no proof.
+    ///
+    /// `public_fee` is the application's fee: a public transfer of the same
+    /// asset from this account to the collector, in the same transaction, so
+    /// the deposit and the fee both land or neither does. See
+    /// [`Self::prepare_withdrawal`] for what is checked.
     pub fn prepare_deposit(
         &mut self,
         mint: Option<String>,
         amount: u64,
+        public_fee: Option<Payment>,
     ) -> Result<PreparedTransaction, WalletError> {
         let asset = self.asset(mint)?;
+        let fee_transfer = self.public_fee(asset, public_fee.as_ref())?;
         let deposit_asset = match asset.token_program {
             None => DepositAsset::Sol,
             Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
@@ -550,12 +568,14 @@ impl MobileWallet {
             }],
         }
         .instruction()?;
+        let instructions: Vec<Instruction> = std::iter::once(deposit).chain(fee_transfer).collect();
         self.pending(
             Operation::Deposit {
                 mint: mint_name(&asset.mint),
                 amount,
+                fee: public_fee,
             },
-            self.message(deposit)?,
+            self.message(&instructions)?,
         )
     }
 
@@ -682,6 +702,19 @@ impl MobileWallet {
     /// creates the account with its own Solana client.
     ///
     /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
+    ///
+    /// `public_fee` is the application's fee: a public transfer of the same
+    /// asset from this account to the collector, after the withdrawal in the
+    /// same transaction, so both land or neither does. The account signs it
+    /// with the withdrawal, and pays it from its public balance, which a
+    /// withdrawal to itself has just filled. Before proving, a zero amount
+    /// fails with [`WalletError::AmountZero`], and a token fee whose
+    /// collector has no associated token account with
+    /// [`WalletError::RecipientTokenAccountMissing`] naming the collector. A
+    /// SOL fee to a collector that does not exist must cover its rent. The
+    /// proof does not bind the fee, so it adds nothing to the proof; it adds
+    /// accounts to the message, which a very wide spend may not have room
+    /// for.
     pub fn prepare_withdrawal(
         &mut self,
         recipient: String,
@@ -689,6 +722,7 @@ impl MobileWallet {
         amount: u64,
         fee_payer: Option<String>,
         proving: Option<Proving>,
+        public_fee: Option<Payment>,
     ) -> Result<PreparedTransaction, WalletError> {
         let recipient = parse_pubkey(&recipient)?;
         let payer = self.fee_payer(fee_payer)?;
@@ -702,20 +736,62 @@ impl MobileWallet {
                 });
             }
         }
+        let fee_transfer = self.public_fee(asset, public_fee.as_ref())?;
         let inputs = self.select_notes(asset, amount)?;
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         let settlement =
             transaction.withdraw_to(asset.mint, amount, recipient, asset.token_program)?;
+        let mut unsigned = self.prove(transaction, vec![settlement], payer, proving)?;
+        if let Some(transfer) = fee_transfer {
+            unsigned.message = fee::append(
+                &unsigned.message,
+                transfer,
+                fee::budget(self.client.compute_budget()),
+            )?;
+        }
         let pending = self.proved(
             Operation::Withdrawal {
                 mint: mint_name(&asset.mint),
                 recipient: recipient.to_string(),
                 amount,
+                fee: public_fee,
             },
-            self.prove(transaction, vec![settlement], payer, proving)?,
+            unsigned,
         );
         Ok(self.reserve(pending, spends))
+    }
+
+    /// The transfer of the application's public fee, checked before anything
+    /// is proved. `None` for no fee.
+    fn public_fee(
+        &self,
+        asset: Asset,
+        fee: Option<&Payment>,
+    ) -> Result<Option<Instruction>, WalletError> {
+        let Some(fee) = fee else { return Ok(None) };
+        if fee.amount == 0 {
+            return Err(WalletError::AmountZero);
+        }
+        let collector = parse_pubkey(&fee.recipient)?;
+        let mut decimals = 0;
+        if let Some(destination) = asset.token_account(&collector) {
+            if self.client.get_account(destination)?.is_none() {
+                return Err(WalletError::RecipientTokenAccountMissing {
+                    recipient: collector.to_string(),
+                    mint: asset.mint.to_string(),
+                });
+            }
+            let mint = self.client.get_account(asset.mint)?;
+            decimals = fee::mint_decimals(&asset.mint, &mint.map_or(Vec::new(), |m| m.data))?;
+        }
+        Ok(Some(fee::transfer(
+            &asset,
+            &self.owner,
+            &collector,
+            fee.amount,
+            decimals,
+        )))
     }
 
     fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, WalletError> {
@@ -732,14 +808,14 @@ impl MobileWallet {
         }
     }
 
-    /// A message with `instruction` alone, paid by this account. Its blockhash
-    /// is set by [`Self::pending`].
-    fn message(&self, instruction: Instruction) -> Result<VersionedMessage, WalletError> {
+    /// A message with `instructions`, paid by this account. Its blockhash is
+    /// set by [`Self::pending`].
+    fn message(&self, instructions: &[Instruction]) -> Result<VersionedMessage, WalletError> {
         Ok(compile_message(
             &self.owner,
-            &[instruction],
+            instructions,
             Default::default(),
-            ComputeBudgetConfig::for_instruction_count(1),
+            ComputeBudgetConfig::for_instruction_count(instructions.len()),
         )?)
     }
 
@@ -1959,7 +2035,7 @@ mod tests {
         let missing = |wallet: &mut MobileWallet, proving| {
             [
                 wallet.prepare_transfer(pay(&recipient, 1), None, None, proving),
-                wallet.prepare_withdrawal(recipient.clone(), None, 1, None, proving),
+                wallet.prepare_withdrawal(recipient.clone(), None, 1, None, proving, None),
             ]
             .map(|result| result.err() == Some(WalletError::RemoteProverMissing))
         };
@@ -1978,6 +2054,114 @@ mod tests {
         assert_eq!(missing(&mut remote, Some(Proving::Local)), [false; 2]);
         let mut remote = open_with(&signer, config(Some("https://prover.example"))).unwrap();
         assert_eq!(missing(&mut remote, None), [false; 2]);
+    }
+
+    /// A deposit's public fee is a second instruction of the same message, so
+    /// both land or neither: the owner pays and signs once, and the operation
+    /// names the fee for the approval screen.
+    #[test]
+    fn a_deposit_carries_its_public_fee_in_the_same_message() {
+        let signer = Keypair::new();
+        let collector = Pubkey::new_unique();
+        let (mut wallet, _) = rpc_wallet(&signer, |method| match method {
+            "getLatestBlockhash" => serde_json::json!({"result": {
+                "context": {"slot": 1},
+                "value": {
+                    "blockhash": "11111111111111111111111111111111",
+                    "lastValidBlockHeight": 9
+                }
+            }}),
+            _ => serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
+        });
+
+        let plain = wallet.prepare_deposit(None, 100, None).unwrap();
+        assert_eq!(plain.message.instructions().len(), 1);
+        let fee = Payment {
+            recipient: collector.to_string(),
+            amount: 5,
+        };
+        let pending = wallet
+            .prepare_deposit(None, 100, Some(fee.clone()))
+            .unwrap();
+        assert_eq!(
+            pending.operation(),
+            Operation::Deposit {
+                mint: None,
+                amount: 100,
+                fee: Some(fee)
+            }
+        );
+        let instructions = pending.message.instructions();
+        assert_eq!(instructions.len(), 2);
+        // Adding an account can shift the indexes, so compare what they name.
+        let resolve = |message: &VersionedMessage, index: usize| {
+            let keys = message.static_account_keys();
+            let instruction = &message.instructions()[index];
+            (
+                keys[usize::from(instruction.program_id_index)],
+                instruction
+                    .accounts
+                    .iter()
+                    .map(|&account| keys[usize::from(account)])
+                    .collect::<Vec<_>>(),
+                instruction.data.clone(),
+            )
+        };
+        assert_eq!(
+            resolve(&pending.message, 0),
+            resolve(&plain.message, 0),
+            "the deposit is unchanged"
+        );
+        let keys = pending.message.static_account_keys();
+        let transfer = &instructions[1];
+        assert_eq!(
+            keys[usize::from(transfer.program_id_index)],
+            Pubkey::default()
+        );
+        assert_eq!(transfer.data, [2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            transfer
+                .accounts
+                .iter()
+                .map(|&index| keys[usize::from(index)])
+                .collect::<Vec<_>>(),
+            [signer.pubkey(), collector]
+        );
+        assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
+    }
+
+    /// A fee that cannot be built fails before anything is proved or sent.
+    #[test]
+    fn a_malformed_public_fee_fails_before_proving() {
+        let signer = Keypair::new();
+        let mut wallet = open(&signer).unwrap();
+        let fee = |recipient: &str, amount| {
+            Some(Payment {
+                recipient: recipient.to_string(),
+                amount,
+            })
+        };
+        let collector = Pubkey::new_unique().to_string();
+        let recipient = signer.pubkey().to_string();
+        let error = |wallet: &mut MobileWallet, public_fee: Option<Payment>| {
+            [
+                wallet.prepare_deposit(None, 1, public_fee.clone()).err(),
+                wallet
+                    .prepare_withdrawal(recipient.clone(), None, 1, None, None, public_fee)
+                    .err(),
+            ]
+        };
+        let both = |error: WalletError| [Some(error.clone()), Some(error)];
+        assert_eq!(
+            error(&mut wallet, fee(&collector, 0)),
+            both(WalletError::AmountZero)
+        );
+        assert_eq!(
+            error(&mut wallet, fee("not-a-key", 1)),
+            both(WalletError::InvalidPubkey {
+                value: "not-a-key".into()
+            })
+        );
     }
 
     #[test]
@@ -2006,7 +2190,7 @@ mod tests {
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad), None)),
+            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad), None, None)),
             invalid
         );
     }

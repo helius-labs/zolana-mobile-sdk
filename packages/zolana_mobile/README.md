@@ -119,8 +119,39 @@ await wallet.transfer(
   Two payments and the change prove with 4-output keys, so the notes that
   pay them must number 24 or fewer instead of 40; past that the transfer
   fails with `WalletError.mergeRequired`. The prepared transfer's
-  `Operation_Transfer` lists each payment. A deposit or withdrawal fee is public anyway: the
-  application sends it as a plain transfer with its own Solana client.
+  `Operation_Transfer` lists each payment.
+- **Public fee**: a deposit or a withdrawal is public, so its fee is a public
+  transfer of the same asset from the account to your collector. Pass it as
+  `publicFee` and the wallet adds it to the same transaction, after the
+  shielded-pool instruction. The deposit or withdrawal and the fee both land,
+  or neither does.
+
+  ```dart
+  await wallet.deposit(
+    amount,
+    publicFee: Payment(recipient: publicCollector, amount: fee),
+  );
+  await wallet.withdraw(
+    recipient: destination,
+    amount: amount,
+    publicFee: Payment(recipient: publicCollector, amount: fee),
+  );
+  ```
+
+  `prepareDeposit` and `prepareWithdrawal` take it too, and show it in
+  `Operation_Deposit.fee` and `Operation_Withdrawal.fee`, so the approval
+  screen can name it. The account pays the fee from its public balance and
+  signs it with the same signature. A withdrawal to the account itself has
+  delivered its funds before the fee runs, so the fee can come out of them.
+  Before anything is proved or sent, a zero fee fails with
+  `WalletError.amountZero`, a collector that is not a public key with
+  `WalletError.invalidPubkey`, and a token fee whose collector has no
+  associated token account with `WalletError.recipientTokenAccountMissing`,
+  which names the collector. A SOL fee to an account that does not exist yet
+  must cover its rent. Your application calculates the fee and holds the
+  collector address. The proof does not cover the fee. It adds accounts to the
+  message, so a spend of the widest shape may not have room for it: the call
+  then fails while building the message, and you can merge first.
 
 - **Proving keys** download from the Zolana key host into `provingKeyDir`
   (through the transport, see [Networking](#networking)), and are used only
@@ -231,7 +262,7 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `notesAlreadySpent` | | the chain already spent a note the transaction spends: the indexer was behind when it was prepared |
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
-| `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient has no associated token account for the mint |
+| `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient, or the collector of a token `publicFee`, has no associated token account for the mint |
 | `registrationConflict` | `owner` | the registry holds other keys for this account |
 | `assetNotSupported` | `mint` | the shielded pool has not registered the mint |
 | `mintNotConfigured` | `mint` | the mint is not in `WalletConfig.mints` |

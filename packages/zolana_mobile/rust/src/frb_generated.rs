@@ -655,6 +655,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_deposit_impl(
             >>::sse_decode(&mut deserializer);
             let api_mint = <Option<String>>::sse_decode(&mut deserializer);
             let api_amount = <u64>::sse_decode(&mut deserializer);
+            let api_public_fee = <Option<zolana_mobile::Payment>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, zolana_mobile::WalletError>((move || {
@@ -676,6 +677,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_deposit_impl(
                         &mut *api_that_guard,
                         api_mint,
                         api_amount,
+                        api_public_fee,
                     )?;
                     Ok(output_ok)
                 })())
@@ -934,6 +936,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
             let api_amount = <u64>::sse_decode(&mut deserializer);
             let api_fee_payer = <Option<String>>::sse_decode(&mut deserializer);
             let api_proving = <Option<zolana_mobile::Proving>>::sse_decode(&mut deserializer);
+            let api_public_fee = <Option<zolana_mobile::Payment>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, zolana_mobile::WalletError>((move || {
@@ -958,6 +961,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
                         api_amount,
                         api_fee_payer,
                         api_proving,
+                        api_public_fee,
                     )?;
                     Ok(output_ok)
                 })())
@@ -2068,9 +2072,10 @@ const _: fn() = || {
     }
     match None::<zolana_mobile::Operation>.unwrap() {
         zolana_mobile::Operation::Registration => {}
-        zolana_mobile::Operation::Deposit { mint, amount } => {
+        zolana_mobile::Operation::Deposit { mint, amount, fee } => {
             let _: Option<String> = mint;
             let _: u64 = amount;
+            let _: Option<zolana_mobile::Payment> = fee;
         }
         zolana_mobile::Operation::Transfer { mint, payments } => {
             let _: Option<String> = mint;
@@ -2080,10 +2085,12 @@ const _: fn() = || {
             mint,
             recipient,
             amount,
+            fee,
         } => {
             let _: Option<String> = mint;
             let _: String = recipient;
             let _: u64 = amount;
+            let _: Option<zolana_mobile::Payment> = fee;
         }
         zolana_mobile::Operation::Merging { enabled } => {
             let _: bool = enabled;
@@ -2757,9 +2764,11 @@ impl SseDecode for zolana_mobile::Operation {
             1 => {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
                 let mut var_amount = <u64>::sse_decode(deserializer);
+                let mut var_fee = <Option<zolana_mobile::Payment>>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Deposit {
                     mint: var_mint,
                     amount: var_amount,
+                    fee: var_fee,
                 };
             }
             2 => {
@@ -2774,10 +2783,12 @@ impl SseDecode for zolana_mobile::Operation {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
                 let mut var_recipient = <String>::sse_decode(deserializer);
                 let mut var_amount = <u64>::sse_decode(deserializer);
+                let mut var_fee = <Option<zolana_mobile::Payment>>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Withdrawal {
                     mint: var_mint,
                     recipient: var_recipient,
                     amount: var_amount,
+                    fee: var_fee,
                 };
             }
             4 => {
@@ -2823,6 +2834,17 @@ impl SseDecode for Option<PreparedTransaction> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<PreparedTransaction>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<zolana_mobile::Payment> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<zolana_mobile::Payment>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -3695,10 +3717,11 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Operation> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
             zolana_mobile::Operation::Registration => [0.into_dart()].into_dart(),
-            zolana_mobile::Operation::Deposit { mint, amount } => [
+            zolana_mobile::Operation::Deposit { mint, amount, fee } => [
                 1.into_dart(),
                 mint.into_into_dart().into_dart(),
                 amount.into_into_dart().into_dart(),
+                fee.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::Operation::Transfer { mint, payments } => [
@@ -3711,11 +3734,13 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Operation> {
                 mint,
                 recipient,
                 amount,
+                fee,
             } => [
                 3.into_dart(),
                 mint.into_into_dart().into_dart(),
                 recipient.into_into_dart().into_dart(),
                 amount.into_into_dart().into_dart(),
+                fee.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::Operation::Merging { enabled } => {
@@ -4519,10 +4544,11 @@ impl SseEncode for zolana_mobile::Operation {
             zolana_mobile::Operation::Registration => {
                 <i32>::sse_encode(0, serializer);
             }
-            zolana_mobile::Operation::Deposit { mint, amount } => {
+            zolana_mobile::Operation::Deposit { mint, amount, fee } => {
                 <i32>::sse_encode(1, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
                 <u64>::sse_encode(amount, serializer);
+                <Option<zolana_mobile::Payment>>::sse_encode(fee, serializer);
             }
             zolana_mobile::Operation::Transfer { mint, payments } => {
                 <i32>::sse_encode(2, serializer);
@@ -4533,11 +4559,13 @@ impl SseEncode for zolana_mobile::Operation {
                 mint,
                 recipient,
                 amount,
+                fee,
             } => {
                 <i32>::sse_encode(3, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
                 <String>::sse_encode(recipient, serializer);
                 <u64>::sse_encode(amount, serializer);
+                <Option<zolana_mobile::Payment>>::sse_encode(fee, serializer);
             }
             zolana_mobile::Operation::Merging { enabled } => {
                 <i32>::sse_encode(4, serializer);
@@ -4575,6 +4603,16 @@ impl SseEncode for Option<PreparedTransaction> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <PreparedTransaction>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<zolana_mobile::Payment> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <zolana_mobile::Payment>::sse_encode(value, serializer);
         }
     }
 }

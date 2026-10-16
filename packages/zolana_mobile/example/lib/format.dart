@@ -27,14 +27,24 @@ String approvalText(Operation operation) {
   };
   String pay(Payment payment, String? mint) =>
       '${format(payment.amount, mint)} to ${shortAddress(payment.recipient)}';
+  // The application's public fee, paid from this account in the same
+  // transaction.
+  String withFee(Payment? fee, String? mint) =>
+      fee == null ? '' : ', plus a public fee of ${pay(fee, mint)}';
   return switch (operation) {
     Operation_Registration() => 'Register for private payments',
-    Operation_Deposit(:final mint, :final amount) =>
-      'Shield ${format(amount, mint)}',
+    Operation_Deposit(:final mint, :final amount, :final fee) =>
+      'Shield ${format(amount, mint)}${withFee(fee, mint)}',
     Operation_Transfer(:final mint, :final payments) =>
       'Send privately ${payments.map((p) => pay(p, mint)).join(', ')}',
-    Operation_Withdrawal(:final mint, :final recipient, :final amount) =>
-      'Unshield ${format(amount, mint)} to ${shortAddress(recipient)}',
+    Operation_Withdrawal(
+      :final mint,
+      :final recipient,
+      :final amount,
+      :final fee,
+    ) =>
+      'Unshield ${format(amount, mint)} to ${shortAddress(recipient)}'
+          '${withFee(fee, mint)}',
     Operation_Merging(:final enabled) =>
       enabled ? 'Allow merges of your notes' : 'Stop merges of your notes',
     Operation_Merge(:final mint, :final amount) =>

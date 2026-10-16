@@ -6076,6 +6076,7 @@ dependencies = [
  "solana-account 4.3.2",
  "solana-address 2.6.1",
  "solana-commitment-config",
+ "solana-hash",
  "solana-instruction",
  "solana-keypair",
  "solana-message",

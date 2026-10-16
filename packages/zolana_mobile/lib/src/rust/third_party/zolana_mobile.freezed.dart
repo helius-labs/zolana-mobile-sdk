@@ -135,13 +135,13 @@ return custom(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount)?  deposit,TResult Function( String? mint,  List<Payment> payments)?  transfer,TResult Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,TResult Function( List<String> programs)?  custom,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount,  Payment? fee)?  deposit,TResult Function( String? mint,  List<Payment> payments)?  transfer,TResult Function( String? mint,  String recipient,  BigInt amount,  Payment? fee)?  withdrawal,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,TResult Function( List<String> programs)?  custom,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
 return registration();case Operation_Deposit() when deposit != null:
-return deposit(_that.mint,_that.amount);case Operation_Transfer() when transfer != null:
+return deposit(_that.mint,_that.amount,_that.fee);case Operation_Transfer() when transfer != null:
 return transfer(_that.mint,_that.payments);case Operation_Withdrawal() when withdrawal != null:
-return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging() when merging != null:
+return withdrawal(_that.mint,_that.recipient,_that.amount,_that.fee);case Operation_Merging() when merging != null:
 return merging(_that.enabled);case Operation_Merge() when merge != null:
 return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
 return custom(_that.programs);case _:
@@ -162,13 +162,13 @@ return custom(_that.programs);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount)  deposit,required TResult Function( String? mint,  List<Payment> payments)  transfer,required TResult Function( String? mint,  String recipient,  BigInt amount)  withdrawal,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,required TResult Function( List<String> programs)  custom,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount,  Payment? fee)  deposit,required TResult Function( String? mint,  List<Payment> payments)  transfer,required TResult Function( String? mint,  String recipient,  BigInt amount,  Payment? fee)  withdrawal,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,required TResult Function( List<String> programs)  custom,}) {final _that = this;
 switch (_that) {
 case Operation_Registration():
 return registration();case Operation_Deposit():
-return deposit(_that.mint,_that.amount);case Operation_Transfer():
+return deposit(_that.mint,_that.amount,_that.fee);case Operation_Transfer():
 return transfer(_that.mint,_that.payments);case Operation_Withdrawal():
-return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging():
+return withdrawal(_that.mint,_that.recipient,_that.amount,_that.fee);case Operation_Merging():
 return merging(_that.enabled);case Operation_Merge():
 return merge(_that.mint,_that.amount);case Operation_Custom():
 return custom(_that.programs);}
@@ -185,13 +185,13 @@ return custom(_that.programs);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount)?  deposit,TResult? Function( String? mint,  List<Payment> payments)?  transfer,TResult? Function( String? mint,  String recipient,  BigInt amount)?  withdrawal,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,TResult? Function( List<String> programs)?  custom,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount,  Payment? fee)?  deposit,TResult? Function( String? mint,  List<Payment> payments)?  transfer,TResult? Function( String? mint,  String recipient,  BigInt amount,  Payment? fee)?  withdrawal,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,TResult? Function( List<String> programs)?  custom,}) {final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
 return registration();case Operation_Deposit() when deposit != null:
-return deposit(_that.mint,_that.amount);case Operation_Transfer() when transfer != null:
+return deposit(_that.mint,_that.amount,_that.fee);case Operation_Transfer() when transfer != null:
 return transfer(_that.mint,_that.payments);case Operation_Withdrawal() when withdrawal != null:
-return withdrawal(_that.mint,_that.recipient,_that.amount);case Operation_Merging() when merging != null:
+return withdrawal(_that.mint,_that.recipient,_that.amount,_that.fee);case Operation_Merging() when merging != null:
 return merging(_that.enabled);case Operation_Merge() when merge != null:
 return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
 return custom(_that.programs);case _:
@@ -238,11 +238,12 @@ String toString() {
 
 
 class Operation_Deposit extends Operation {
-  const Operation_Deposit({this.mint, required this.amount}): super._();
+  const Operation_Deposit({this.mint, required this.amount, this.fee}): super._();
   
 
  final  String? mint;
  final  BigInt amount;
+ final  Payment? fee;
 
 /// Create a copy of Operation
 /// with the given fields replaced by the non-null parameter values.
@@ -254,18 +255,18 @@ $Operation_DepositCopyWith<Operation_Deposit> get copyWith => _$Operation_Deposi
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Deposit&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.amount, amount) || other.amount == amount));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Deposit&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.amount, amount) || other.amount == amount)&&(identical(other.fee, fee) || other.fee == fee));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,mint,amount);
+    return Object.hash(runtimeType,mint,amount,fee);
 }
 
 @override
 String toString() {
-    return 'Operation.deposit(mint: $mint, amount: $amount)';
+    return 'Operation.deposit(mint: $mint, amount: $amount, fee: $fee)';
 }
 
 
@@ -276,7 +277,7 @@ abstract mixin class $Operation_DepositCopyWith<$Res> implements $OperationCopyW
   factory $Operation_DepositCopyWith(Operation_Deposit value, $Res Function(Operation_Deposit) _then) = _$Operation_DepositCopyWithImpl;
 @useResult
 $Res call({
- String? mint, BigInt amount
+ String? mint, BigInt amount, Payment? fee
 });
 
 
@@ -293,11 +294,12 @@ class _$Operation_DepositCopyWithImpl<$Res>
 
 /// Create a copy of Operation
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? amount = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? amount = null,Object? fee = freezed,}) {
   return _then(Operation_Deposit(
 mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
 as String?,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
-as BigInt,
+as BigInt,fee: freezed == fee ? _self.fee : fee // ignore: cast_nullable_to_non_nullable
+as Payment?,
   ));
 }
 
@@ -384,12 +386,13 @@ as List<Payment>,
 
 
 class Operation_Withdrawal extends Operation {
-  const Operation_Withdrawal({this.mint, required this.recipient, required this.amount}): super._();
+  const Operation_Withdrawal({this.mint, required this.recipient, required this.amount, this.fee}): super._();
   
 
  final  String? mint;
  final  String recipient;
  final  BigInt amount;
+ final  Payment? fee;
 
 /// Create a copy of Operation
 /// with the given fields replaced by the non-null parameter values.
@@ -401,18 +404,18 @@ $Operation_WithdrawalCopyWith<Operation_Withdrawal> get copyWith => _$Operation_
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Withdrawal&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.recipient, recipient) || other.recipient == recipient)&&(identical(other.amount, amount) || other.amount == amount));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Withdrawal&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.recipient, recipient) || other.recipient == recipient)&&(identical(other.amount, amount) || other.amount == amount)&&(identical(other.fee, fee) || other.fee == fee));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,mint,recipient,amount);
+    return Object.hash(runtimeType,mint,recipient,amount,fee);
 }
 
 @override
 String toString() {
-    return 'Operation.withdrawal(mint: $mint, recipient: $recipient, amount: $amount)';
+    return 'Operation.withdrawal(mint: $mint, recipient: $recipient, amount: $amount, fee: $fee)';
 }
 
 
@@ -423,7 +426,7 @@ abstract mixin class $Operation_WithdrawalCopyWith<$Res> implements $OperationCo
   factory $Operation_WithdrawalCopyWith(Operation_Withdrawal value, $Res Function(Operation_Withdrawal) _then) = _$Operation_WithdrawalCopyWithImpl;
 @useResult
 $Res call({
- String? mint, String recipient, BigInt amount
+ String? mint, String recipient, BigInt amount, Payment? fee
 });
 
 
@@ -440,12 +443,13 @@ class _$Operation_WithdrawalCopyWithImpl<$Res>
 
 /// Create a copy of Operation
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? recipient = null,Object? amount = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? recipient = null,Object? amount = null,Object? fee = freezed,}) {
   return _then(Operation_Withdrawal(
 mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
 as String?,recipient: null == recipient ? _self.recipient : recipient // ignore: cast_nullable_to_non_nullable
 as String,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
-as BigInt,
+as BigInt,fee: freezed == fee ? _self.fee : fee // ignore: cast_nullable_to_non_nullable
+as Payment?,
   ));
 }
 
