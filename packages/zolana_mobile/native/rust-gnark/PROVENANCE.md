@@ -56,7 +56,11 @@ MergeParameters.UpdateWithJSON/CreateWitness, their ValidateShape methods,
 and common.Proof.MarshalJSON are the pinned protocol implementation.
 Unused upstream common serialization helpers remain in their source file;
 the native bridge never invokes their UnsafeReadFrom methods or downloads
-keys. Native asset loading uses validated ReadFrom exclusively.
+keys. The bridge reads a pinned `.key` container's proving key with gnark's
+`UnsafeReadFrom`, as upstream reads it, since the lockfile vouches for the
+file, and keeps a mapped image of it beside the container (`go/image.go`);
+the circuit and key files an application loads itself go through validated
+`ReadFrom`.
 
 ## Regression fixtures
 

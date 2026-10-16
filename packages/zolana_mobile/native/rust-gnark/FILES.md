@@ -18,6 +18,9 @@ local build outputs and must not be synchronized or shipped as source.
 - `go/backend_test.go`
 - `go/go.mod`
 - `go/go.sum`
+- `go/image.go`
+- `go/image_other.go`
+- `go/image_unix.go`
 - `go/merge_fixture_test.go`
 - `go/protocol/LICENSE`
 - `go/protocol/UPSTREAM_FILES.sha256`

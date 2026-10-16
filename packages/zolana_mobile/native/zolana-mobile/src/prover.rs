@@ -71,8 +71,12 @@ impl NativeProver {
             // Drop the previous key before loading the next: gnark holds one.
             state.loaded = None;
             init_gnark()?;
-            let prover = rust_gnark::PreparedProver::load_key(&path.display().to_string())
-                .map_err(|_| WalletError::ProverLoadFailed)?;
+            let image = keys::image_path(&path);
+            let prover = rust_gnark::PreparedProver::load_key(
+                &path.display().to_string(),
+                Some(&image.display().to_string()),
+            )
+            .map_err(|_| WalletError::ProverLoadFailed)?;
             let id = state.next_id()?;
             self.0.loaded.store(id, Ordering::Relaxed);
             state.loaded = Some(Loaded {
@@ -495,6 +499,9 @@ mod tests {
             proof.commitment.is_none(),
             "the eddsa rail has no BSB22 commitment"
         );
+        // The key's image is beside it for the next session.
+        let image = keys::image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap());
+        assert!(image.is_file(), "{}", image.display());
         // The same key serves the next proof without reloading.
         prover.prove(&Captured(transfer_2_2_key())).unwrap();
     }

@@ -57,6 +57,10 @@ Unreleased.
   keys of those spends and merges ahead of time with a progress stream, and
   stops when its subscription is cancelled; `provingKeys()` lists the keys
   and how much of each is on the device; `clearProvingKeys()` removes them.
+* Proving keys load once per device: the first load writes the key's
+  proving key beside it in the device's memory layout (`<key>.image`),
+  and later loads map that file instead of decompressing the key, so a
+  restart costs no key preparation.
 * `close()` aborts the default transport's requests in flight instead of
   waiting for them; the step they held fails with `WalletError.walletClosed`.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
