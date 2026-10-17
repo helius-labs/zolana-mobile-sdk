@@ -2,6 +2,9 @@
 
 Unreleased.
 
+* On Android the package requests `android.permission.INTERNET`, which
+  Flutter's template grants only to debug and profile builds: a release
+  app without it could not download a proving key.
 * `ZolanaWallet`: registration, deposit, private transfer and withdrawal of
   SOL and SPL Token / Token-2022 assets, proving on the device. The Solana
   key stays with the application's `SolanaSigner`.
