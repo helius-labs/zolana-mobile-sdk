@@ -32,7 +32,10 @@ their ARNs), so that runs compare. The workflow assumes an IAM role through
 GitHub's OIDC provider: `iam-trust.json` is its trust policy and
 `iam-policy.json` its permissions, both with `<account>` and `<project id>`
 to fill in; Device Farm's list calls take no resource, so those two are
-allowed on `*`. The role is `zolana-mobile-devicefarm-bench`. The repository variables `DEVICEFARM_ROLE_ARN`,
+allowed on `*`. GitHub signs this organization's tokens with immutable
+subjects (`repo:<owner>@<owner id>/<repo>@<repo id>:...`), which the trust
+condition must match. The role is `zolana-mobile-devicefarm-bench`. The
+repository variables `DEVICEFARM_ROLE_ARN`,
 `DEVICEFARM_PROJECT_ARN`, `DEVICEFARM_POOL_ARN` (Android) and
 `DEVICEFARM_POOL_IOS_ARN` carry the ARNs.
 

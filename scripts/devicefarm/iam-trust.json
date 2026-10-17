@@ -7,7 +7,7 @@
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-        "StringLike": { "token.actions.githubusercontent.com:sub": "repo:helius-labs/zolana-mobile-sdk:*" }
+        "StringLike": { "token.actions.githubusercontent.com:sub": "repo:helius-labs@107892413/zolana-mobile-sdk@1370659807:*" }
       }
     }
   ]
