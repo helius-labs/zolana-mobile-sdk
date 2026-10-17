@@ -76,7 +76,9 @@ jobs:
           aws-region: us-west-2
       - name: Run on the phones
         timeout-minutes: 130
-        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" android
+        # exec: a cancel signals the step's process alone, which must be
+        # run.sh for its trap to stop the Device Farm run.
+        run: exec bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" android
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
@@ -147,7 +149,9 @@ jobs:
           aws-region: us-west-2
       - name: Run on the phones
         timeout-minutes: 130
-        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" ios
+        # exec: a cancel signals the step's process alone, which must be
+        # run.sh for its trap to stop the Device Farm run.
+        run: exec bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" ios
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
