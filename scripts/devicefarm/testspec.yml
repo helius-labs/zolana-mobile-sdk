@@ -21,8 +21,8 @@ phases:
     commands:
       - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/fresh.txt
       - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/restart.txt
-  post_test:
-    commands:
-      - grep -c 'OK (1 test)' $DEVICEFARM_LOG_DIR/fresh.txt $DEVICEFARM_LOG_DIR/restart.txt
+      # am instrument exits 0 on a failed test: the phone's result comes
+      # from both runs' output.
+      - grep -q 'OK (1 test)' $DEVICEFARM_LOG_DIR/fresh.txt && grep -q 'OK (1 test)' $DEVICEFARM_LOG_DIR/restart.txt
 artifacts:
   - $DEVICEFARM_LOG_DIR

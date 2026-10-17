@@ -46,7 +46,6 @@ int _roundsOf(int inputs) => inputs > 8 && _rounds > 2 ? 2 : _rounds;
 String _keyOf(String shape) => shape.startsWith('merge-')
     ? 'merge_${shape.substring('merge-'.length).replaceFirst('x', '_')}.key'
     : 'transfer_confidential_${shape.replaceFirst('x', '_')}.key';
-const _label = String.fromEnvironment('ZOLANA_TIMING_LABEL');
 
 /// A fixed account: opening a wallet needs keys, proving a fixture needs no
 /// account. Nothing of this account is ever sent anywhere.
@@ -116,7 +115,6 @@ void main() {
           } catch (error) {
             failed.add(shape);
             _emit({
-              'label': _label,
               'run': run,
               'shape': shape,
               'error': '$error'.split('\n').first,
@@ -153,7 +151,6 @@ Future<void> _time(ZolanaWallet wallet, String shape, String run) async {
       );
     }
     _emit({
-      'label': _label,
       'run': run,
       'shape': shape,
       'round': round,

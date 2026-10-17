@@ -4,10 +4,9 @@
     {
       "Sid": "TheBenchProject",
       "Effect": "Allow",
-      "Action": ["devicefarm:CreateUpload", "devicefarm:GetUpload", "devicefarm:ScheduleRun", "devicefarm:GetRun"],
+      "Action": ["devicefarm:CreateUpload", "devicefarm:GetUpload", "devicefarm:ScheduleRun", "devicefarm:GetRun", "devicefarm:StopRun"],
       "Resource": [
         "arn:aws:devicefarm:us-west-2:<account>:project:<project id>",
-        "arn:aws:devicefarm:us-west-2:<account>:devicepool:<project id>/*",
         "arn:aws:devicefarm:us-west-2:<account>:upload:<project id>/*",
         "arn:aws:devicefarm:us-west-2:<account>:run:<project id>/*",
         "arn:aws:devicefarm:us-west-2::device:*"

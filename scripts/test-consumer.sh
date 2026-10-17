@@ -69,8 +69,7 @@ case "${1:-android}" in
     # are two instrumentation runs on one install, which the harness tells
     # apart by the keys on the device (scripts/devicefarm/testspec.yml).
     : "${ZOLANA_BENCH_DIR:?Set ZOLANA_BENCH_DIR for the two APKs}"
-    label="${ZOLANA_TIMING_LABEL:-device}"
-    defines=(ZOLANA_TIMING_LABEL="$label")
+    defines=()
     if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
       defines+=(ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
     fi
@@ -127,14 +126,16 @@ PY
 -dontwarn androidx.test.**
 -dontwarn org.junit.**
 PRO
+    # Empty unless the shapes are narrowed; `${a[@]+...}` because bash 3.2
+    # takes an empty array for an unset one under set -u.
     args=()
     encoded=()
-    for define in "${defines[@]}"; do
+    for define in ${defines[@]+"${defines[@]}"}; do
       args+=(--dart-define="$define")
       encoded+=("$(printf '%s' "$define" | base64 | tr -d '\n')")
     done
     flutter build apk --release --target-platform android-arm64 \
-      --target=integration_test/proof_timing_test.dart "${args[@]}"
+      --target=integration_test/proof_timing_test.dart ${args[@]+"${args[@]}"}
     # gradlew on its own needs a JDK; Flutter's build found Android
     # Studio's, which a Mac with the SDK alone has.
     if [[ -z "${JAVA_HOME:-}" ]] && ! command -v java > /dev/null; then
@@ -144,7 +145,7 @@ PRO
     (cd android && ./gradlew --quiet app:assembleReleaseAndroidTest \
       -Ptarget=integration_test/proof_timing_test.dart \
       -Ptarget-platform=android-arm64 \
-      -Pdart-defines="$(IFS=,; echo "${encoded[*]}")")
+      -Pdart-defines="$(IFS=,; echo "${encoded[*]-}")")
     mkdir -p "$ZOLANA_BENCH_DIR"
     cp build/app/outputs/flutter-apk/app-release.apk "$ZOLANA_BENCH_DIR/app.apk"
     cp build/app/outputs/apk/androidTest/release/app-release-androidTest.apk "$ZOLANA_BENCH_DIR/app-androidTest.apk"
@@ -158,8 +159,7 @@ PRO
     # run time: importing the module would link a second copy into the test
     # bundle, blind to the app's engine.
     : "${ZOLANA_BENCH_DIR:?Set ZOLANA_BENCH_DIR for the app and test bundle}"
-    label="${ZOLANA_TIMING_LABEL:-device}"
-    args=(--dart-define=ZOLANA_TIMING_LABEL="$label" --dart-define=ZOLANA_TIMING_RUN=both)
+    args=(--dart-define=ZOLANA_TIMING_RUN=both)
     if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
       args+=(--dart-define=ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
     fi

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Adds this commit's proof timing reports to the history on the
-# `proof-timing` branch, pushes it, and comments the reports on the commit.
-# CI runs it after each push to `main`, with the report.json and report.md
-# of the bench jobs under <reports>.
+# `proof-timing` branch, pushes it, and comments the report on the commit.
+# CI runs it after each push to `main`, on the directory of
+# scripts/proof-timing-ci.sh: a report.json per phone, <label>/report.json,
+# and report.md.
 #
 #   proof-timing-history.sh <reports>
 set -euo pipefail
 
 reports="$1"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if ! compgen -G "$reports/proof-timing-*/report.json" > /dev/null; then
+if ! compgen -G "$reports/*/report.json" > /dev/null; then
   echo "::notice::no proof timing reports under $reports"
   exit 0
 fi
@@ -41,12 +42,7 @@ git -c user.name='github-actions[bot]' \
   commit -q -m "proof timing of ${GITHUB_SHA:0:7}"
 git push -q origin HEAD:refs/heads/proof-timing
 
-# One comment on the commit with every runner's report, before (the commit
-# of main before it) and after (this commit).
-body="$(for report in "$reports"/proof-timing-*/report.md; do
-  [[ -f "$report" ]] || continue
-  cat "$report"
-  echo
-done)"
-gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -f body="$body" > /dev/null \
+# The report on the commit, before (the commit of main before it) and after
+# (this commit).
+gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -f body="$(cat "$reports/report.md")" > /dev/null \
   || echo "::notice::could not comment the proof timing on the commit"

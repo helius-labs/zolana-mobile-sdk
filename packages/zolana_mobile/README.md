@@ -5,7 +5,7 @@ Groth16 prover it is built on: Mopro's native gnark backend (gnark 0.16.3). Andr
 and iOS are supported. The package contains its Rust and Go sources; it does not
 require a sibling Zolana checkout.
 
-**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). On phones, in release builds, the same proofs take 0.34 s, 0.55 s, 0.99 s, 1.9 s, 3.6 s and 5.8 s on an iPhone 12, and 1.2 s, 2.0 s, 3.6 s, 7.1 s, 15 s and 25 s on a Samsung Galaxy A16; a key loads from its image in 12 ms to 0.25 s on the iPhone and 55 ms to 0.6 s on the A16. CI benches release builds on a Samsung Galaxy A16 and an iPhone 12 for every pull request and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). On phones, in release builds, the same proofs take 0.34 s, 0.55 s, 0.99 s, 1.9 s, 3.6 s and 5.8 s on an iPhone 12, and 1.2 s, 2.0 s, 3.6 s, 7.1 s, 15 s and 25 s on a Samsung Galaxy A16; a key loads from its image in 12 ms to 0.25 s on the iPhone and 55 ms to 0.6 s on the A16. CI benches release builds on those two for every pull request, adds a Samsung Galaxy A56 and S25 and an iPhone 15 and 17 Pro on `main`, and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Requirements
 
@@ -843,7 +843,8 @@ adb logcat -G 16M && adb logcat -c
 for run in fresh restart; do
   adb shell am instrument -w com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner
 done
-mkdir -p /tmp/timing && adb logcat -d -s flutter | grep -o 'ZOLANA_TIMING {.*' > /tmp/timing/phone.log
+mkdir -p /tmp/timing/my-phone
+adb logcat -d -s flutter | grep -o 'ZOLANA_TIMING {.*' > /tmp/timing/my-phone/timing.log
 python3 scripts/proof-timing-report.py --logs /tmp/timing
 ```
 
@@ -856,15 +857,18 @@ closing and reopening the wallet between (`ZOLANA_TIMING_RUN=both`). The
 keys download from the key host (9 MB for one note, 59 MB for 8, 180 MB for
 24, 173 MB for the merge). `ZOLANA_TIMING_SHAPES` narrows the shapes, and
 `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per
-shape and run; the report takes medians.
+shape and run; the report takes medians, a directory per phone.
 
-CI benches every pull request on a Samsung Galaxy A16 and an iPhone 12 in
-AWS Device Farm (`.github/workflows/device-bench.yml`, `scripts/devicefarm/`)
-and comments each phone's report with the change against the last commit of
-`main`. After each push to `main` the reports are commented on the commit
-and join the history on the
+CI benches on a low, a mid and a high tier Android phone and iPhone in AWS
+Device Farm (`scripts/devicefarm/devices.json`,
+`.github/workflows/device-bench.yml`): every pull request on the low tier,
+a Samsung Galaxy A16 and an iPhone 12, with one comment of the proof time by
+phone and the change against the last commit of `main`; every push to
+`main` on all six, whose report is commented on the commit and joins the
+history on the
 [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing)
-branch, a table of the last commits per phone.
+branch, a table of the last commits per phone. A run by hand on a branch
+takes all six too.
 
 `wallet.proveRequest(keyName, requestJson)` is what the harness calls: it
 proves any Zolana `/prove` request with a pinned key, and returns the
