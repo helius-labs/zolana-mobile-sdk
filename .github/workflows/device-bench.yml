@@ -1,0 +1,212 @@
+name: Device bench
+
+# The proof timing bench: release builds of the harness on phones in AWS
+# Device Farm, a low, a mid and a high tier Android phone and iPhone
+# (scripts/devicefarm/devices.json), one build per platform. Pull requests
+# comment the report against the last report of main, and so does a run by
+# hand on the pull request's branch; pushes to main join the history on the
+# proof-timing branch. The jobs wait for the Device Farm role (repository
+# variable DEVICEFARM_ROLE_ARN); pull requests from forks get no OIDC token
+# and skip them.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    if: vars.DEVICEFARM_ROLE_ARN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
+    runs-on: ubuntu-latest
+    # OIDC to the Device Farm role.
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: device-bench-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2500M
+      SCCACHE_IDLE_TIMEOUT: "0"
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
+      DEVICEFARM_RUN_FILE: ${{ github.workspace }}/devicefarm-run
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - run: |
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+          echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
+          echo "ZOLANA_BENCH_DIR=$RUNNER_TEMP/apks" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/.cache/go-build
+          key: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
+      - run: sccache --start-server
+      - run: ./scripts/stage-demo-assets.sh
+      - name: Build the bench app and its instrumentation
+        run: bash scripts/test-consumer.sh bench-apk
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEVICEFARM_ROLE_ARN }}
+          aws-region: us-west-2
+      - name: Run on the phones
+        timeout-minutes: 130
+        # exec: a cancel signals the step's process alone, which must be
+        # run.sh for its trap to stop the Device Farm run.
+        run: exec bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" android
+      # The runner may kill run.sh before its trap is done; a cancelled
+      # job's phones would run on to the end.
+      - name: Stop the Device Farm run
+        if: cancelled()
+        run: |
+          if [[ -f "$DEVICEFARM_RUN_FILE" ]]; then
+            aws devicefarm stop-run --region us-west-2 --arn "$(cat "$DEVICEFARM_RUN_FILE")" --query run.status --output text || true
+          fi
+      - if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-timing-android
+          path: timing/
+          if-no-files-found: ignore
+
+  ios:
+    if: vars.DEVICEFARM_ROLE_ARN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
+    runs-on: macos-latest
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: device-bench-ios-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    env:
+      SCCACHE_CACHE_SIZE: 1G
+      SCCACHE_IDLE_TIMEOUT: "0"
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
+      DEVICEFARM_RUN_FILE: ${{ github.workspace }}/devicefarm-run
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
+          echo "ZOLANA_BENCH_DIR=$RUNNER_TEMP/ipa" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust
+        with:
+          targets: aarch64-apple-ios
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Look for precompiled iOS binaries
+        id: precompiled
+        run: |
+          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - if: steps.precompiled.outputs.found != 'true'
+        run: |
+          mkdir -p ~/.cargo && printf '[build]\nrustc-wrapper = "sccache"\n' >> ~/.cargo/config.toml
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/Library/Caches/go-build
+          key: native-ios-device-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-ios-device-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+      - if: steps.precompiled.outputs.found != 'true'
+        run: sccache --start-server
+      - run: ./scripts/stage-demo-assets.sh
+      - name: Build the bench app and its XCTest bundle
+        run: bash scripts/test-consumer.sh bench-ipa
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEVICEFARM_ROLE_ARN }}
+          aws-region: us-west-2
+      - name: Run on the phones
+        timeout-minutes: 130
+        # exec: a cancel signals the step's process alone, which must be
+        # run.sh for its trap to stop the Device Farm run.
+        run: exec bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" ios
+      # The runner may kill run.sh before its trap is done; a cancelled
+      # job's phones would run on to the end.
+      - name: Stop the Device Farm run
+        if: cancelled()
+        run: |
+          if [[ -f "$DEVICEFARM_RUN_FILE" ]]; then
+            aws devicefarm stop-run --region us-west-2 --arn "$(cat "$DEVICEFARM_RUN_FILE")" --query run.status --output text || true
+          fi
+      - if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-timing-ios
+          path: timing/
+          if-no-files-found: ignore
+
+  # One report of every phone, commented on the pull request; after a push
+  # to main it joins the history on the proof-timing branch, which pull
+  # requests compare against, and is commented on the commit. One push at a
+  # time writes the history.
+  report:
+    if: ${{ !cancelled() && (needs.android.result != 'skipped' || needs.ios.result != 'skipped') }}
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'proof-timing-history' || format('proof-timing-report-{0}', github.ref) }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
+    steps:
+      - uses: actions/checkout@v6
+      # A phone job that failed before its run uploads no logs.
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: proof-timing-*
+          merge-multiple: true
+          path: timing
+      - name: Proof timing report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-ci.sh
+      - if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-history.sh "$ZOLANA_TIMING_DIR"

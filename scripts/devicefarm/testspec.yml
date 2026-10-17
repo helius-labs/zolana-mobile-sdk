@@ -1,0 +1,28 @@
+# AWS Device Farm custom test environment for the proof timing bench
+# (scripts/test-consumer.sh bench-apk builds the app and test package).
+# The instrumentation runs twice on the one install Device Farm made: the
+# first run finds no keys on the device and is the fresh one, the second
+# finds them and is the restart. The harness's lines are read from Device
+# Farm's own device log (run.sh): it restarts its logcat capture at each
+# phase, so a dump from here finds the buffer cleared.
+version: 0.1
+phases:
+  install:
+    commands:
+      - echo "app and test package installed by Device Farm"
+  pre_test:
+    commands:
+      # A fresh install sets off the system's compilation of the app and
+      # other post-install work, which slows the first proofs of the fresh
+      # run (1 -> 2 in 2.1 s against 1.2 s): compile it now, then settle.
+      - adb shell cmd package compile -m speed -f com.example.zolana_consumer || true
+      - sleep 30
+  test:
+    commands:
+      - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/fresh.txt
+      - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/restart.txt
+      # am instrument exits 0 on a failed test: the phone's result comes
+      # from both runs' output.
+      - grep -q 'OK (1 test)' $DEVICEFARM_LOG_DIR/fresh.txt && grep -q 'OK (1 test)' $DEVICEFARM_LOG_DIR/restart.txt
+artifacts:
+  - $DEVICEFARM_LOG_DIR

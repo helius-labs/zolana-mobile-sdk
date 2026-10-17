@@ -1,0 +1,14 @@
+[
+  {"label": "galaxy-a16", "name": "Samsung Galaxy A16", "os": "Android 14", "tier": "low", "platform": "android",
+   "arn": "arn:aws:devicefarm:us-west-2::device:E10A10A4F8AD4DA6926C1A03E4BF854F"},
+  {"label": "galaxy-a56", "name": "Samsung Galaxy A56", "os": "Android 15", "tier": "mid", "platform": "android",
+   "arn": "arn:aws:devicefarm:us-west-2::device:095A27676116466584F0071460D04960"},
+  {"label": "galaxy-s25", "name": "Samsung Galaxy S25", "os": "Android 15", "tier": "high", "platform": "android",
+   "arn": "arn:aws:devicefarm:us-west-2::device:69977E819F314BD481F194580E8EFC16"},
+  {"label": "iphone-12", "name": "iPhone 12", "os": "iOS 18.5", "tier": "low", "platform": "ios",
+   "arn": "arn:aws:devicefarm:us-west-2::device:3D9D3DF8F5E6491A9BCEFE9B84759D8C"},
+  {"label": "iphone-15", "name": "iPhone 15", "os": "iOS 18.5", "tier": "mid", "platform": "ios",
+   "arn": "arn:aws:devicefarm:us-west-2::device:10C84C97B24C4933A61F197B41535C49"},
+  {"label": "iphone-17-pro", "name": "iPhone 17 Pro", "os": "iOS 26.3.1", "tier": "high", "platform": "ios",
+   "arn": "arn:aws:devicefarm:us-west-2::device:6200F380A4874FEB9C72EED72B863B67"}
+]
