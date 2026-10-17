@@ -5,6 +5,8 @@ Groth16 prover it is built on: Mopro's native gnark backend (gnark 0.16.3). Andr
 and iOS are supported. The package contains its Rust and Go sources; it does not
 require a sibling Zolana checkout.
 
+**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). Phones have not been measured yet. CI benches every pull request on an Android emulator and an iOS simulator and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+
 ## Requirements
 
 - Flutter with Dart 3.13.0 or newer. CI checks Flutter 3.47.2 (Dart 3.13.2) and
