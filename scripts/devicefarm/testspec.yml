@@ -12,7 +12,11 @@ phases:
       - echo "app and test package installed by Device Farm"
   pre_test:
     commands:
-      - echo "two instrumentation runs follow"
+      # A fresh install sets off the system's compilation of the app and
+      # other post-install work, which slows the first proofs of the fresh
+      # run (1 -> 2 in 2.1 s against 1.2 s): compile it now, then settle.
+      - adb shell cmd package compile -m speed -f com.example.zolana_consumer || true
+      - sleep 30
   test:
     commands:
       - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/fresh.txt
