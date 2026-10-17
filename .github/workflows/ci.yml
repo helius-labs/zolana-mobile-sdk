@@ -461,10 +461,19 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+      # By name into named directories: a single artifact matched by a
+      # pattern is extracted without one, and the history keys reports on
+      # it. A cancelled bench uploads no report.
       - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
-          pattern: proof-timing-*
-          path: ${{ runner.temp }}/reports
+          name: proof-timing-android-api35
+          path: ${{ runner.temp }}/reports/proof-timing-android-api35
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: proof-timing-ios-simulator
+          path: ${{ runner.temp }}/reports/proof-timing-ios-simulator
       - run: bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
         env:
           GH_TOKEN: ${{ github.token }}
