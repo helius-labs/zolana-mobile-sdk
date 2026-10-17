@@ -189,12 +189,12 @@ def markdown(report, baseline, title, flag, before=None, after=None, intro=True)
         )
         lines.append("")
     lines += table(
-        report, baseline, shapes, "scenario",
+        report, baseline, shapes, "by scenario",
         [(row, row) for row, _, _ in ROWS], scenario_text, total, flag,
     )
     lines.append("")
     lines += table(
-        report, baseline, shapes, "stage",
+        report, baseline, shapes, "by stage",
         [(s, s.removesuffix("_ms").replace("load", "key load")) for s in STAGES],
         stage_text, stage, flag,
     )
