@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # One proof timing run on AWS Device Farm: uploads the bench app and its
-# test package (scripts/test-consumer.sh bench-apk) with testspec.yml, runs
-# them on a device pool, waits, and leaves the device's timing lines in
-# ZOLANA_TIMING_DIR as <label>.log for scripts/proof-timing-report.py and
-# scripts/proof-timing-ci.sh. Needs AWS credentials with Device Farm access.
+# test package (scripts/test-consumer.sh bench-apk or bench-ipa), on
+# Android with testspec.yml, runs them on a device pool, waits, and leaves
+# the device's timing lines in ZOLANA_TIMING_DIR as <label>.log for
+# scripts/proof-timing-report.py and scripts/proof-timing-ci.sh. Needs AWS
+# credentials with Device Farm access.
 #
-#   devicefarm/run.sh <project arn> <device pool arn> <apk dir> <label>
+#   devicefarm/run.sh <project arn> <device pool arn> <bench dir> <label> [android|ios]
 set -euo pipefail
 
 project="$1"
 pool="$2"
 apks="$3"
 label="$4"
+platform="${5:-android}"
 region=us-west-2
 timing="${ZOLANA_TIMING_DIR:?set ZOLANA_TIMING_DIR}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,12 +36,23 @@ upload() {
   echo "$arn"
 }
 
-app="$(upload ANDROID_APP "$apks/app.apk")"
-tests="$(upload INSTRUMENTATION_TEST_PACKAGE "$apks/app-androidTest.apk")"
-spec="$(upload INSTRUMENTATION_TEST_SPEC "$here/testspec.yml")"
+case "$platform" in
+  android)
+    app="$(upload ANDROID_APP "$apks/app.apk")"
+    tests="$(upload INSTRUMENTATION_TEST_PACKAGE "$apks/app-androidTest.apk")"
+    spec="$(upload INSTRUMENTATION_TEST_SPEC "$here/testspec.yml")"
+    test="type=INSTRUMENTATION,testPackageArn=$tests,testSpecArn=$spec" ;;
+  ios)
+    # XCTest runs in Device Farm's standard environment: no spec, one run
+    # per install, so the app makes both rows itself (bench-ipa).
+    app="$(upload IOS_APP "$apks/app.ipa")"
+    tests="$(upload XCTEST_TEST_PACKAGE "$apks/tests.zip")"
+    test="type=XCTEST,testPackageArn=$tests" ;;
+  *) echo "platform must be android or ios" >&2; exit 2 ;;
+esac
 run="$(aws devicefarm schedule-run --region "$region" --project-arn "$project" --app-arn "$app" \
   --device-pool-arn "$pool" --name "proof timing $label $(date -u +%Y-%m-%dT%H:%M)" \
-  --test "type=INSTRUMENTATION,testPackageArn=$tests,testSpecArn=$spec" \
+  --test "$test" \
   --execution-configuration "jobTimeoutMinutes=120,videoCapture=false" \
   --query run.arn --output text)"
 echo "run $run"

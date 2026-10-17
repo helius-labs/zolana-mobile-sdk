@@ -95,10 +95,10 @@ case "${1:-android}" in
     timing_run restart ;;
   bench-apk)
     # The bench app and its instrumentation for a device farm, arm64, into
-    # ZOLANA_BENCH_APK_DIR: the fresh and restart runs are two instrumentation
+    # ZOLANA_BENCH_DIR: the fresh and restart runs are two instrumentation
     # runs on one install, which the harness tells apart by the keys on the
     # device (scripts/devicefarm/testspec.yml).
-    : "${ZOLANA_BENCH_APK_DIR:?Set ZOLANA_BENCH_APK_DIR for the two APKs}"
+    : "${ZOLANA_BENCH_DIR:?Set ZOLANA_BENCH_DIR for the two APKs}"
     label="${ZOLANA_TIMING_LABEL:-device}"
     defines=(ZOLANA_TIMING_LABEL="$label")
     if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
@@ -158,9 +158,55 @@ PY
       -Ptarget=integration_test/proof_timing_test.dart \
       -Ptarget-platform=android-arm64 \
       -Pdart-defines="$(IFS=,; echo "${encoded[*]}")")
-    mkdir -p "$ZOLANA_BENCH_APK_DIR"
-    cp build/app/outputs/flutter-apk/app-debug.apk "$ZOLANA_BENCH_APK_DIR/app.apk"
-    cp build/app/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$ZOLANA_BENCH_APK_DIR/app-androidTest.apk"
-    ls -la "$ZOLANA_BENCH_APK_DIR" ;;
-  *) echo 'usage: test-consumer.sh [android|ios|device|bench|bench-apk]' >&2; exit 2 ;;
+    mkdir -p "$ZOLANA_BENCH_DIR"
+    cp build/app/outputs/flutter-apk/app-debug.apk "$ZOLANA_BENCH_DIR/app.apk"
+    cp build/app/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$ZOLANA_BENCH_DIR/app-androidTest.apk"
+    ls -la "$ZOLANA_BENCH_DIR" ;;
+  bench-ipa)
+    # The bench app and its XCTest bundle for a device farm, unsigned (the
+    # farm re-signs), into ZOLANA_BENCH_DIR. iOS test runs there get one
+    # install each, so the harness makes the fresh and restart rows in one
+    # process (`both`). The template's RunnerTests target runs the Dart
+    # tests through the integration_test plugin of the host app, reached at
+    # run time: importing the module would link a second copy into the test
+    # bundle, blind to the app's engine.
+    : "${ZOLANA_BENCH_DIR:?Set ZOLANA_BENCH_DIR for the app and test bundle}"
+    label="${ZOLANA_TIMING_LABEL:-device}"
+    args=(--dart-define=ZOLANA_TIMING_LABEL="$label" --dart-define=ZOLANA_TIMING_RUN=both)
+    if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
+      args+=(--dart-define=ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
+    fi
+    cat > ios/RunnerTests/RunnerTests.swift <<'SWIFT'
+import XCTest
+
+// Runs the Dart integration tests of the host app through its
+// integration_test plugin (FLTIntegrationTestRunner), without importing the
+// module into this bundle.
+final class RunnerTests: XCTestCase {
+  func testIntegrationTests() {
+    let runnerClass = NSClassFromString("FLTIntegrationTestRunner") as! NSObject.Type
+    let runner = runnerClass.init()
+    typealias Results = @convention(block) (Selector, Bool, String?) -> Void
+    let results: Results = { _, success, message in
+      XCTAssert(success, message ?? "a Dart test failed")
+    }
+    runner.perform(NSSelectorFromString("testIntegrationTestWithResults:"), with: results)
+  }
+}
+SWIFT
+    flutter build ios --profile --no-codesign \
+      --target=integration_test/proof_timing_test.dart "${args[@]}"
+    (cd ios && xcodebuild build-for-testing -quiet \
+      -workspace Runner.xcworkspace -scheme Runner -configuration Profile -sdk iphoneos \
+      -derivedDataPath ../build/ios_integ \
+      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="")
+    products=build/ios_integ/Build/Products/Profile-iphoneos
+    mkdir -p "$ZOLANA_BENCH_DIR"
+    rm -rf "$products/Payload" && mkdir "$products/Payload" && cp -R "$products/Runner.app" "$products/Payload/"
+    (cd "$products" && rm -f app.ipa && zip -qr app.ipa Payload)
+    (cd "$products/Runner.app/PlugIns" && rm -f tests.zip && zip -qr tests.zip RunnerTests.xctest)
+    cp "$products/app.ipa" "$ZOLANA_BENCH_DIR/app.ipa"
+    cp "$products/Runner.app/PlugIns/tests.zip" "$ZOLANA_BENCH_DIR/tests.zip"
+    ls -la "$ZOLANA_BENCH_DIR" ;;
+  *) echo 'usage: test-consumer.sh [android|ios|device|bench|bench-apk|bench-ipa]' >&2; exit 2 ;;
 esac

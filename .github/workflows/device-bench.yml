@@ -1,8 +1,9 @@
 name: Device bench
 
-# The proof timing bench on a phone in AWS Device Farm (Samsung Galaxy A16): nightly on main, on
-# a pull request labelled `bench-device`, or by hand. A run is about 35
-# device minutes, so it is not part of every push.
+# The proof timing bench on phones in AWS Device Farm (a Samsung Galaxy A16
+# and an iPhone 12): nightly on main, on a pull request labelled
+# `bench-device`, or by hand. A run is 10 to 35 device minutes per phone,
+# so it is not part of every push.
 on:
   schedule:
     - cron: "17 3 * * *"
@@ -54,7 +55,7 @@ jobs:
       - run: |
           echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
           echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
-          echo "ZOLANA_BENCH_APK_DIR=$RUNNER_TEMP/apks" >> "$GITHUB_ENV"
+          echo "ZOLANA_BENCH_DIR=$RUNNER_TEMP/apks" >> "$GITHUB_ENV"
       - uses: actions/cache/restore@v6
         with:
           path: |
@@ -75,7 +76,7 @@ jobs:
           aws-region: us-west-2
       - name: Run on the device
         timeout-minutes: 130
-        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "${{ vars.DEVICEFARM_POOL_ARN }}" "$ZOLANA_BENCH_APK_DIR" "$ZOLANA_TIMING_LABEL"
+        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "${{ vars.DEVICEFARM_POOL_ARN }}" "$ZOLANA_BENCH_DIR" "$ZOLANA_TIMING_LABEL"
       - name: Proof timing report
         if: success() || failure()
         env:
@@ -90,6 +91,93 @@ jobs:
             .timing/report.md
           if-no-files-found: ignore
       # A run of main joins the history and is commented on the commit.
+      - if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/reports/proof-timing-$ZOLANA_TIMING_LABEL"
+          cp .timing/report.json .timing/report.md "$RUNNER_TEMP/reports/proof-timing-$ZOLANA_TIMING_LABEL/"
+          bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
+
+  iphone-12:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'bench-device')
+    runs-on: macos-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: device-bench-ios-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
+    env:
+      SCCACHE_CACHE_SIZE: 1G
+      SCCACHE_IDLE_TIMEOUT: "0"
+      ZOLANA_TIMING_DIR: ${{ github.workspace }}/.timing
+      ZOLANA_TIMING_LABEL: iphone-12
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
+          echo "ZOLANA_BENCH_DIR=$RUNNER_TEMP/ipa" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust
+        with:
+          targets: aarch64-apple-ios
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.4
+          cache: true
+      - name: Look for precompiled iOS binaries
+        id: precompiled
+        run: |
+          if bash scripts/has-precompiled-ios-binaries.sh aarch64-apple-ios; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.18.0
+      - if: steps.precompiled.outputs.found != 'true'
+        run: |
+          mkdir -p ~/.cargo && printf '[build]\nrustc-wrapper = "sccache"\n' >> ~/.cargo/config.toml
+          echo "SCCACHE_DIR=$RUNNER_TEMP/sccache" >> "$GITHUB_ENV"
+      - if: steps.precompiled.outputs.found != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/sccache
+            ~/Library/Caches/go-build
+          key: native-ios-device-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
+          restore-keys: native-ios-device-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+      - if: steps.precompiled.outputs.found != 'true'
+        run: sccache --start-server
+      - run: ./scripts/stage-demo-assets.sh
+      - name: Build the bench app and its XCTest bundle
+        run: bash scripts/test-consumer.sh bench-ipa
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEVICEFARM_ROLE_ARN }}
+          aws-region: us-west-2
+      - name: Run on the device
+        timeout-minutes: 130
+        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "${{ vars.DEVICEFARM_POOL_IOS_ARN }}" "$ZOLANA_BENCH_DIR" "$ZOLANA_TIMING_LABEL" ios
+      - name: Proof timing report
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/proof-timing-ci.sh "$ZOLANA_TIMING_LABEL"
+      - if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proof-timing-iphone-12
+          path: |
+            .timing/report.json
+            .timing/report.md
+          if-no-files-found: ignore
       - if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}

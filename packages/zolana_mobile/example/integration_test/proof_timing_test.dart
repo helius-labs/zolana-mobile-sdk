@@ -6,8 +6,12 @@
 // (first run, including download; warm), `restart` runs in a new process
 // with the keys on the device (first run after restart; repeated). Without
 // it, a run with no keys on the device is the fresh one and a run that finds
-// them the restart: one build serves both runs on a device farm. The fresh
-// run needs `--no-uninstall`, or `flutter test` deletes the keys with the app.
+// them the restart: one build serves both runs on a device farm. `both`
+// makes the restart rows after the fresh ones in one process, with the
+// wallet closed and reopened between, for devices that allow one test run
+// per install (iOS on a device farm): the keys load again from the device,
+// the process does not start again. The fresh run needs `--no-uninstall`,
+// or `flutter test` deletes the keys with the app.
 //
 //   flutter test integration_test/proof_timing_test.dart -d DEVICE --no-uninstall \
 //     --dart-define=ZOLANA_TIMING_RUN=fresh \
@@ -28,7 +32,6 @@ import 'package:integration_test/integration_test.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 const _runDefine = String.fromEnvironment('ZOLANA_TIMING_RUN');
-late final String _run;
 const _shapes = String.fromEnvironment(
   'ZOLANA_TIMING_SHAPES',
   defaultValue: '1x2,2x2,4x2,8x2,16x2,24x2,merge-24x1',
@@ -74,56 +77,62 @@ void main() {
       ? '$appDir/Library/Caches/zolana-proof-timing'
       : '$appDir/zolana-proof-timing';
   final keys = Directory(keyDir);
-  _run = _runDefine.isNotEmpty
+  final mode = _runDefine.isNotEmpty
       ? _runDefine
       : keys.existsSync() && keys.listSync().isNotEmpty
       ? 'restart'
       : 'fresh';
+  final runs = mode == 'both' ? const ['fresh', 'restart'] : [mode];
 
   setUpAll(initZolanaMobile);
 
-  testWidgets('times the proofs of the fixture requests ($_run)', (
+  testWidgets('times the proofs of the fixture requests ($mode)', (
     tester,
   ) async {
-    final wallet = await ZolanaWallet.openWithKeys(
-      config: WalletConfig(
-        rpcUrl: 'http://127.0.0.1:1',
-        indexerUrl: 'http://127.0.0.1:1',
-        provingKeyDir: keyDir,
-        mints: const [],
-      ),
-      solanaPublicKey: _publicKey,
-      keys: WalletKeys(
-        viewingPrivateKey: _bytes(_viewingPrivate),
-        viewingPublicKey: _bytes(_viewingPublic),
-        nullifierPrivateKey: _bytes(_nullifierPrivate),
-        nullifierPublicKey: _bytes(_nullifierPublic),
-      ),
-    );
-    addTearDown(wallet.close);
-    if (_run == 'fresh') await wallet.clearProvingKeys();
-
     // A shape that fails prints an `error` line, which the report shows;
     // the other shapes still run, and the test fails at the end.
     final failed = <String>[];
-    for (final shape in _shapes.split(',')) {
+    for (final run in runs) {
+      final wallet = await ZolanaWallet.openWithKeys(
+        config: WalletConfig(
+          rpcUrl: 'http://127.0.0.1:1',
+          indexerUrl: 'http://127.0.0.1:1',
+          provingKeyDir: keyDir,
+          mints: const [],
+        ),
+        solanaPublicKey: _publicKey,
+        keys: WalletKeys(
+          viewingPrivateKey: _bytes(_viewingPrivate),
+          viewingPublicKey: _bytes(_viewingPublic),
+          nullifierPrivateKey: _bytes(_nullifierPrivate),
+          nullifierPublicKey: _bytes(_nullifierPublic),
+        ),
+      );
       try {
-        await _time(wallet, shape);
-      } catch (error) {
-        failed.add(shape);
-        _emit({
-          'label': _label,
-          'run': _run,
-          'shape': shape,
-          'error': '$error'.split('\n').first,
-        });
+        if (run == 'fresh') await wallet.clearProvingKeys();
+        for (final shape in _shapes.split(',')) {
+          try {
+            await _time(wallet, shape, run);
+          } catch (error) {
+            failed.add(shape);
+            _emit({
+              'label': _label,
+              'run': run,
+              'shape': shape,
+              'error': '$error'.split('\n').first,
+            });
+          }
+        }
+      } finally {
+        // Closing drops the loaded keys; a following run loads them again.
+        await wallet.close();
       }
     }
     expect(failed, isEmpty, reason: 'shapes that failed');
   }, timeout: const Timeout(Duration(minutes: 90)));
 }
 
-Future<void> _time(ZolanaWallet wallet, String shape) async {
+Future<void> _time(ZolanaWallet wallet, String shape, String run) async {
   final request = await rootBundle.loadString(
     'assets/proving/prove-request-$shape.json',
   );
@@ -135,7 +144,7 @@ Future<void> _time(ZolanaWallet wallet, String shape) async {
       requestJson: request,
     );
     expect(jsonDecode(proved.proofJson), isA<Map<String, Object?>>());
-    if (_run == 'restart') {
+    if (run == 'restart') {
       // Else the restart rows would time a download again.
       expect(
         proved.downloadedBytes.toInt(),
@@ -145,7 +154,7 @@ Future<void> _time(ZolanaWallet wallet, String shape) async {
     }
     _emit({
       'label': _label,
-      'run': _run,
+      'run': run,
       'shape': shape,
       'round': round,
       'downloaded_bytes': proved.downloadedBytes.toInt(),
