@@ -28,7 +28,12 @@ ROWS = [
     ("first run after restart", "restart", "first"),
     ("repeated after restart", "restart", "rest"),
 ]
-STAGES = ["load_ms", "witness_ms", "prove_ms", "verify_ms"]
+# The proof's verification stays in report.json but out of the tables: it
+# is a check of the prover, not a cost of proving.
+STAGES = ["load_ms", "witness_ms", "prove_ms"]
+# A change in time below this is not reported: a witness of 1 ms against
+# 3 ms is +200 % of nothing.
+LEAST_CHANGE_MS = 50
 # Hosted runners vary by about 20 % between runs of one commit.
 FLAG = 25.0
 
@@ -109,7 +114,7 @@ def seconds(ms):
 
 
 def change(now, before, flag):
-    if before in (None, 0) or now is None:
+    if before in (None, 0) or now is None or abs(now - before) < LEAST_CHANGE_MS:
         return ""
     delta = (now - before) / before * 100
     mark = " **!**" if abs(delta) >= flag else ""
