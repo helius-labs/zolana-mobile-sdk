@@ -5,7 +5,7 @@ Groth16 prover it is built on: Mopro's native gnark backend (gnark 0.16.3). Andr
 and iOS are supported. The package contains its Rust and Go sources; it does not
 require a sibling Zolana checkout.
 
-**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). Phones have not been measured yet. CI benches every pull request on an Android emulator and an iOS simulator and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). Phones have not been measured yet. CI benches release builds on a Samsung Galaxy A16 and an iPhone 12 for every pull request and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Requirements
 
@@ -823,45 +823,48 @@ also runs initialization, a real proof, sanitized failure, and lock/drain tests.
 
 ### Proof timing
 
-The same harness times proofs on CI and on a phone, so numbers compare. It
-proves the fixture requests of `fixtures/` through the wallet's key store,
-as a spend is proved, and reports each stage: the key's download when it
-was not on the device, its load, the witness, the proof and its
-verification. The shapes are transfers of 1, 2, 4, 8, 16 and 24 notes to
-two outputs (`1x2` to `24x2`) and a merge of 24 notes (`merge-24x1`).
+One harness times proofs on CI's phones and on yours. It proves the
+fixture requests of `fixtures/` through the wallet's key store, as a spend
+is proved, and reports each stage: the key's download when it was not on
+the device, its load, the witness and the proof. The shapes are transfers
+of 1, 2, 4, 8, 16 and 24 notes to two outputs (`1x2` to `24x2`) and a merge
+of 24 notes (`merge-24x1`). The numbers come from release builds: `flutter
+test` builds only debug, where Dart is interpreted and Rust unoptimized.
+
+`scripts/test-consumer.sh bench-apk` builds the bench app and its
+instrumentation for arm64 Android, and `bench-ipa` the iOS app and its
+XCTest bundle. On an Android phone over adb:
 
 ```sh
-cd packages/zolana_mobile/example
-../../../scripts/stage-demo-assets.sh   # the fixture requests into assets/
-flutter test integration_test/proof_timing_test.dart -d DEVICE --no-uninstall \
-  --dart-define=ZOLANA_TIMING_RUN=fresh --dart-define=ZOLANA_TIMING_SHAPES=1x2,8x2 \
-  | tee /tmp/timing/phone-fresh.log
-flutter test integration_test/proof_timing_test.dart -d DEVICE \
-  --dart-define=ZOLANA_TIMING_RUN=restart --dart-define=ZOLANA_TIMING_SHAPES=1x2,8x2 \
-  | tee /tmp/timing/phone-restart.log
-../../../scripts/proof-timing-report.py --logs /tmp/timing
+ZOLANA_CONSUMER_DIR=/tmp/consumer ZOLANA_BENCH_DIR=/tmp/bench bash scripts/test-consumer.sh bench-apk
+adb install -r -t /tmp/bench/app.apk && adb install -r -t /tmp/bench/app-androidTest.apk
+adb shell pm clear com.example.zolana_consumer
+adb logcat -G 16M && adb logcat -c
+for run in fresh restart; do
+  adb shell am instrument -w com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner
+done
+mkdir -p /tmp/timing && adb logcat -d -s flutter | grep -o 'ZOLANA_TIMING {.*' > /tmp/timing/phone.log
+python3 scripts/proof-timing-report.py --logs /tmp/timing
 ```
 
-The `fresh` run starts from an empty key directory and gives the first two
-rows of the report (first run including the download, then warm); the
-`restart` run is a new process with the keys on the device and gives the
-other two (first run after a restart, then repeated). `--no-uninstall`
-keeps the app, and its keys, for the restart run, which fails when a key
-is missing. The keys download from the key host (9 MB for one note, 59 MB
-for 8, 180 MB for 24, 173 MB for the merge), so the first run needs the
-network. Without `ZOLANA_TIMING_SHAPES` the harness runs every shape.
+The first run finds no keys on the device and gives the first two rows of
+the report (first run including the download, then warm); the second is a
+new process that finds them and gives the other two (first run after a
+restart, then repeated). An iOS test run gets one install, so the
+`bench-ipa` app makes the restart rows after the fresh ones in one process,
+closing and reopening the wallet between (`ZOLANA_TIMING_RUN=both`). The
+keys download from the key host (9 MB for one note, 59 MB for 8, 180 MB for
+24, 173 MB for the merge). `ZOLANA_TIMING_SHAPES` narrows the shapes, and
 `ZOLANA_TIMING_ROUNDS` (4, and 2 for shapes over 8 notes) is the proofs per
 shape and run; the report takes medians.
 
-CI benches every shape on an Android emulator and an iOS simulator for
-every pull request, beside the tests, and comments the report with the
-change against the last commit of `main`. After each push to `main` the
-reports are commented on the commit, against the commit before it, and join
-the history on the
+CI benches every pull request on a Samsung Galaxy A16 and an iPhone 12 in
+AWS Device Farm (`.github/workflows/device-bench.yml`, `scripts/devicefarm/`)
+and comments each phone's report with the change against the last commit of
+`main`. After each push to `main` the reports are commented on the commit
+and join the history on the
 [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing)
-branch, a table of the last commits per runner. Those numbers say whether a
-change made proving faster or slower; what a phone takes comes from the
-same harness on that phone.
+branch, a table of the last commits per phone.
 
 `wallet.proveRequest(keyName, requestJson)` is what the harness calls: it
 proves any Zolana `/prove` request with a pinned key, and returns the

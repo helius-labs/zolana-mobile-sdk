@@ -62,39 +62,6 @@ case "${1:-android}" in
   device)
     : "${ZOLANA_TEST_DEVICE:?Set ZOLANA_TEST_DEVICE to an Android emulator or iOS simulator ID}"
     flutter test integration_test/prover_test.dart -d "$ZOLANA_TEST_DEVICE" ;;
-  bench)
-    # The proof timing harness, twice on the same install: from an empty key
-    # directory, kept installed, and then as a restart. The output goes to
-    # ZOLANA_TIMING_DIR for scripts/proof-timing-ci.sh.
-    : "${ZOLANA_TEST_DEVICE:?Set ZOLANA_TEST_DEVICE to an Android emulator or iOS simulator ID}"
-    : "${ZOLANA_TIMING_DIR:?Set ZOLANA_TIMING_DIR for the proof timing logs}"
-    mkdir -p "$ZOLANA_TIMING_DIR"
-    label="${ZOLANA_TIMING_LABEL:-device}"
-    shapes=()
-    if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
-      shapes=(--dart-define=ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
-    fi
-    # Each run rebuilds the app, and hosted macOS runners sometimes fail
-    # that build (no Xcode build settings) or the launch: a run that failed
-    # before its first proof is tried once more, one that failed while
-    # proving is not. The app stays installed between and after the runs,
-    # with its keys.
-    timing_run() {
-      local run="$1" log="$ZOLANA_TIMING_DIR/$label-$1.log" attempt
-      for attempt in 1 2; do
-        if flutter test integration_test/proof_timing_test.dart -d "$ZOLANA_TEST_DEVICE" --no-uninstall \
-            --dart-define=ZOLANA_TIMING_RUN="$run" --dart-define=ZOLANA_TIMING_LABEL="$label" ${shapes[@]+"${shapes[@]}"} \
-            | tee "$log"; then
-          return 0
-        fi
-        if grep -q 'ZOLANA_TIMING {' "$log" || [[ $attempt == 2 ]]; then
-          return 1
-        fi
-        echo "::warning::the $run timing run did not start; trying once more"
-      done
-    }
-    timing_run fresh
-    timing_run restart ;;
   bench-apk)
     # The bench app and its instrumentation for a device farm, arm64, as a
     # release (`flutter test` only has debug, where Dart runs interpreted and
@@ -228,5 +195,5 @@ SWIFT
     cp "$products/app.ipa" "$ZOLANA_BENCH_DIR/app.ipa"
     cp "$products/Runner.app/PlugIns/tests.zip" "$ZOLANA_BENCH_DIR/tests.zip"
     ls -la "$ZOLANA_BENCH_DIR" ;;
-  *) echo 'usage: test-consumer.sh [android|ios|device|bench|bench-apk|bench-ipa]' >&2; exit 2 ;;
+  *) echo 'usage: test-consumer.sh [android|ios|device|bench-apk|bench-ipa]' >&2; exit 2 ;;
 esac

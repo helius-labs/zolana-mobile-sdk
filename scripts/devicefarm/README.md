@@ -1,8 +1,9 @@
 # The proof timing bench on AWS Device Farm
 
-`.github/workflows/device-bench.yml` runs the proof timing harness on two
-phones, a Samsung Galaxy A16 and an iPhone 12: nightly on `main`, on a
-pull request labelled `bench-device`, or by hand. `scripts/test-consumer.sh
+`.github/workflows/device-bench.yml` runs the proof timing harness, in
+release builds, on two phones, a Samsung Galaxy A16 and an iPhone 12: on
+every pull request, every push to `main`, or by hand. The jobs skip until
+the repository variable `DEVICEFARM_ROLE_ARN` is set. `scripts/test-consumer.sh
 bench-apk` builds the bench app and its instrumentation for arm64, and
 `bench-ipa` the iOS app and its XCTest bundle, unsigned (Device Farm
 re-signs); `run.sh` uploads them, waits, and reads the timing lines from Device

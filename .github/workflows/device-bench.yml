@@ -1,14 +1,15 @@
 name: Device bench
 
-# The proof timing bench on phones in AWS Device Farm (a Samsung Galaxy A16
-# and an iPhone 12): nightly on main, on a pull request labelled
-# `bench-device`, or by hand. A run is 10 to 35 device minutes per phone,
-# so it is not part of every push.
+# The proof timing bench: release builds of the harness on phones in AWS
+# Device Farm, a Samsung Galaxy A16 and an iPhone 12. It comments the report
+# on every pull request, against the last report of main, and every push to
+# main joins the history on the proof-timing branch. The jobs wait for the
+# Device Farm role (repository variable DEVICEFARM_ROLE_ARN); pull requests
+# from forks get no OIDC token and skip them.
 on:
-  schedule:
-    - cron: "17 3 * * *"
   pull_request:
-    types: [labeled, synchronize]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,13 +17,12 @@ permissions:
 
 jobs:
   galaxy-a16:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'bench-device')
+    if: vars.DEVICEFARM_ROLE_ARN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
     runs-on: ubuntu-latest
-    # OIDC to the Device Farm role; the report comments on the pull request;
-    # a main run joins the history.
+    # OIDC to the Device Farm role; the report comments on the pull request.
     permissions:
       id-token: write
-      contents: write
+      contents: read
       pull-requests: write
     concurrency:
       group: device-bench-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -90,21 +90,13 @@ jobs:
             .timing/report.json
             .timing/report.md
           if-no-files-found: ignore
-      # A run of main joins the history and is commented on the commit.
-      - if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/reports/proof-timing-$ZOLANA_TIMING_LABEL"
-          cp .timing/report.json .timing/report.md "$RUNNER_TEMP/reports/proof-timing-$ZOLANA_TIMING_LABEL/"
-          bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
 
   iphone-12:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'bench-device')
+    if: vars.DEVICEFARM_ROLE_ARN != '' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
     runs-on: macos-latest
     permissions:
       id-token: write
-      contents: write
+      contents: read
       pull-requests: write
     concurrency:
       group: device-bench-ios-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -178,10 +170,33 @@ jobs:
             .timing/report.json
             .timing/report.md
           if-no-files-found: ignore
-      - if: github.event_name != 'pull_request'
+
+  # After each push to main, both phones' reports join the history on the
+  # proof-timing branch, which pull requests compare against, and are
+  # commented on the commit. One push at a time writes it.
+  history:
+    if: github.event_name == 'push' && !cancelled()
+    needs: [galaxy-a16, iphone-12]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: proof-timing-history
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      # By name into named directories; a skipped or cancelled phone
+      # uploads no report.
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: proof-timing-galaxy-a16
+          path: ${{ runner.temp }}/reports/proof-timing-galaxy-a16
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: proof-timing-iphone-12
+          path: ${{ runner.temp }}/reports/proof-timing-iphone-12
+      - run: bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/reports/proof-timing-$ZOLANA_TIMING_LABEL"
-          cp .timing/report.json .timing/report.md "$RUNNER_TEMP/reports/proof-timing-$ZOLANA_TIMING_LABEL/"
-          bash scripts/proof-timing-history.sh "$RUNNER_TEMP/reports"
