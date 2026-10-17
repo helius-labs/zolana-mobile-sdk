@@ -3,29 +3,19 @@ name: Device bench
 # The proof timing bench: release builds of the harness on phones in AWS
 # Device Farm, a low, a mid and a high tier Android phone and iPhone
 # (scripts/devicefarm/devices.json), one build per platform. Pull requests
-# run the low tier phones and comment the report against the last report of
-# main; pushes to main run every phone and join the history on the
-# proof-timing branch. A run by hand on a branch runs every phone, or the
-# low tier, and comments on the branch's pull request. The jobs wait for
-# the Device Farm role (repository variable DEVICEFARM_ROLE_ARN); pull
-# requests from forks get no OIDC token and skip them.
+# comment the report against the last report of main, and so does a run by
+# hand on the pull request's branch; pushes to main join the history on the
+# proof-timing branch. The jobs wait for the Device Farm role (repository
+# variable DEVICEFARM_ROLE_ARN); pull requests from forks get no OIDC token
+# and skip them.
 on:
   pull_request:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      phones:
-        description: Which phones
-        type: choice
-        options: [all, low]
-        default: all
 
 permissions:
   contents: read
-
-env:
-  ZOLANA_BENCH_PHONES: ${{ github.event_name == 'pull_request' && 'low' || inputs.phones || 'all' }}
 
 jobs:
   android:
@@ -86,7 +76,7 @@ jobs:
           aws-region: us-west-2
       - name: Run on the phones
         timeout-minutes: 130
-        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" android "$ZOLANA_BENCH_PHONES"
+        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" android
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
@@ -157,7 +147,7 @@ jobs:
           aws-region: us-west-2
       - name: Run on the phones
         timeout-minutes: 130
-        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" ios "$ZOLANA_BENCH_PHONES"
+        run: bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" ios
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:

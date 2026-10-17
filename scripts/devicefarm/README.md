@@ -3,8 +3,8 @@
 `.github/workflows/device-bench.yml` runs the proof timing harness, in
 release builds, on the phones of `devices.json`: a low, a mid and a high
 tier Android phone (Samsung Galaxy A16, A56, S25) and iPhone (12, 15, 17
-Pro). Pull requests run the low tier, pushes to `main` every phone, and a
-run by hand either. The jobs skip until the repository variable
+Pro), on every pull request, every push to `main`, or by hand. The jobs
+skip until the repository variable
 `DEVICEFARM_ROLE_ARN` is set. `scripts/test-consumer.sh bench-apk` builds
 the bench app and its instrumentation for arm64, and `bench-ipa` the iOS app
 and its XCTest bundle, unsigned (Device Farm re-signs); `run.sh` uploads one
