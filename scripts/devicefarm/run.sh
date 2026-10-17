@@ -65,28 +65,16 @@ while :; do
   sleep 60
 done
 
-# The test spec's $DEVICEFARM_LOG_DIR comes back as the run's customer
-# artifact; should its timing.log be empty, Device Farm's own logcat
-# artifacts carry the same lines.
+# The harness's lines come from Device Farm's device log, which it captures
+# itself through every phase (the test spec cannot: Device Farm clears the
+# buffer when it restarts its capture).
 mkdir -p "$timing"
-work="$(mktemp -d)"
 log="$timing/$label.log"
 : > "$log"
-artifact() {
-  aws devicefarm list-artifacts --region "$region" --arn "$run" --type FILE \
-    --query "artifacts[?type=='$1'].url" --output text | tr '\t' '\n' | grep '^http' || true
-}
-artifact CUSTOMER_ARTIFACT | while read -r url; do
-  curl -sfS -o "$work/customer.zip" "$url"
-  unzip -q -o "$work/customer.zip" -d "$work/customer"
+aws devicefarm list-artifacts --region "$region" --arn "$run" --type FILE \
+  --query "artifacts[?type=='DEVICE_LOG'].url" --output text | tr '\t' '\n' | grep '^http' | while read -r url; do
+  curl -sfS "$url" | grep -o 'ZOLANA_TIMING {.*' >> "$log" || true
 done
-find "$work/customer" -name timing.log -exec cat {} + >> "$log" 2> /dev/null || true
-if ! grep -q 'ZOLANA_TIMING {' "$log"; then
-  echo "the test spec captured no timing lines; reading Device Farm's logcat"
-  artifact DEVICE_LOG | while read -r url; do
-    curl -sfS "$url" | grep -o 'ZOLANA_TIMING {.*' >> "$log" || true
-  done
-fi
 minutes="$(aws devicefarm get-run --region "$region" --arn "$run" --query 'run.deviceMinutes.total' --output text)"
 lines="$(grep -c 'ZOLANA_TIMING {' "$log" || true)"
 echo "$lines timing lines in $log (result $result, $minutes device minutes)"

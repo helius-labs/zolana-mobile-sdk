@@ -2,10 +2,9 @@
 # (scripts/test-consumer.sh bench-apk builds the app and test package).
 # The instrumentation runs twice on the one install Device Farm made: the
 # first run finds no keys on the device and is the fresh one, the second
-# finds them and is the restart. Flutter's prints go to logcat, whose ring
-# buffer is enlarged and dumped after each run (a process left in the
-# background does not survive a phase here); Device Farm's own logcat
-# artifact has the lines too, and run.sh falls back to it.
+# finds them and is the restart. The harness's lines are read from Device
+# Farm's own device log (run.sh): it restarts its logcat capture at each
+# phase, so a dump from here finds the buffer cleared.
 version: 0.1
 phases:
   install:
@@ -13,18 +12,13 @@ phases:
       - echo "app and test package installed by Device Farm"
   pre_test:
     commands:
-      - adb logcat -G 16M
-      - adb logcat -c
+      - echo "two instrumentation runs follow"
   test:
     commands:
       - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/fresh.txt
-      - adb logcat -d -v raw -s flutter >> $DEVICEFARM_LOG_DIR/flutter.log
-      - adb logcat -c
       - adb shell am instrument -w -r com.example.zolana_consumer.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee $DEVICEFARM_LOG_DIR/restart.txt
-      - adb logcat -d -v raw -s flutter >> $DEVICEFARM_LOG_DIR/flutter.log
   post_test:
     commands:
-      - grep -F 'ZOLANA_TIMING {' $DEVICEFARM_LOG_DIR/flutter.log > $DEVICEFARM_LOG_DIR/timing.log || true
-      - wc -l $DEVICEFARM_LOG_DIR/timing.log
+      - grep -c 'OK (1 test)' $DEVICEFARM_LOG_DIR/fresh.txt $DEVICEFARM_LOG_DIR/restart.txt
 artifacts:
   - $DEVICEFARM_LOG_DIR

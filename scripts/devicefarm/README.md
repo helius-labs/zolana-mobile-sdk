@@ -5,8 +5,8 @@ phones, a Samsung Galaxy A16 and an iPhone 12: nightly on `main`, on a
 pull request labelled `bench-device`, or by hand. `scripts/test-consumer.sh
 bench-apk` builds the bench app and its instrumentation for arm64, and
 `bench-ipa` the iOS app and its XCTest bundle, unsigned (Device Farm
-re-signs); `run.sh` uploads them, waits, and brings back the timing lines
-for the usual report. On Android `testspec.yml` runs the instrumentation
+re-signs); `run.sh` uploads them, waits, and reads the timing lines from Device
+Farm's device log for the usual report. On Android `testspec.yml` runs the instrumentation
 twice on one install, and the harness takes the first run, with no keys on
 the device, as the fresh one and the second as the restart; iOS tests get
 one run per install, so there the harness makes the restart rows after the
