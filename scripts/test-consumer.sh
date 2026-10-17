@@ -35,10 +35,12 @@ dependencies:
     sdk: flutter
   zolana_mobile:
     path: ../package
+  # A dependency, not a dev one: Flutter leaves dev dependencies out of
+  # release builds, and the bench app's release must carry the plugin.
+  integration_test:
+    sdk: flutter
 dev_dependencies:
   flutter_test:
-    sdk: flutter
-  integration_test:
     sdk: flutter
 flutter:
   assets:
