@@ -1,6 +1,6 @@
 name: Device bench
 
-# The proof timing bench on a phone in AWS Device Farm: nightly on main, on
+# The proof timing bench on a phone in AWS Device Farm (Samsung Galaxy A16): nightly on main, on
 # a pull request labelled `bench-device`, or by hand. A run is about 35
 # device minutes, so it is not part of every push.
 on:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  galaxy-a14:
+  galaxy-a16:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'bench-device')
     runs-on: ubuntu-latest
     # OIDC to the Device Farm role; the report comments on the pull request;
@@ -31,7 +31,7 @@ jobs:
       SCCACHE_CACHE_SIZE: 2500M
       SCCACHE_IDLE_TIMEOUT: "0"
       ZOLANA_TIMING_DIR: ${{ github.workspace }}/.timing
-      ZOLANA_TIMING_LABEL: galaxy-a14-5g
+      ZOLANA_TIMING_LABEL: galaxy-a16
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -84,7 +84,7 @@ jobs:
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
-          name: proof-timing-galaxy-a14-5g
+          name: proof-timing-galaxy-a16
           path: |
             .timing/report.json
             .timing/report.md

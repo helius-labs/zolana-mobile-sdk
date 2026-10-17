@@ -15,8 +15,8 @@ Setup, once, in `us-west-2` (Device Farm's only region):
 
 ```sh
 aws devicefarm create-project --name zolana-mobile-bench --default-job-timeout-minutes 120
-aws devicefarm create-device-pool --project-arn <project arn> --name galaxy-a14-5g \
-  --rules '[{"attribute":"ARN","operator":"IN","value":"[\"arn:aws:devicefarm:us-west-2::device:79F9A58D576F4D2AB1A8AAF683201ADB\"]"}]'
+aws devicefarm create-device-pool --project-arn <project arn> --name galaxy-a16 \
+  --rules '[{"attribute":"ARN","operator":"IN","value":"[\"arn:aws:devicefarm:us-west-2::device:E10A10A4F8AD4DA6926C1A03E4BF854F\"]"}]'
 ```
 
 The pool pins one model (`aws devicefarm list-devices` lists them with
@@ -29,8 +29,8 @@ to fill in. The repository variables `DEVICEFARM_ROLE_ARN`,
 Locally, with AWS credentials:
 
 ```sh
-ZOLANA_CONSUMER_DIR=/tmp/consumer ZOLANA_BENCH_APK_DIR=/tmp/apks ZOLANA_TIMING_LABEL=galaxy-a14-5g \
+ZOLANA_CONSUMER_DIR=/tmp/consumer ZOLANA_BENCH_APK_DIR=/tmp/apks ZOLANA_TIMING_LABEL=galaxy-a16 \
   bash scripts/test-consumer.sh bench-apk
-ZOLANA_TIMING_DIR=/tmp/timing bash scripts/devicefarm/run.sh <project arn> <pool arn> /tmp/apks galaxy-a14-5g
+ZOLANA_TIMING_DIR=/tmp/timing bash scripts/devicefarm/run.sh <project arn> <pool arn> /tmp/apks galaxy-a16
 python3 scripts/proof-timing-report.py --logs /tmp/timing
 ```
