@@ -33,6 +33,7 @@ jobs:
       SCCACHE_CACHE_SIZE: 2500M
       SCCACHE_IDLE_TIMEOUT: "0"
       ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
+      DEVICEFARM_RUN_FILE: ${{ github.workspace }}/devicefarm-run
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -79,6 +80,14 @@ jobs:
         # exec: a cancel signals the step's process alone, which must be
         # run.sh for its trap to stop the Device Farm run.
         run: exec bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" android
+      # The runner may kill run.sh before its trap is done; a cancelled
+      # job's phones would run on to the end.
+      - name: Stop the Device Farm run
+        if: cancelled()
+        run: |
+          if [[ -f "$DEVICEFARM_RUN_FILE" ]]; then
+            aws devicefarm stop-run --region us-west-2 --arn "$(cat "$DEVICEFARM_RUN_FILE")" --query run.status --output text || true
+          fi
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
@@ -99,6 +108,7 @@ jobs:
       SCCACHE_CACHE_SIZE: 1G
       SCCACHE_IDLE_TIMEOUT: "0"
       ZOLANA_TIMING_DIR: ${{ github.workspace }}/timing
+      DEVICEFARM_RUN_FILE: ${{ github.workspace }}/devicefarm-run
     steps:
       - uses: actions/checkout@v6
       - run: |
@@ -152,6 +162,14 @@ jobs:
         # exec: a cancel signals the step's process alone, which must be
         # run.sh for its trap to stop the Device Farm run.
         run: exec bash scripts/devicefarm/run.sh "${{ vars.DEVICEFARM_PROJECT_ARN }}" "$ZOLANA_BENCH_DIR" ios
+      # The runner may kill run.sh before its trap is done; a cancelled
+      # job's phones would run on to the end.
+      - name: Stop the Device Farm run
+        if: cancelled()
+        run: |
+          if [[ -f "$DEVICEFARM_RUN_FILE" ]]; then
+            aws devicefarm stop-run --region us-west-2 --arn "$(cat "$DEVICEFARM_RUN_FILE")" --query run.status --output text || true
+          fi
       - if: success() || failure()
         uses: actions/upload-artifact@v7
         with:

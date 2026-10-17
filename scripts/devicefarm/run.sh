@@ -5,7 +5,9 @@
 # phones of devices.json at once, waits, and leaves each phone's timing
 # lines in ZOLANA_TIMING_DIR/<label>/timing.log for
 # scripts/proof-timing-report.py. `low` takes the low tier phone, `all`
-# every phone. Needs AWS credentials with Device Farm access.
+# every phone. DEVICEFARM_RUN_FILE, when set, gets the run's ARN, for a
+# cleanup that outlives this script. Needs AWS credentials with Device Farm
+# access.
 #
 #   devicefarm/run.sh <project arn> <bench dir> <android|ios> [low|all]
 set -euo pipefail
@@ -85,6 +87,9 @@ run="$(aws devicefarm schedule-run --region "$region" --project-arn "$project" -
   --execution-configuration "jobTimeoutMinutes=120,videoCapture=false" \
   --query run.arn --output text)"
 echo "run $run on $(jq -r 'map(.label) | join(", ")' <<< "$devices")"
+if [[ -n "${DEVICEFARM_RUN_FILE:-}" ]]; then
+  echo "$run" > "$DEVICEFARM_RUN_FILE"
+fi
 echo "console https://us-west-2.console.aws.amazon.com/devicefarm/home#/mobile/projects/${project##*:}/runs/${run##*/}"
 
 while :; do
