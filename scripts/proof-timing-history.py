@@ -80,7 +80,8 @@ def readme(history, repo, last):
         "Written by CI after every push to `main` (`scripts/proof-timing-history.py`"
         " on `main`), from release builds on the phones of"
         " `scripts/devicefarm/devices.json` in AWS Device Farm. Two runs of one"
-        " commit on a phone differ by up to about 4 %. The data is in"
+        " commit differ by up to 5 % on the Galaxy A16 and A56 and up to 15 % on"
+        " the S25 and the iPhones. The data is in"
         " `history/`, a line per commit.",
         "",
     ]
