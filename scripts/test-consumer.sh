@@ -72,11 +72,26 @@ case "${1:-android}" in
     if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
       shapes=(--dart-define=ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
     fi
-    flutter test integration_test/proof_timing_test.dart -d "$ZOLANA_TEST_DEVICE" --no-uninstall \
-      --dart-define=ZOLANA_TIMING_RUN=fresh --dart-define=ZOLANA_TIMING_LABEL="$label" ${shapes[@]+"${shapes[@]}"} \
-      | tee "$ZOLANA_TIMING_DIR/$label-fresh.log"
-    flutter test integration_test/proof_timing_test.dart -d "$ZOLANA_TEST_DEVICE" \
-      --dart-define=ZOLANA_TIMING_RUN=restart --dart-define=ZOLANA_TIMING_LABEL="$label" ${shapes[@]+"${shapes[@]}"} \
-      | tee "$ZOLANA_TIMING_DIR/$label-restart.log" ;;
+    # Each run rebuilds the app, and hosted macOS runners sometimes fail
+    # that build (no Xcode build settings) or the launch: a run that failed
+    # before its first proof is tried once more, one that failed while
+    # proving is not. The app stays installed between and after the runs,
+    # with its keys.
+    timing_run() {
+      local run="$1" log="$ZOLANA_TIMING_DIR/$label-$1.log" attempt
+      for attempt in 1 2; do
+        if flutter test integration_test/proof_timing_test.dart -d "$ZOLANA_TEST_DEVICE" --no-uninstall \
+            --dart-define=ZOLANA_TIMING_RUN="$run" --dart-define=ZOLANA_TIMING_LABEL="$label" ${shapes[@]+"${shapes[@]}"} \
+            | tee "$log"; then
+          return 0
+        fi
+        if grep -q 'ZOLANA_TIMING {' "$log" || [[ $attempt == 2 ]]; then
+          return 1
+        fi
+        echo "::warning::the $run timing run did not start; trying once more"
+      done
+    }
+    timing_run fresh
+    timing_run restart ;;
   *) echo 'usage: test-consumer.sh [android|ios|device|bench]' >&2; exit 2 ;;
 esac
