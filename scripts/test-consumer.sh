@@ -148,6 +148,18 @@ assert t.count(block) == 1, "defaultConfig"
 t = t.replace(block, '    testBuildType = "release"\n\n' + block)
 p.write_text(t)
 PY
+    # The instrumentation runs from classes the app carries but never uses,
+    # which R8 drops from a release; keeping them leaves Dart's AOT code and
+    # the native prover as they are.
+    cat > android/app/proguard-rules.pro <<'PRO'
+-keep class androidx.test.** { *; }
+-keep class org.junit.** { *; }
+-keep class junit.** { *; }
+-keep class org.hamcrest.** { *; }
+-keep class dev.flutter.plugins.integration_test.** { *; }
+-dontwarn androidx.test.**
+-dontwarn org.junit.**
+PRO
     args=()
     encoded=()
     for define in "${defines[@]}"; do
