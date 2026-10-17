@@ -20,13 +20,16 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export AWS_PAGER=""
 
 # upload <type> <file>: the upload's ARN once Device Farm has processed it.
+# It runs in a command substitution, where bash drops set -e, so a failed
+# AWS call (a denied permission) returns explicitly instead of polling on.
 upload() {
-  local type="$1" file="$2" arn url status
-  read -r arn url < <(aws devicefarm create-upload --region "$region" --project-arn "$project" \
-    --name "$(basename "$file")" --type "$type" --query 'upload.[arn,url]' --output text)
-  curl -sfS -T "$file" "$url"
+  local type="$1" file="$2" created arn url status
+  created="$(aws devicefarm create-upload --region "$region" --project-arn "$project" \
+    --name "$(basename "$file")" --type "$type" --query 'upload.[arn,url]' --output text)" || return 1
+  read -r arn url <<<"$created"
+  curl -sfS -T "$file" "$url" || return 1
   while :; do
-    status="$(aws devicefarm get-upload --region "$region" --arn "$arn" --query upload.status --output text)"
+    status="$(aws devicefarm get-upload --region "$region" --arn "$arn" --query upload.status --output text)" || return 1
     case "$status" in
       SUCCEEDED) break ;;
       FAILED) echo "upload of $file failed: $(aws devicefarm get-upload --region "$region" --arn "$arn" --query upload.message --output text)" >&2; return 1 ;;
@@ -59,7 +62,8 @@ echo "run $run"
 echo "console https://us-west-2.console.aws.amazon.com/devicefarm/home#/mobile/projects/${project##*:}/runs/${run##*/}"
 
 while :; do
-  read -r status result < <(aws devicefarm get-run --region "$region" --arn "$run" --query 'run.[status,result]' --output text)
+  state="$(aws devicefarm get-run --region "$region" --arn "$run" --query 'run.[status,result]' --output text)"
+  read -r status result <<<"$state"
   echo "$(date -u +%H:%M:%S) $status $result"
   [[ "$status" == COMPLETED ]] && break
   sleep 60
