@@ -14,8 +14,7 @@ fresh ones in one process, closing and reopening the wallet between
 (`ZOLANA_TIMING_RUN=both`): the keys load again, the process does not
 start again.
 
-A run is 10 to 35 device minutes per phone: $0.17 a minute after the
-account's trial minutes, or an unmetered slot.
+A run is 10 to 35 device minutes per phone.
 
 Setup, once, in `us-west-2` (Device Farm's only region):
 
