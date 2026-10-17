@@ -27,11 +27,12 @@ aws devicefarm create-device-pool --project-arn <project arn> --name iphone-12 \
   --rules '[{"attribute":"ARN","operator":"IN","value":"[\"arn:aws:devicefarm:us-west-2::device:3D9D3DF8F5E6491A9BCEFE9B84759D8C\"]"}]'
 ```
 
-The pool pins one model (`aws devicefarm list-devices` lists them with
+Each pool pins one model (`aws devicefarm list-devices` lists them with
 their ARNs), so that runs compare. The workflow assumes an IAM role through
 GitHub's OIDC provider: `iam-trust.json` is its trust policy and
 `iam-policy.json` its permissions, both with `<account>` and `<project id>`
-to fill in. The repository variables `DEVICEFARM_ROLE_ARN`,
+to fill in; Device Farm's list calls take no resource, so those two are
+allowed on `*`. The role is `zolana-mobile-devicefarm-bench`. The repository variables `DEVICEFARM_ROLE_ARN`,
 `DEVICEFARM_PROJECT_ARN`, `DEVICEFARM_POOL_ARN` (Android) and
 `DEVICEFARM_POOL_IOS_ARN` carry the ARNs.
 
