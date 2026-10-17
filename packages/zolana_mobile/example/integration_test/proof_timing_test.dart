@@ -1,24 +1,18 @@
 // Times proofs on this device as the wallet proves a spend, for the proof
 // timing report (README, "Proof timing"): each shape's key through the
 // wallet's key store, downloaded when missing, loaded when not loaded, the
-// proof verified. Run it twice on the same install for the four rows of the
-// report: `ZOLANA_TIMING_RUN=fresh` starts from an empty key directory
-// (first run, including download; warm), `restart` runs in a new process
-// with the keys on the device (first run after restart; repeated). Without
-// it, a run with no keys on the device is the fresh one and a run that finds
-// them the restart: one build serves both runs on a device farm. `both`
-// makes the restart rows after the fresh ones in one process, with the
-// wallet closed and reopened between, for devices that allow one test run
-// per install (iOS on a device farm): the keys load again from the device,
-// the process does not start again. The fresh run needs `--no-uninstall`,
-// or `flutter test` deletes the keys with the app.
-//
-//   flutter test integration_test/proof_timing_test.dart -d DEVICE --no-uninstall \
-//     --dart-define=ZOLANA_TIMING_RUN=fresh \
-//     --dart-define=ZOLANA_TIMING_SHAPES=1x2,8x2
+// proof verified. It runs in release builds of the bench app
+// (scripts/test-consumer.sh bench-apk, bench-ipa), twice on the same
+// install for the four rows of the report: a run with no keys on the device
+// is the fresh one (first run, including download; warm), and a run that
+// finds them, in a new process, the restart (first run after restart;
+// repeated). `ZOLANA_TIMING_RUN=both` makes the restart rows after the
+// fresh ones in one process, with the wallet closed and reopened between,
+// for devices that allow one test run per install (iOS on a device farm):
+// the keys load again from the device, the process does not start again.
 //
 // A shape is `<inputs>x<outputs>` for a confidential transfer or
-// `merge-<inputs>x1` for a merge.
+// `merge-<inputs>x1` for a merge; ZOLANA_TIMING_SHAPES narrows them.
 //
 // Every proof prints one `ZOLANA_TIMING {json}` line; both runs' lines go
 // through scripts/proof-timing-report.py. The fixture requests come from
@@ -31,7 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
-const _runDefine = String.fromEnvironment('ZOLANA_TIMING_RUN');
+const _both = String.fromEnvironment('ZOLANA_TIMING_RUN') == 'both';
 const _shapes = String.fromEnvironment(
   'ZOLANA_TIMING_SHAPES',
   defaultValue: '1x2,2x2,4x2,8x2,16x2,24x2,merge-24x1',
@@ -76,12 +70,12 @@ void main() {
       ? '$appDir/Library/Caches/zolana-proof-timing'
       : '$appDir/zolana-proof-timing';
   final keys = Directory(keyDir);
-  final mode = _runDefine.isNotEmpty
-      ? _runDefine
+  final mode = _both
+      ? 'both'
       : keys.existsSync() && keys.listSync().isNotEmpty
       ? 'restart'
       : 'fresh';
-  final runs = mode == 'both' ? const ['fresh', 'restart'] : [mode];
+  final runs = _both ? const ['fresh', 'restart'] : [mode];
 
   setUpAll(initZolanaMobile);
 

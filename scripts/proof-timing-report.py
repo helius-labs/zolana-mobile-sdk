@@ -299,8 +299,8 @@ def main():
             print(f"no ZOLANA_TIMING lines under {path}", file=sys.stderr)
             continue
         report = {"cells": cells(found), "stages": stages(found)}
-        if errors(found):
-            report["errors"] = errors(found)
+        if failed := errors(found):
+            report["errors"] = failed
         (path / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         reports[path.name] = report
         if (path / "baseline.json").is_file():

@@ -18,7 +18,8 @@ restart rows after the fresh ones in one process, closing and reopening the
 wallet between (`ZOLANA_TIMING_RUN=both`): the keys load again, the process
 does not start again.
 
-A run is 10 to 35 device minutes per phone.
+A run is 3 (Galaxy S25) to 14 (Galaxy A16) device minutes per phone, about
+55 for all six.
 
 Setup, once, in `us-west-2` (Device Farm's only region):
 
