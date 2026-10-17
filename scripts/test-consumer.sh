@@ -69,10 +69,6 @@ case "${1:-android}" in
     # are two instrumentation runs on one install, which the harness tells
     # apart by the keys on the device (scripts/devicefarm/testspec.yml).
     : "${ZOLANA_BENCH_DIR:?Set ZOLANA_BENCH_DIR for the two APKs}"
-    defines=()
-    if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
-      defines+=(ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
-    fi
     mkdir -p android/app/src/androidTest/java/com/example/zolana_consumer
     cat > android/app/src/androidTest/java/com/example/zolana_consumer/MainActivityTest.java <<'JAVA'
 package com.example.zolana_consumer;
@@ -91,10 +87,12 @@ public class MainActivityTest {
 JAVA
     # The test classpath must take the versions the integration_test plugin
     # already puts on the app's.
-    plugin="$(ls "${FLUTTER_ROOT:-$(dirname "$(dirname "$(readlink -f "$(command -v flutter)")")")}"/packages/integration_test/android/build.gradle* | head -1)"
-    runner="$(grep -o 'androidx.test:runner:[0-9.]*' "$plugin" | head -1)"
-    espresso="$(grep -o 'androidx.test.espresso:espresso-core:[0-9.]*' "$plugin" | head -1)"
-    RUNNER="${runner:-androidx.test:runner:1.3.0}" ESPRESSO="${espresso:-androidx.test.espresso:espresso-core:3.3.0}" python3 - <<'PY'
+    flutter_root="${FLUTTER_ROOT:-$(dirname "$(dirname "$(readlink -f "$(command -v flutter)")")")}"
+    plugin=("$flutter_root"/packages/integration_test/android/build.gradle*)
+    runner="$(grep -o 'androidx.test:runner:[0-9.+]*' "${plugin[0]}" | head -1)"
+    espresso="$(grep -o 'androidx.test.espresso:espresso-core:[0-9.+]*' "${plugin[0]}" | head -1)"
+    : "${runner:?no androidx.test runner in ${plugin[0]}}" "${espresso:?no espresso in ${plugin[0]}}"
+    RUNNER="$runner" ESPRESSO="$espresso" python3 - <<'PY'
 import os, pathlib
 p = pathlib.Path("android/app/build.gradle.kts")
 t = p.read_text()
@@ -126,14 +124,15 @@ PY
 -dontwarn androidx.test.**
 -dontwarn org.junit.**
 PRO
-    # Empty unless the shapes are narrowed; `${a[@]+...}` because bash 3.2
-    # takes an empty array for an unset one under set -u.
+    # Gradle takes the dart defines base64-encoded. Empty unless the shapes
+    # are narrowed; `${a[@]+...}` because bash 3.2 takes an empty array for
+    # an unset one under set -u.
     args=()
-    encoded=()
-    for define in ${defines[@]+"${defines[@]}"}; do
-      args+=(--dart-define="$define")
-      encoded+=("$(printf '%s' "$define" | base64 | tr -d '\n')")
-    done
+    encoded=""
+    if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
+      args=(--dart-define=ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
+      encoded="$(printf '%s' "ZOLANA_TIMING_SHAPES=$ZOLANA_TIMING_SHAPES" | base64 | tr -d '\n')"
+    fi
     flutter build apk --release --target-platform android-arm64 \
       --target=integration_test/proof_timing_test.dart ${args[@]+"${args[@]}"}
     # gradlew on its own needs a JDK; Flutter's build found Android
@@ -145,7 +144,7 @@ PRO
     (cd android && ./gradlew --quiet app:assembleReleaseAndroidTest \
       -Ptarget=integration_test/proof_timing_test.dart \
       -Ptarget-platform=android-arm64 \
-      -Pdart-defines="$(IFS=,; echo "${encoded[*]-}")")
+      -Pdart-defines="$encoded")
     mkdir -p "$ZOLANA_BENCH_DIR"
     cp build/app/outputs/flutter-apk/app-release.apk "$ZOLANA_BENCH_DIR/app.apk"
     cp build/app/outputs/apk/androidTest/release/app-release-androidTest.apk "$ZOLANA_BENCH_DIR/app-androidTest.apk"
