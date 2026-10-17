@@ -94,10 +94,11 @@ case "${1:-android}" in
     timing_run fresh
     timing_run restart ;;
   bench-apk)
-    # The bench app and its instrumentation for a device farm, arm64, into
-    # ZOLANA_BENCH_DIR: the fresh and restart runs are two instrumentation
-    # runs on one install, which the harness tells apart by the keys on the
-    # device (scripts/devicefarm/testspec.yml).
+    # The bench app and its instrumentation for a device farm, arm64, as a
+    # release (`flutter test` only has debug, where Dart runs interpreted and
+    # Rust unoptimized), into ZOLANA_BENCH_DIR: the fresh and restart runs
+    # are two instrumentation runs on one install, which the harness tells
+    # apart by the keys on the device (scripts/devicefarm/testspec.yml).
     : "${ZOLANA_BENCH_DIR:?Set ZOLANA_BENCH_DIR for the two APKs}"
     label="${ZOLANA_TIMING_LABEL:-device}"
     defines=(ZOLANA_TIMING_LABEL="$label")
@@ -138,6 +139,11 @@ dependencies {{
     androidTestImplementation("{os.environ["ESPRESSO"]}")
 }}
 '''
+# Gradle builds the test APK for one build type, debug unless told; the
+# template signs the release with the debug key, so the two APKs match.
+block = "    defaultConfig {\n"
+assert t.count(block) == 1, "defaultConfig"
+t = t.replace(block, '    testBuildType = "release"\n\n' + block)
 p.write_text(t)
 PY
     args=()
@@ -146,7 +152,7 @@ PY
       args+=(--dart-define="$define")
       encoded+=("$(printf '%s' "$define" | base64 | tr -d '\n')")
     done
-    flutter build apk --debug --target-platform android-arm64 \
+    flutter build apk --release --target-platform android-arm64 \
       --target=integration_test/proof_timing_test.dart "${args[@]}"
     # gradlew on its own needs a JDK; Flutter's build found Android
     # Studio's, which a Mac with the SDK alone has.
@@ -154,13 +160,13 @@ PY
       studio="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
       [[ -d "$studio" ]] && export JAVA_HOME="$studio"
     fi
-    (cd android && ./gradlew --quiet app:assembleAndroidTest \
+    (cd android && ./gradlew --quiet app:assembleReleaseAndroidTest \
       -Ptarget=integration_test/proof_timing_test.dart \
       -Ptarget-platform=android-arm64 \
       -Pdart-defines="$(IFS=,; echo "${encoded[*]}")")
     mkdir -p "$ZOLANA_BENCH_DIR"
-    cp build/app/outputs/flutter-apk/app-debug.apk "$ZOLANA_BENCH_DIR/app.apk"
-    cp build/app/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$ZOLANA_BENCH_DIR/app-androidTest.apk"
+    cp build/app/outputs/flutter-apk/app-release.apk "$ZOLANA_BENCH_DIR/app.apk"
+    cp build/app/outputs/apk/androidTest/release/app-release-androidTest.apk "$ZOLANA_BENCH_DIR/app-androidTest.apk"
     ls -la "$ZOLANA_BENCH_DIR" ;;
   bench-ipa)
     # The bench app and its XCTest bundle for a device farm, unsigned (the
@@ -194,13 +200,13 @@ final class RunnerTests: XCTestCase {
   }
 }
 SWIFT
-    flutter build ios --profile --no-codesign \
+    flutter build ios --release --no-codesign \
       --target=integration_test/proof_timing_test.dart "${args[@]}"
     (cd ios && xcodebuild build-for-testing -quiet \
-      -workspace Runner.xcworkspace -scheme Runner -configuration Profile -sdk iphoneos \
+      -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
       -derivedDataPath ../build/ios_integ \
       CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="")
-    products=build/ios_integ/Build/Products/Profile-iphoneos
+    products=build/ios_integ/Build/Products/Release-iphoneos
     mkdir -p "$ZOLANA_BENCH_DIR"
     rm -rf "$products/Payload" && mkdir "$products/Payload" && cp -R "$products/Runner.app" "$products/Payload/"
     (cd "$products" && rm -f app.ipa && zip -qr app.ipa Payload)
