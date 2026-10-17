@@ -52,21 +52,29 @@ while :; do
   sleep 60
 done
 
-# The test spec's $DEVICEFARM_LOG_DIR comes back as the "Customer Artifacts"
-# zip of the job.
+# The test spec's $DEVICEFARM_LOG_DIR comes back as the run's customer
+# artifact; should its timing.log be empty, Device Farm's own logcat
+# artifacts carry the same lines.
 mkdir -p "$timing"
 work="$(mktemp -d)"
-aws devicefarm list-artifacts --region "$region" --arn "$run" --type FILE \
-  --query 'artifacts[?contains(name, `Customer Artifacts`)].url' --output text | tr '\t' '\n' | while read -r url; do
-  [[ -n "$url" ]] || continue
-  curl -sfS -o "$work/artifacts.zip" "$url"
-  unzip -q -o "$work/artifacts.zip" -d "$work/artifacts"
+log="$timing/$label.log"
+: > "$log"
+artifact() {
+  aws devicefarm list-artifacts --region "$region" --arn "$run" --type FILE \
+    --query "artifacts[?type=='$1'].url" --output text | tr '\t' '\n' | grep '^http' || true
+}
+artifact CUSTOMER_ARTIFACT | while read -r url; do
+  curl -sfS -o "$work/customer.zip" "$url"
+  unzip -q -o "$work/customer.zip" -d "$work/customer"
 done
-found="$(find "$work/artifacts" -name timing.log | head -1 || true)"
-if [[ -z "$found" ]]; then
-  echo "no timing.log among the run's artifacts; result was $result" >&2
-  find "$work/artifacts" -type f | head -20 >&2
-  exit 1
+find "$work/customer" -name timing.log -exec cat {} + >> "$log" 2> /dev/null || true
+if ! grep -q 'ZOLANA_TIMING {' "$log"; then
+  echo "the test spec captured no timing lines; reading Device Farm's logcat"
+  artifact DEVICE_LOG | while read -r url; do
+    curl -sfS "$url" | grep -o 'ZOLANA_TIMING {.*' >> "$log" || true
+  done
 fi
-cp "$found" "$timing/$label.log"
-echo "$(grep -c 'ZOLANA_TIMING {' "$timing/$label.log") timing lines in $timing/$label.log (result $result)"
+minutes="$(aws devicefarm get-run --region "$region" --arn "$run" --query 'run.deviceMinutes.total' --output text)"
+lines="$(grep -c 'ZOLANA_TIMING {' "$log" || true)"
+echo "$lines timing lines in $log (result $result, $minutes device minutes)"
+[[ "$lines" -gt 0 ]]
