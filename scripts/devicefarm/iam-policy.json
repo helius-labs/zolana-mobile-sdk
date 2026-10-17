@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "devicefarm:CreateUpload",
+        "devicefarm:GetUpload",
+        "devicefarm:ScheduleRun",
+        "devicefarm:GetRun",
+        "devicefarm:ListJobs",
+        "devicefarm:ListSuites",
+        "devicefarm:ListTests",
+        "devicefarm:ListArtifacts"
+      ],
+      "Resource": [
+        "arn:aws:devicefarm:us-west-2:<account>:project:<project id>",
+        "arn:aws:devicefarm:us-west-2:<account>:devicepool:<project id>/*",
+        "arn:aws:devicefarm:us-west-2:<account>:upload:<project id>/*",
+        "arn:aws:devicefarm:us-west-2:<account>:run:<project id>/*",
+        "arn:aws:devicefarm:us-west-2:<account>:job:<project id>/*",
+        "arn:aws:devicefarm:us-west-2:<account>:suite:<project id>/*",
+        "arn:aws:devicefarm:us-west-2:<account>:test:<project id>/*",
+        "arn:aws:devicefarm:us-west-2:<account>:artifact:<project id>/*"
+      ]
+    }
+  ]
+}

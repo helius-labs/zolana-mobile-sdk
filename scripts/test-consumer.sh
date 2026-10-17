@@ -93,5 +93,74 @@ case "${1:-android}" in
     }
     timing_run fresh
     timing_run restart ;;
-  *) echo 'usage: test-consumer.sh [android|ios|device|bench]' >&2; exit 2 ;;
+  bench-apk)
+    # The bench app and its instrumentation for a device farm, arm64, into
+    # ZOLANA_BENCH_APK_DIR: the fresh and restart runs are two instrumentation
+    # runs on one install, which the harness tells apart by the keys on the
+    # device (scripts/devicefarm/testspec.yml).
+    : "${ZOLANA_BENCH_APK_DIR:?Set ZOLANA_BENCH_APK_DIR for the two APKs}"
+    label="${ZOLANA_TIMING_LABEL:-device}"
+    defines=(ZOLANA_TIMING_LABEL="$label")
+    if [[ -n "${ZOLANA_TIMING_SHAPES:-}" ]]; then
+      defines+=(ZOLANA_TIMING_SHAPES="$ZOLANA_TIMING_SHAPES")
+    fi
+    mkdir -p android/app/src/androidTest/java/com/example/zolana_consumer
+    cat > android/app/src/androidTest/java/com/example/zolana_consumer/MainActivityTest.java <<'JAVA'
+package com.example.zolana_consumer;
+
+import androidx.test.rule.ActivityTestRule;
+import dev.flutter.plugins.integration_test.FlutterTestRunner;
+import org.junit.Rule;
+import org.junit.runner.RunWith;
+
+@RunWith(FlutterTestRunner.class)
+public class MainActivityTest {
+  @Rule
+  public ActivityTestRule<MainActivity> rule =
+      new ActivityTestRule<>(MainActivity.class, true, false);
+}
+JAVA
+    # The test classpath must take the versions the integration_test plugin
+    # already puts on the app's.
+    plugin="$(ls "${FLUTTER_ROOT:-$(dirname "$(dirname "$(readlink -f "$(command -v flutter)")")")}"/packages/integration_test/android/build.gradle* | head -1)"
+    runner="$(grep -o 'androidx.test:runner:[0-9.]*' "$plugin" | head -1)"
+    espresso="$(grep -o 'androidx.test.espresso:espresso-core:[0-9.]*' "$plugin" | head -1)"
+    RUNNER="${runner:-androidx.test:runner:1.3.0}" ESPRESSO="${espresso:-androidx.test.espresso:espresso-core:3.3.0}" python3 - <<'PY'
+import os, pathlib
+p = pathlib.Path("android/app/build.gradle.kts")
+t = p.read_text()
+anchor = '        applicationId = "com.example.zolana_consumer"\n'
+assert t.count(anchor) == 1, "applicationId"
+t = t.replace(anchor, anchor + '        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"\n')
+t += f'''
+dependencies {{
+    androidTestImplementation("{os.environ["RUNNER"]}")
+    androidTestImplementation("{os.environ["ESPRESSO"]}")
+}}
+'''
+p.write_text(t)
+PY
+    args=()
+    encoded=()
+    for define in "${defines[@]}"; do
+      args+=(--dart-define="$define")
+      encoded+=("$(printf '%s' "$define" | base64 | tr -d '\n')")
+    done
+    flutter build apk --debug --target-platform android-arm64 \
+      --target=integration_test/proof_timing_test.dart "${args[@]}"
+    # gradlew on its own needs a JDK; Flutter's build found Android
+    # Studio's, which a Mac with the SDK alone has.
+    if [[ -z "${JAVA_HOME:-}" ]] && ! command -v java > /dev/null; then
+      studio="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+      [[ -d "$studio" ]] && export JAVA_HOME="$studio"
+    fi
+    (cd android && ./gradlew --quiet app:assembleAndroidTest \
+      -Ptarget=integration_test/proof_timing_test.dart \
+      -Ptarget-platform=android-arm64 \
+      -Pdart-defines="$(IFS=,; echo "${encoded[*]}")")
+    mkdir -p "$ZOLANA_BENCH_APK_DIR"
+    cp build/app/outputs/flutter-apk/app-debug.apk "$ZOLANA_BENCH_APK_DIR/app.apk"
+    cp build/app/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$ZOLANA_BENCH_APK_DIR/app-androidTest.apk"
+    ls -la "$ZOLANA_BENCH_APK_DIR" ;;
+  *) echo 'usage: test-consumer.sh [android|ios|device|bench|bench-apk]' >&2; exit 2 ;;
 esac

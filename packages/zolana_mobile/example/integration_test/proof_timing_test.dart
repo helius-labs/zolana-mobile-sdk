@@ -4,7 +4,9 @@
 // proof verified. Run it twice on the same install for the four rows of the
 // report: `ZOLANA_TIMING_RUN=fresh` starts from an empty key directory
 // (first run, including download; warm), `restart` runs in a new process
-// with the keys on the device (first run after restart; repeated). The fresh
+// with the keys on the device (first run after restart; repeated). Without
+// it, a run with no keys on the device is the fresh one and a run that finds
+// them the restart: one build serves both runs on a device farm. The fresh
 // run needs `--no-uninstall`, or `flutter test` deletes the keys with the app.
 //
 //   flutter test integration_test/proof_timing_test.dart -d DEVICE --no-uninstall \
@@ -25,7 +27,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:zolana_mobile/zolana_mobile.dart';
 
-const _run = String.fromEnvironment('ZOLANA_TIMING_RUN', defaultValue: 'fresh');
+const _runDefine = String.fromEnvironment('ZOLANA_TIMING_RUN');
+late final String _run;
 const _shapes = String.fromEnvironment(
   'ZOLANA_TIMING_SHAPES',
   defaultValue: '1x2,2x2,4x2,8x2,16x2,24x2,merge-24x1',
@@ -62,19 +65,26 @@ Uint8List _bytes(String hex) => Uint8List.fromList([
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  // The same directory in both runs: the restart run finds the keys. Not
+  // under the temporary directory, which on Android is the code cache that
+  // a reinstall empties: beside it, in the app's data (Android) or
+  // Library/Caches (iOS).
+  final appDir = Directory.systemTemp.parent.path;
+  final keyDir = Platform.isIOS
+      ? '$appDir/Library/Caches/zolana-proof-timing'
+      : '$appDir/zolana-proof-timing';
+  final keys = Directory(keyDir);
+  _run = _runDefine.isNotEmpty
+      ? _runDefine
+      : keys.existsSync() && keys.listSync().isNotEmpty
+      ? 'restart'
+      : 'fresh';
+
   setUpAll(initZolanaMobile);
 
   testWidgets('times the proofs of the fixture requests ($_run)', (
     tester,
   ) async {
-    // The same directory in both runs: the restart run finds the keys. Not
-    // under the temporary directory, which on Android is the code cache that
-    // a reinstall empties: beside it, in the app's data (Android) or
-    // Library/Caches (iOS).
-    final appDir = Directory.systemTemp.parent.path;
-    final keyDir = Platform.isIOS
-        ? '$appDir/Library/Caches/zolana-proof-timing'
-        : '$appDir/zolana-proof-timing';
     final wallet = await ZolanaWallet.openWithKeys(
       config: WalletConfig(
         rpcUrl: 'http://127.0.0.1:1',
