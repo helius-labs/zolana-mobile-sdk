@@ -38,6 +38,61 @@ struct Native {
     loaded: AtomicU64,
 }
 
+/// The ringil prover's view of a loaded key: the kernel with its solver
+/// plan, and the proving key's fixed points for the assembly. gnark builds
+/// the witness and verifies; ringil solves, runs the MSMs (on the GPU where
+/// there is one) and assembles.
+pub(crate) struct RingilKey {
+    key: ringil_core::Key,
+    fixed: ringil_core::groth16::FixedPoints,
+}
+
+impl RingilKey {
+    /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve.
+    fn build(prover: &rust_gnark::PreparedProver) -> Option<Self> {
+        if std::env::var("ZOLANA_PROVER").is_ok_and(|v| v == "gnark") {
+            return None;
+        }
+        let inputs = prover.ringil_inputs().ok()?;
+        let mut key = ringil_core::Key::build(
+            &inputs.a,
+            &inputs.b,
+            &inputs.k,
+            &inputs.z,
+            &inputs.b2,
+            &inputs.domain,
+        )
+        .ok()?;
+        if !key.set_solver(&inputs.program, &inputs.coefficients) {
+            return None;
+        }
+        let fixed = ringil_core::groth16::FixedPoints::decode(&inputs.fixed)?;
+        Some(Self { key, fixed })
+    }
+
+    fn prove(
+        &self,
+        prover: &rust_gnark::PreparedProver,
+        body: &str,
+    ) -> Result<rust_gnark::Groth16ProofResult, WalletError> {
+        let (witness, witness_ms) = prover
+            .ringil_witness(body)
+            .map_err(|_| WalletError::ProofFailed)?;
+        let started = Instant::now();
+        let parts = self
+            .key
+            .solve(&witness)
+            .map_err(|_| WalletError::ProofFailed)?;
+        let proof = ringil_core::groth16::assemble(&parts, &self.fixed);
+        let prove_ms = elapsed_ms(started);
+        let mut result = prover
+            .ringil_finish(&proof, prove_ms)
+            .map_err(|_| WalletError::ProofFailed)?;
+        result.witness_ms = witness_ms;
+        Ok(result)
+    }
+}
+
 /// Why a proof on the device failed, carried through the client as
 /// [`ClientError::ProverFailed`] and read back as the [`WalletError`] it is.
 #[derive(Debug)]
@@ -95,18 +150,23 @@ impl NativeProver {
             .map_err(|_| WalletError::ProverLoadFailed)?;
             let id = state.next_id()?;
             self.0.loaded.store(id, Ordering::Relaxed);
+            let ringil = RingilKey::build(&prover);
             state.loaded = Some(Loaded {
                 id,
                 key: Some(name.to_string()),
                 prover,
+                ringil,
             });
         }
         let load_ms = elapsed_ms(loading);
         let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
-        let proof = loaded
-            .prover
-            .prove_request(body)
-            .map_err(|_| WalletError::ProofFailed)?;
+        let proof = match &loaded.ringil {
+            Some(ringil) => ringil.prove(&loaded.prover, body)?,
+            None => loaded
+                .prover
+                .prove_request(body)
+                .map_err(|_| WalletError::ProofFailed)?,
+        };
         Ok(ProvedRequest {
             proof_json: proof.proof_json,
             key: name.to_string(),

@@ -64,6 +64,8 @@ type preparedProver struct {
 	// The key image the proving key is mapped from; nil for a key on the
 	// heap.
 	image *keyImage
+	// The public part of the witness ringil last proved (ringil.go).
+	ringilPublic witness.Witness
 }
 
 // close releases what the prover holds outside the Go heap.

@@ -21,6 +21,22 @@ typedef struct {
     uint64_t handle;
     char *error;
 } C_PreparedResult;
+
+typedef struct {
+    uint8_t *data;
+    uint64_t len;
+} C_Bytes;
+
+typedef struct {
+    C_Bytes a, b, k, z, b2, program, coefficients, fixed, domain;
+    char *error;
+} C_RingilInputs;
+
+typedef struct {
+    C_Bytes witness;
+    uint64_t witness_ms;
+    char *error;
+} C_RingilWitness;
 */
 import "C"
 
@@ -172,3 +188,107 @@ func gnark_free_string(value *C.char) {
 }
 
 func main() {}
+
+func cBytes(data []byte) C.C_Bytes {
+	if len(data) == 0 {
+		return C.C_Bytes{}
+	}
+	return C.C_Bytes{data: (*C.uint8_t)(C.CBytes(data)), len: C.uint64_t(len(data))}
+}
+
+func freeBytes(bytes C.C_Bytes) {
+	if bytes.data != nil {
+		C.free(unsafe.Pointer(bytes.data))
+	}
+}
+
+//export gnark_prepared_ringil_inputs
+func gnark_prepared_ringil_inputs(handle C.uint64_t) (output *C.C_RingilInputs) {
+	output = (*C.C_RingilInputs)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_RingilInputs{}))))
+	if output == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			output.error = cError(errBackend)
+		}
+	}()
+	inputs, err := backendCall(func() (ringilInputs, error) { return ringilInputsOf(uint64(handle)) })
+	if err != nil {
+		output.error = cError(err)
+		return output
+	}
+	output.a = cBytes(inputs.a)
+	output.b = cBytes(inputs.b)
+	output.k = cBytes(inputs.k)
+	output.z = cBytes(inputs.z)
+	output.b2 = cBytes(inputs.b2)
+	output.program = cBytes(inputs.program)
+	output.coefficients = cBytes(inputs.coefficients)
+	output.fixed = cBytes(inputs.fixed)
+	output.domain = cBytes(inputs.domain)
+	return output
+}
+
+//export gnark_free_ringil_inputs
+func gnark_free_ringil_inputs(inputs *C.C_RingilInputs) {
+	if inputs == nil {
+		return
+	}
+	for _, bytes := range []C.C_Bytes{inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2, inputs.program, inputs.coefficients, inputs.fixed, inputs.domain} {
+		freeBytes(bytes)
+	}
+	if inputs.error != nil {
+		C.free(unsafe.Pointer(inputs.error))
+	}
+	C.free(unsafe.Pointer(inputs))
+}
+
+//export gnark_prepared_ringil_witness
+func gnark_prepared_ringil_witness(handle C.uint64_t, input *C.char) (output *C.C_RingilWitness) {
+	output = (*C.C_RingilWitness)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_RingilWitness{}))))
+	if output == nil {
+		return nil
+	}
+	defer func() {
+		if recover() != nil {
+			output.error = cError(errBackend)
+		}
+	}()
+	type built struct {
+		vector []byte
+		ms     uint64
+	}
+	result, err := backendCall(func() (built, error) {
+		vector, ms, err := ringilWitnessOf(uint64(handle), C.GoString(input))
+		return built{vector, ms}, err
+	})
+	if err != nil {
+		output.error = cError(err)
+		return output
+	}
+	output.witness = cBytes(result.vector)
+	output.witness_ms = C.uint64_t(result.ms)
+	return output
+}
+
+//export gnark_free_ringil_witness
+func gnark_free_ringil_witness(w *C.C_RingilWitness) {
+	if w == nil {
+		return
+	}
+	freeBytes(w.witness)
+	if w.error != nil {
+		C.free(unsafe.Pointer(w.error))
+	}
+	C.free(unsafe.Pointer(w))
+}
+
+//export gnark_prepared_ringil_finish
+func gnark_prepared_ringil_finish(handle C.uint64_t, proof *C.uint8_t, length C.uint64_t, proveMS C.uint64_t) (output *C.C_Groth16ProofResult) {
+	defer recoverProof(&output)
+	raw := C.GoBytes(unsafe.Pointer(proof), C.int(length))
+	return exportProof(backendCall(func() (proofResult, error) {
+		return ringilFinish(uint64(handle), raw, uint64(proveMS))
+	}))
+}

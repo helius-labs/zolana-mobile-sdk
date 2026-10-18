@@ -24,6 +24,10 @@ mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa
 reqwest = { version = "0.12", default-features = false }
 reqwest-middleware = "0.4"
 rust-gnark = { path = "../rust-gnark" }
+# The ringil prover (experiment): the arithmetic in Rust, on the GPU where
+# there is one; gnark builds the witness and verifies. ZOLANA_PROVER=gnark
+# keeps gnark proving.
+ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core" }
 serde = { version = "1.0", features = ["derive"] }
 solana-commitment-config = "3.1"
 solana-instruction = "3.4"
@@ -48,6 +52,9 @@ zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d3
 # Off-chain, this crate links OpenSSL; mobile targets have no system copy.
 solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
 zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core", features = ["metal"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }

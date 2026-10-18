@@ -103,6 +103,99 @@ impl PreparedProver {
     }
 }
 
+/// What the ringil prover takes from a loaded key: the five point vectors
+/// and the solver program and coefficients in the kernel's encoding, the
+/// proving key's fixed points (448 bytes) and the domain's generator and
+/// coset generator (64 bytes).
+#[derive(Debug, Clone, Default)]
+pub struct RingilInputs {
+    pub a: Vec<u8>,
+    pub b: Vec<u8>,
+    pub k: Vec<u8>,
+    pub z: Vec<u8>,
+    pub b2: Vec<u8>,
+    pub program: Vec<u8>,
+    pub coefficients: Vec<u8>,
+    pub fixed: Vec<u8>,
+    pub domain: Vec<u8>,
+}
+
+struct RingilInputsGuard(*mut bind::C_RingilInputs);
+impl Drop for RingilInputsGuard {
+    fn drop(&mut self) {
+        unsafe { bind::gnark_free_ringil_inputs(self.0) };
+    }
+}
+struct RingilWitnessGuard(*mut bind::C_RingilWitness);
+impl Drop for RingilWitnessGuard {
+    fn drop(&mut self) {
+        unsafe { bind::gnark_free_ringil_witness(self.0) };
+    }
+}
+
+fn copy_bytes(bytes: &bind::C_Bytes) -> Vec<u8> {
+    if bytes.data.is_null() || bytes.len == 0 {
+        return Vec::new();
+    }
+    unsafe { std::slice::from_raw_parts(bytes.data, bytes.len as usize) }.to_vec()
+}
+
+impl PreparedProver {
+    pub fn ringil_inputs(&self) -> Result<RingilInputs> {
+        let raw = unsafe { bind::gnark_prepared_ringil_inputs(self.handle) };
+        if raw.is_null() {
+            bail!("gnark operation failed");
+        }
+        let guard = RingilInputsGuard(raw);
+        let inputs = unsafe { &*guard.0 };
+        if !inputs.error.is_null() {
+            return Err(backend_error(inputs.error));
+        }
+        Ok(RingilInputs {
+            a: copy_bytes(&inputs.a),
+            b: copy_bytes(&inputs.b),
+            k: copy_bytes(&inputs.k),
+            z: copy_bytes(&inputs.z),
+            b2: copy_bytes(&inputs.b2),
+            program: copy_bytes(&inputs.program),
+            coefficients: copy_bytes(&inputs.coefficients),
+            fixed: copy_bytes(&inputs.fixed),
+            domain: copy_bytes(&inputs.domain),
+        })
+    }
+
+    /// The request's witness vector (public then secret, no ONE wire) in
+    /// the kernel's encoding, and how long building it took.
+    pub fn ringil_witness(&self, request_json: &str) -> Result<(Vec<u8>, u64)> {
+        let input = input_string(request_json)?;
+        let raw =
+            unsafe { bind::gnark_prepared_ringil_witness(self.handle, input.as_ptr().cast_mut()) };
+        if raw.is_null() {
+            bail!("gnark operation failed");
+        }
+        let guard = RingilWitnessGuard(raw);
+        let witness = unsafe { &*guard.0 };
+        if !witness.error.is_null() {
+            return Err(backend_error(witness.error));
+        }
+        Ok((copy_bytes(&witness.witness), witness.witness_ms))
+    }
+
+    /// Verifies and encodes a proof ringil assembled from the last witness:
+    /// Ar, Krs, Bs in gnark's raw encoding, 256 bytes.
+    pub fn ringil_finish(&self, proof: &[u8], prove_ms: u64) -> Result<Groth16ProofResult> {
+        let raw = unsafe {
+            bind::gnark_prepared_ringil_finish(
+                self.handle,
+                proof.as_ptr().cast_mut(),
+                proof.len() as u64,
+                prove_ms,
+            )
+        };
+        read_proof_result(raw)
+    }
+}
+
 impl Drop for PreparedProver {
     fn drop(&mut self) {
         unsafe { bind::gnark_prepared_release(self.handle) };
