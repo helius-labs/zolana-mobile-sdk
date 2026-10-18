@@ -47,19 +47,28 @@ pub(crate) struct RingilKey {
     fixed: ringil_core::groth16::FixedPoints,
 }
 
-/// The kernel's RINGIL_TRACE lines into the device log (experiment: the
-/// phases of a proof on a phone, read from the bench's logs).
+/// ringil's log lines into the device log: warnings (a proof that fell back
+/// to gnark), and with the ringil-trace feature the stage timings the
+/// Device Farm bench reads.
 fn device_log() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         #[cfg(target_os = "ios")]
         let _ = oslog::OsLogger::new("zolana.ringil")
-            .level_filter(log::LevelFilter::Info)
+            .level_filter(if cfg!(feature = "ringil-trace") {
+                log::LevelFilter::Info
+            } else {
+                log::LevelFilter::Warn
+            })
             .init();
         #[cfg(target_os = "android")]
         android_logger::init_once(
             android_logger::Config::default()
-                .with_max_level(log::LevelFilter::Info)
+                .with_max_level(if cfg!(feature = "ringil-trace") {
+                    log::LevelFilter::Info
+                } else {
+                    log::LevelFilter::Warn
+                })
                 .with_tag("ringil"),
         );
     });
