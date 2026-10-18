@@ -53,21 +53,19 @@ impl RingilKey {
         if std::env::var("ZOLANA_PROVER").is_ok_and(|v| v == "gnark") {
             return None;
         }
-        let inputs = prover.ringil_inputs().ok()?;
-        let mut key = ringil_core::Key::build(
-            &inputs.a,
-            &inputs.b,
-            &inputs.k,
-            &inputs.z,
-            &inputs.b2,
-            &inputs.domain,
-        )
-        .ok()?;
-        if !key.set_solver(&inputs.program, &inputs.coefficients) {
-            return None;
-        }
-        let fixed = ringil_core::groth16::FixedPoints::decode(&inputs.fixed)?;
-        Some(Self { key, fixed })
+        let built = prover
+            .with_ringil_inputs(|inputs| {
+                let mut key = ringil_core::Key::build(inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2, inputs.domain).ok()?;
+                if !key.set_solver(inputs.program, inputs.coefficients) {
+                    return None;
+                }
+                let fixed = ringil_core::groth16::FixedPoints::decode(inputs.fixed)?;
+                Some(Self { key, fixed })
+            })
+            .ok()??;
+        // gnark's copy of the vectors goes: a phone has no room for two.
+        prover.ringil_release_proving_key().ok()?;
+        Some(built)
     }
 
     fn prove(

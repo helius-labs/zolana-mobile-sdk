@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"runtime/debug"
 	"time"
 	"unsafe"
 
@@ -128,6 +129,25 @@ func ringilFinish(handle uint64, raw []byte, proveMS uint64) (proofResult, error
 		proveMS:      proveMS,
 		verifyMS:     verifyMS,
 	}, nil
+}
+
+// Once ringil holds the key, gnark's proving key vectors are dead weight:
+// the ringil path needs only the verifying key, the constraint system (for
+// the witness) and the fixed points, which stay.
+func ringilReleaseProvingKey(handle uint64) error {
+	prover, ok := prepared[handle]
+	if !ok {
+		return errHandle
+	}
+	pk := prover.pk
+	pk.G1.A, pk.G1.B, pk.G1.K, pk.G1.Z, pk.G2.B = nil, nil, nil, nil, nil
+	pk.InfinityA, pk.InfinityB = nil, nil
+	if prover.image != nil {
+		prover.image.close()
+		prover.image = nil
+	}
+	debug.FreeOSMemory()
+	return nil
 }
 
 var _ witness.Witness = nil

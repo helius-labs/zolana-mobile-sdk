@@ -106,18 +106,20 @@ impl PreparedProver {
 /// What the ringil prover takes from a loaded key: the five point vectors
 /// and the solver program and coefficients in the kernel's encoding, the
 /// proving key's fixed points (448 bytes) and the domain's generator and
-/// coset generator (64 bytes).
-#[derive(Debug, Clone, Default)]
-pub struct RingilInputs {
-    pub a: Vec<u8>,
-    pub b: Vec<u8>,
-    pub k: Vec<u8>,
-    pub z: Vec<u8>,
-    pub b2: Vec<u8>,
-    pub program: Vec<u8>,
-    pub coefficients: Vec<u8>,
-    pub fixed: Vec<u8>,
-    pub domain: Vec<u8>,
+/// coset generator (64 bytes). Borrowed from the bridge's buffers, which
+/// live for the call of [`PreparedProver::with_ringil_inputs`]: a wide key
+/// is hundreds of megabytes, and a phone has no room for another copy.
+#[derive(Debug, Clone, Copy)]
+pub struct RingilInputs<'a> {
+    pub a: &'a [u8],
+    pub b: &'a [u8],
+    pub k: &'a [u8],
+    pub z: &'a [u8],
+    pub b2: &'a [u8],
+    pub program: &'a [u8],
+    pub coefficients: &'a [u8],
+    pub fixed: &'a [u8],
+    pub domain: &'a [u8],
 }
 
 struct RingilInputsGuard(*mut bind::C_RingilInputs);
@@ -134,14 +136,20 @@ impl Drop for RingilWitnessGuard {
 }
 
 fn copy_bytes(bytes: &bind::C_Bytes) -> Vec<u8> {
+    borrow_bytes(bytes).to_vec()
+}
+
+fn borrow_bytes(bytes: &bind::C_Bytes) -> &[u8] {
     if bytes.data.is_null() || bytes.len == 0 {
-        return Vec::new();
+        return &[];
     }
-    unsafe { std::slice::from_raw_parts(bytes.data, bytes.len as usize) }.to_vec()
+    unsafe { std::slice::from_raw_parts(bytes.data, bytes.len as usize) }
 }
 
 impl PreparedProver {
-    pub fn ringil_inputs(&self) -> Result<RingilInputs> {
+    /// Runs `take` on the key's inputs for ringil, borrowed from the
+    /// bridge's buffers, which are freed when it returns.
+    pub fn with_ringil_inputs<R>(&self, take: impl FnOnce(RingilInputs<'_>) -> R) -> Result<R> {
         let raw = unsafe { bind::gnark_prepared_ringil_inputs(self.handle) };
         if raw.is_null() {
             bail!("gnark operation failed");
@@ -151,17 +159,30 @@ impl PreparedProver {
         if !inputs.error.is_null() {
             return Err(backend_error(inputs.error));
         }
-        Ok(RingilInputs {
-            a: copy_bytes(&inputs.a),
-            b: copy_bytes(&inputs.b),
-            k: copy_bytes(&inputs.k),
-            z: copy_bytes(&inputs.z),
-            b2: copy_bytes(&inputs.b2),
-            program: copy_bytes(&inputs.program),
-            coefficients: copy_bytes(&inputs.coefficients),
-            fixed: copy_bytes(&inputs.fixed),
-            domain: copy_bytes(&inputs.domain),
-        })
+        Ok(take(RingilInputs {
+            a: borrow_bytes(&inputs.a),
+            b: borrow_bytes(&inputs.b),
+            k: borrow_bytes(&inputs.k),
+            z: borrow_bytes(&inputs.z),
+            b2: borrow_bytes(&inputs.b2),
+            program: borrow_bytes(&inputs.program),
+            coefficients: borrow_bytes(&inputs.coefficients),
+            fixed: borrow_bytes(&inputs.fixed),
+            domain: borrow_bytes(&inputs.domain),
+        }))
+    }
+
+    /// Drops gnark's proving key vectors once ringil holds the key; the
+    /// verifying key and constraint system stay for the witness and the
+    /// verification. gnark can no longer prove with this handle.
+    pub fn ringil_release_proving_key(&self) -> Result<()> {
+        let error = unsafe { bind::gnark_prepared_ringil_release_pk(self.handle) };
+        if error.is_null() {
+            return Ok(());
+        }
+        let failure = backend_error(error);
+        unsafe { bind::gnark_free_string(error) };
+        Err(failure)
     }
 
     /// The request's witness vector (public then secret, no ONE wire) in

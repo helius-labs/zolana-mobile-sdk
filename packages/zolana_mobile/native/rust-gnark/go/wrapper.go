@@ -284,6 +284,13 @@ func gnark_free_ringil_witness(w *C.C_RingilWitness) {
 	C.free(unsafe.Pointer(w))
 }
 
+//export gnark_prepared_ringil_release_pk
+func gnark_prepared_ringil_release_pk(handle C.uint64_t) (output *C.char) {
+	defer recoverError(&output)
+	_, err := backendCall(func() (struct{}, error) { return struct{}{}, ringilReleaseProvingKey(uint64(handle)) })
+	return cError(err)
+}
+
 //export gnark_prepared_ringil_finish
 func gnark_prepared_ringil_finish(handle C.uint64_t, proof *C.uint8_t, length C.uint64_t, proveMS C.uint64_t) (output *C.C_Groth16ProofResult) {
 	defer recoverProof(&output)
