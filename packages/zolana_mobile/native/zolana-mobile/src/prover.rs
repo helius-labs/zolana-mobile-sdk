@@ -68,6 +68,31 @@ fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
     key.with_file_name(name)
 }
 
+/// Memory the process may still use, in bytes, where the system says.
+fn available_memory() -> Option<u64> {
+    #[cfg(target_os = "ios")]
+    {
+        unsafe extern "C" {
+            fn os_proc_available_memory() -> usize;
+        }
+        // SAFETY: a plain libSystem query, iOS 13 and later.
+        return Some(unsafe { os_proc_available_memory() } as u64);
+    }
+    #[cfg(target_os = "android")]
+    {
+        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"))?;
+        let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+        return Some(kb * 1024);
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// ringil's peak memory for a key, from its point vectors: measured at about
+/// nine times their size (GPU buffers, solver plan, proving temporaries).
+const RINGIL_PEAK_PER_VECTOR_BYTE: u64 = 9;
+
 impl RingilKey {
     /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve. The
     /// solver comes from its cached image beside `key_path` when there is
@@ -80,6 +105,17 @@ impl RingilKey {
         let cache = key_path.map(solver_image_path);
         let built = prover
             .with_ringil_inputs(|inputs| {
+                // A phone that cannot hold ringil's peak for this key proves it
+                // with gnark, which needs less (an iPhone 12 was killed loading
+                // the widest key).
+                let vectors = [inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2].iter().map(|v| v.len() as u64).sum::<u64>();
+                if let Some(available) = available_memory() {
+                    let needed = vectors * RINGIL_PEAK_PER_VECTOR_BYTE;
+                    log::info!("RINGIL_TRACE memory available {} MB needed {} MB", available >> 20, needed >> 20);
+                    if available < needed {
+                        return None;
+                    }
+                }
                 let mut key = ringil_core::Key::build(inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2, inputs.domain).ok()?;
                 let cached = cache.as_ref().and_then(|path| std::fs::read(path).ok());
                 let solved = match &cached {
