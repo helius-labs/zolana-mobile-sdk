@@ -53,9 +53,15 @@ fn device_log() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         #[cfg(target_os = "ios")]
-        let _ = oslog::OsLogger::new("zolana.ringil").level_filter(log::LevelFilter::Info).init();
+        let _ = oslog::OsLogger::new("zolana.ringil")
+            .level_filter(log::LevelFilter::Info)
+            .init();
         #[cfg(target_os = "android")]
-        android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("ringil"));
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_max_level(log::LevelFilter::Info)
+                .with_tag("ringil"),
+        );
     });
 }
 
@@ -63,9 +69,27 @@ fn device_log() {
 /// solver program is most of a key load (seconds on a phone), the image
 /// loads in milliseconds. The name carries the image format's version.
 fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
-    let mut name = key.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    let mut name = key
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
     name.push(format!(".solver{}", ringil_core::solver_image_version()));
     key.with_file_name(name)
+}
+
+/// The keys whose ringil proof failed in this process: gnark proves them.
+static RINGIL_FAILED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn ringil_failed(name: &str) -> bool {
+    RINGIL_FAILED
+        .lock()
+        .is_ok_and(|failed| failed.iter().any(|n| n == name))
+}
+
+fn set_ringil_failed(name: &str) {
+    if let Ok(mut failed) = RINGIL_FAILED.lock() {
+        failed.push(name.to_string());
+    }
 }
 
 /// Memory the process may still use, in bytes, where the system says.
@@ -97,7 +121,10 @@ impl RingilKey {
     /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve. The
     /// solver comes from its cached image beside `key_path` when there is
     /// one, and is cached there after a build from the program.
-    fn build(prover: &rust_gnark::PreparedProver, key_path: Option<&std::path::Path>) -> Option<Self> {
+    fn build(
+        prover: &rust_gnark::PreparedProver,
+        key_path: Option<&std::path::Path>,
+    ) -> Option<Self> {
         if std::env::var("ZOLANA_PROVER").is_ok_and(|v| v == "gnark") {
             return None;
         }
@@ -108,15 +135,30 @@ impl RingilKey {
                 // A phone that cannot hold ringil's peak for this key proves it
                 // with gnark, which needs less (an iPhone 12 was killed loading
                 // the widest key).
-                let vectors = [inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2].iter().map(|v| v.len() as u64).sum::<u64>();
+                let vectors = [inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2]
+                    .iter()
+                    .map(|v| v.len() as u64)
+                    .sum::<u64>();
                 if let Some(available) = available_memory() {
                     let needed = vectors * RINGIL_PEAK_PER_VECTOR_BYTE;
-                    log::info!("RINGIL_TRACE memory available {} MB needed {} MB", available >> 20, needed >> 20);
+                    log::info!(
+                        "RINGIL_TRACE memory available {} MB needed {} MB",
+                        available >> 20,
+                        needed >> 20
+                    );
                     if available < needed {
                         return None;
                     }
                 }
-                let mut key = ringil_core::Key::build(inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2, inputs.domain).ok()?;
+                let mut key = ringil_core::Key::build(
+                    inputs.a,
+                    inputs.b,
+                    inputs.k,
+                    inputs.z,
+                    inputs.b2,
+                    inputs.domain,
+                )
+                .ok()?;
                 let cached = cache.as_ref().and_then(|path| std::fs::read(path).ok());
                 let solved = match &cached {
                     Some(image) if key.set_solver_image(image) => true,
@@ -193,6 +235,39 @@ impl NativeProver {
 
     /// Prove `body` with `key`, fetched and loaded as needed, and say where
     /// the time went.
+    /// Loads a key in place of the loaded one (gnark holds one), with
+    /// ringil's kernel when `ringil`.
+    fn load(
+        &self,
+        state: &mut crate::ProverState,
+        name: &str,
+        path: &std::path::Path,
+        ringil: bool,
+    ) -> Result<(), WalletError> {
+        state.loaded = None;
+        init_gnark()?;
+        let image = keys::image_path(path);
+        let prover = rust_gnark::PreparedProver::load_key(
+            &path.display().to_string(),
+            Some(&image.display().to_string()),
+        )
+        .map_err(|_| WalletError::ProverLoadFailed)?;
+        let id = state.next_id()?;
+        self.0.loaded.store(id, Ordering::Relaxed);
+        let ringil = if ringil {
+            RingilKey::build(&prover, Some(path))
+        } else {
+            None
+        };
+        state.loaded = Some(Loaded {
+            id,
+            key: Some(name.to_string()),
+            prover,
+            ringil,
+        });
+        Ok(())
+    }
+
     pub(crate) fn prove_request(
         &self,
         body: &str,
@@ -212,29 +287,29 @@ impl NativeProver {
                 // The application holds its own prepared system; leave it.
                 return Err(WalletError::ProverBusy);
             }
-            // Drop the previous key before loading the next: gnark holds one.
-            state.loaded = None;
-            init_gnark()?;
-            let image = keys::image_path(&path);
-            let prover = rust_gnark::PreparedProver::load_key(
-                &path.display().to_string(),
-                Some(&image.display().to_string()),
-            )
-            .map_err(|_| WalletError::ProverLoadFailed)?;
-            let id = state.next_id()?;
-            self.0.loaded.store(id, Ordering::Relaxed);
-            let ringil = RingilKey::build(&prover, Some(&path));
-            state.loaded = Some(Loaded {
-                id,
-                key: Some(name.to_string()),
-                prover,
-                ringil,
-            });
+            let ringil = !ringil_failed(name);
+            self.load(&mut state, name, &path, ringil)?;
         }
         let load_ms = elapsed_ms(loading);
         let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
         let proof = match &loaded.ringil {
-            Some(ringil) => ringil.prove(&loaded.prover, body)?,
+            Some(ringil) => match ringil.prove(&loaded.prover, body) {
+                Ok(proof) => proof,
+                // ringil's proof is verified before it leaves; one that
+                // failed (a device whose GPU miscomputes) sends the key
+                // back to gnark for this process, reloaded with the vectors
+                // ringil had gnark release.
+                Err(_) => {
+                    log::warn!("ringil: the proof failed; {name} proves with gnark");
+                    set_ringil_failed(name);
+                    self.load(&mut state, name, &path, false)?;
+                    let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
+                    loaded
+                        .prover
+                        .prove_request(body)
+                        .map_err(|_| WalletError::ProofFailed)?
+                }
+            },
             None => loaded
                 .prover
                 .prove_request(body)
