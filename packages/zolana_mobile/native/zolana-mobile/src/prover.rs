@@ -59,18 +59,44 @@ fn device_log() {
     });
 }
 
+/// Where the kernel's solver image for a key file is kept: parsing the
+/// solver program is most of a key load (seconds on a phone), the image
+/// loads in milliseconds. The name carries the image format's version.
+fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
+    let mut name = key.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(format!(".solver{}", ringil_core::solver_image_version()));
+    key.with_file_name(name)
+}
+
 impl RingilKey {
-    /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve.
-    fn build(prover: &rust_gnark::PreparedProver) -> Option<Self> {
+    /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve. The
+    /// solver comes from its cached image beside `key_path` when there is
+    /// one, and is cached there after a build from the program.
+    fn build(prover: &rust_gnark::PreparedProver, key_path: Option<&std::path::Path>) -> Option<Self> {
         if std::env::var("ZOLANA_PROVER").is_ok_and(|v| v == "gnark") {
             return None;
         }
         device_log();
+        let cache = key_path.map(solver_image_path);
         let built = prover
             .with_ringil_inputs(|inputs| {
                 let mut key = ringil_core::Key::build(inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2, inputs.domain).ok()?;
-                if !key.set_solver(inputs.program, inputs.coefficients) {
+                let cached = cache.as_ref().and_then(|path| std::fs::read(path).ok());
+                let solved = match &cached {
+                    Some(image) if key.set_solver_image(image) => true,
+                    _ => key.set_solver(inputs.program, inputs.coefficients),
+                };
+                if !solved {
                     return None;
+                }
+                if let (Some(path), None) = (&cache, &cached) {
+                    if let Some(image) = key.solver_image() {
+                        // Whole or absent: written beside, then renamed.
+                        let partial = path.with_extension("partial");
+                        if std::fs::write(&partial, &image).is_ok() {
+                            let _ = std::fs::rename(&partial, path);
+                        }
+                    }
                 }
                 let fixed = ringil_core::groth16::FixedPoints::decode(inputs.fixed)?;
                 Some(Self { key, fixed })
@@ -161,7 +187,7 @@ impl NativeProver {
             .map_err(|_| WalletError::ProverLoadFailed)?;
             let id = state.next_id()?;
             self.0.loaded.store(id, Ordering::Relaxed);
-            let ringil = RingilKey::build(&prover);
+            let ringil = RingilKey::build(&prover, Some(&path));
             state.loaded = Some(Loaded {
                 id,
                 key: Some(name.to_string()),
