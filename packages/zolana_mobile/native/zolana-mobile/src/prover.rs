@@ -47,12 +47,25 @@ pub(crate) struct RingilKey {
     fixed: ringil_core::groth16::FixedPoints,
 }
 
+/// The kernel's RINGIL_TRACE lines into the device log (experiment: the
+/// phases of a proof on a phone, read from the bench's logs).
+fn device_log() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        #[cfg(target_os = "ios")]
+        let _ = oslog::OsLogger::new("zolana.ringil").level_filter(log::LevelFilter::Info).init();
+        #[cfg(target_os = "android")]
+        android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("ringil"));
+    });
+}
+
 impl RingilKey {
     /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve.
     fn build(prover: &rust_gnark::PreparedProver) -> Option<Self> {
         if std::env::var("ZOLANA_PROVER").is_ok_and(|v| v == "gnark") {
             return None;
         }
+        device_log();
         let built = prover
             .with_ringil_inputs(|inputs| {
                 let mut key = ringil_core::Key::build(inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2, inputs.domain).ok()?;

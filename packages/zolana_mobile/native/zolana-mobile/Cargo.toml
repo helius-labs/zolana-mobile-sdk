@@ -27,7 +27,8 @@ rust-gnark = { path = "../rust-gnark" }
 # The ringil prover (experiment): the arithmetic in Rust, on the GPU where
 # there is one; gnark builds the witness and verifies. ZOLANA_PROVER=gnark
 # keeps gnark proving.
-ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core" }
+ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core", features = ["trace"] }
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 solana-commitment-config = "3.1"
 solana-instruction = "3.4"
@@ -55,6 +56,13 @@ zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "82d
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core", features = ["metal"] }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+oslog = "0.2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core", features = ["wgpu"] }
+android_logger = "0.15"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
