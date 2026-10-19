@@ -5,9 +5,9 @@ Unreleased.
 * On Android the package requests `android.permission.INTERNET`, which
   Flutter's template grants only to debug and profile builds: a release
   app without it could not download a proving key.
-* `ZolanaWallet`: registration, deposit, private transfer and withdrawal of
-  SOL and SPL Token / Token-2022 assets, proving on the device. The Solana
-  key stays with the application's `SolanaSigner`.
+* `ZolanaWallet`: registration, deposit and spends of SOL and SPL Token /
+  Token-2022 assets, proving on the device. The Solana key stays with the
+  application's `SolanaSigner`.
 * The wallet keeps no chain state: `balances()`, `privateBalance()`,
   `activity()` and every spend read the indexer when they run.
   `WalletConfig.mints` lists the SPL mints the wallet holds, each with its
@@ -32,18 +32,16 @@ Unreleased.
   `selfTransfer`.
 * `overview()`: the balances and the history from one read of the indexer,
   for a screen that shows both.
-* `transfer` / `prepareTransfer` take `payments`, one or more `Payment`s of
-  the same asset proved together, such as a payment and the application's
-  fee.
-* `deposit`, `withdraw`, `prepareDeposit` and `prepareWithdrawal` take
-  `publicFee`: a public transfer of the same asset from the account to the
-  application's collector, in the same transaction, so the deposit or
-  withdrawal and the fee both land or neither does. `Operation_Deposit` and
-  `Operation_Withdrawal` carry it as `fee`.
-* `prepareRegistration`, `prepareDeposit`, `prepareTransfer`,
-  `prepareWithdrawal`, `submit` and `confirm` for applications that sign and
-  send transactions themselves. `feePayer` lets another account pay the
-  network fee of a transfer or withdrawal.
+* `spend` / `prepareSpend` take `outputs` of one asset, proved together in
+  one transaction: `Output.private`, a note for a registered wallet with its
+  amount hidden and the note tagged with the recipient's Solana address on
+  chain, and `Output.public`, funds to a Solana account with recipient and
+  amount public. The application's fee is one more private output to its
+  registered collector. `Operation_Spend` lists the outputs in order. An
+  empty list fails with `WalletError.noOutputs`.
+* `prepareRegistration`, `prepareDeposit`, `prepareSpend`, `submit` and
+  `confirm` for applications that sign and send transactions themselves.
+  `feePayer` lets another account pay the network fee of a spend.
 * Merges: `setMerging` / `prepareMerging` and `mergingEnabled()` for the
   account's opt-in, and `merge` / `prepareMerge` to combine up to 54 notes of
   one asset on one tree into one, proved on the device or by `proverUrl`.
@@ -93,8 +91,8 @@ Unreleased.
   proof, for slow approvals. Every prepared transaction carries its
   `operation`, `feePayer`, `signers`, `message` and `lastValidBlockHeight`.
   `operation` has one variant per kind, each with its own fields
-  (`Operation_Transfer` its `mint` and `payments`, `Operation_Withdrawal` its
-  `recipient`, `Operation_Merging` whether it turns merges on,
+  (`Operation_Spend` its `mint` and `outputs`, `Operation_Merging` whether it
+  turns merges on,
   `Operation_Custom` the top-level programs of a transaction the application
   composes, which the wallet does not prepare yet); the application builds
   its approval text from it, and the `SolanaSigner` receives the transaction
@@ -109,8 +107,8 @@ Unreleased.
   proxies the prover's `/prove/<key>` routes, or a Zolana prover), through the
   wallet's transport. The device verifies the returned proof against the
   pinned verifying key before it builds the message. `WalletConfig.proving`
-  sets the default; `proving` on `prepareTransfer`, `prepareWithdrawal`,
-  `transfer` and `withdraw` chooses per call.
+  sets the default; `proving` on `prepareSpend` and `spend` chooses per
+  call.
 * The wallet never opens a connection: every request (Solana RPC, indexer,
   proving-key downloads, remote proofs) goes through a transport in Dart, the
   package's own on `package:http` by default, or the application's networking

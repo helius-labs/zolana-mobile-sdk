@@ -173,9 +173,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  Payment dco_decode_box_autoadd_payment(dynamic raw);
-
-  @protected
   Proving dco_decode_box_autoadd_proving(dynamic raw);
 
   @protected
@@ -218,7 +215,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MintConfig> dco_decode_list_mint_config(dynamic raw);
 
   @protected
-  List<Payment> dco_decode_list_payment(dynamic raw);
+  List<Output> dco_decode_list_output(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
@@ -260,9 +257,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  Payment? dco_decode_opt_box_autoadd_payment(dynamic raw);
-
-  @protected
   Proving? dco_decode_opt_box_autoadd_proving(dynamic raw);
 
   @protected
@@ -281,7 +275,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
-  Payment dco_decode_payment(dynamic raw);
+  Output dco_decode_output(dynamic raw);
 
   @protected
   ProvedRequest dco_decode_proved_request(dynamic raw);
@@ -466,9 +460,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  Payment sse_decode_box_autoadd_payment(SseDeserializer deserializer);
-
-  @protected
   Proving sse_decode_box_autoadd_proving(SseDeserializer deserializer);
 
   @protected
@@ -521,7 +512,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MintConfig> sse_decode_list_mint_config(SseDeserializer deserializer);
 
   @protected
-  List<Payment> sse_decode_list_payment(SseDeserializer deserializer);
+  List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
@@ -569,9 +560,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  Payment? sse_decode_opt_box_autoadd_payment(SseDeserializer deserializer);
-
-  @protected
   Proving? sse_decode_opt_box_autoadd_proving(SseDeserializer deserializer);
 
   @protected
@@ -594,7 +582,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
-  Payment sse_decode_payment(SseDeserializer deserializer);
+  Output sse_decode_output(SseDeserializer deserializer);
 
   @protected
   ProvedRequest sse_decode_proved_request(SseDeserializer deserializer);
@@ -819,9 +807,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_payment(Payment self, SseSerializer serializer);
-
-  @protected
   void sse_encode_box_autoadd_proving(Proving self, SseSerializer serializer);
 
   @protected
@@ -885,7 +870,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_list_payment(List<Payment> self, SseSerializer serializer);
+  void sse_encode_list_output(List<Output> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_32_loose(
@@ -949,12 +934,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_opt_box_autoadd_payment(
-    Payment? self,
-    SseSerializer serializer,
-  );
-
-  @protected
   void sse_encode_opt_box_autoadd_proving(
     Proving? self,
     SseSerializer serializer,
@@ -982,7 +961,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
-  void sse_encode_payment(Payment self, SseSerializer serializer);
+  void sse_encode_output(Output self, SseSerializer serializer);
 
   @protected
   void sse_encode_proved_request(ProvedRequest self, SseSerializer serializer);

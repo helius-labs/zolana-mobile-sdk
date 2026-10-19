@@ -264,13 +264,13 @@ class _WalletScreenState extends State<WalletScreen> {
         suggestedRecipient: action == WalletAction.send ? other : null,
         fee: action == WalletAction.send ? demoFee : null,
         run: (units, recipient) => switch (action) {
-          // The fee is a second payment in the same proof: the chain sees
-          // neither amount nor who received what.
-          WalletAction.send => wallet.transfer(
-            payments: [
-              Payment(recipient: recipient!, amount: units),
+          // The fee is a second private output in the same proof: the chain
+          // sees neither amount.
+          WalletAction.send => wallet.spend(
+            outputs: [
+              Output.private(recipient: recipient!, amount: units),
               if (demoFee(units) > BigInt.zero)
-                Payment(
+                Output.private(
                   recipient: demoFeeCollector.publicKey,
                   amount: demoFee(units),
                 ),
@@ -280,9 +280,10 @@ class _WalletScreenState extends State<WalletScreen> {
           WalletAction.shield => wallet.deposit(units, mint: mint),
           // A token goes to this account's own token account, which holds
           // the demo token already.
-          WalletAction.unshield => wallet.withdraw(
-            recipient: wallet.solanaPublicKey,
-            amount: units,
+          WalletAction.unshield => wallet.spend(
+            outputs: [
+              Output.public(recipient: wallet.solanaPublicKey, amount: units),
+            ],
             mint: mint,
           ),
         },

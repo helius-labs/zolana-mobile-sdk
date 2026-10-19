@@ -68,7 +68,6 @@ use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
     error::{client_message, settles_the_send, WalletError},
-    fee,
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
@@ -140,27 +139,15 @@ pub enum Operation {
     /// Publishes the wallet's shielded address so others can pay it.
     Registration,
     /// Moves public funds into the private balance. Public: sender, asset,
-    /// amount. `fee` is the application's public fee, paid from the same
-    /// account in the same transaction.
-    Deposit {
+    /// amount.
+    Deposit { mint: Option<String>, amount: u64 },
+    /// Spends private funds of one asset to `outputs`, in the order given.
+    /// Public: this account, the asset, each public output's recipient and
+    /// amount, and the Solana address each private output's note is tagged
+    /// with. Hidden: the private amounts and the change.
+    Spend {
         mint: Option<String>,
-        amount: u64,
-        fee: Option<Payment>,
-    },
-    /// Private transfer of one asset to registered wallets, in the order
-    /// given. Reveals neither amounts nor recipients.
-    Transfer {
-        mint: Option<String>,
-        payments: Vec<Payment>,
-    },
-    /// Moves private funds to a public account. Public: recipient, asset,
-    /// amount. `fee` is the application's public fee, paid from this wallet's
-    /// account in the same transaction.
-    Withdrawal {
-        mint: Option<String>,
-        recipient: String,
-        amount: u64,
-        fee: Option<Payment>,
+        outputs: Vec<Output>,
     },
     /// Turns merges of this account's notes on or off. Public: the account
     /// and the setting.
@@ -175,11 +162,43 @@ pub enum Operation {
     Custom { programs: Vec<String> },
 }
 
-/// One recipient of a private transfer and the amount it receives.
+/// One output of a spend, in the spend's asset. `recipient` is a base58
+/// Solana account, `amount` in base units.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Payment {
-    pub recipient: String,
-    pub amount: u64,
+#[flutter_rust_bridge::frb(non_opaque)]
+pub enum Output {
+    /// A private note for a registered wallet. The amount is hidden; the
+    /// note is tagged with the recipient's Solana address on chain.
+    Private { recipient: String, amount: u64 },
+    /// Public funds to a Solana account, tokens to its associated token
+    /// account. Recipient and amount are public.
+    Public { recipient: String, amount: u64 },
+}
+
+impl Output {
+    fn recipient(&self) -> &str {
+        match self {
+            Output::Private { recipient, .. } | Output::Public { recipient, .. } => recipient,
+        }
+    }
+
+    fn amount(&self) -> u64 {
+        match self {
+            Output::Private { amount, .. } | Output::Public { amount, .. } => *amount,
+        }
+    }
+}
+
+/// An output whose recipient was checked on chain.
+enum Leg {
+    Private {
+        address: ShieldedAddress,
+        amount: u64,
+    },
+    Public {
+        recipient: Pubkey,
+        amount: u64,
+    },
 }
 
 /// A transaction the wallet built and, where needed, proved, awaiting
@@ -531,7 +550,7 @@ impl MobileWallet {
     ///
     /// The merge needs no signature of this account: `fee_payer` pays and
     /// signs alone, this account when `None`. `proving` works as in
-    /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
+    /// [`Self::prepare_spend`]; a merge is proved with this wallet's
     /// nullifier secret, which a remote prover receives. The proof expires
     /// after ten minutes, so a merge cannot be sent later by whoever holds it;
     /// [`Self::refresh`] does not extend it.
@@ -583,19 +602,12 @@ impl MobileWallet {
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
     /// its own private balance. Deposits carry no proof.
-    ///
-    /// `public_fee` is the application's fee: a public transfer of the same
-    /// asset from this account to the collector, in the same transaction, so
-    /// the deposit and the fee both land or neither does. See
-    /// [`Self::prepare_withdrawal`] for what is checked.
     pub fn prepare_deposit(
         &mut self,
         mint: Option<String>,
         amount: u64,
-        public_fee: Option<Payment>,
     ) -> Result<PreparedTransaction, WalletError> {
         let asset = self.asset(mint)?;
-        let fee_transfer = self.public_fee(asset, public_fee.as_ref())?;
         let deposit_asset = match asset.token_program {
             None => DepositAsset::Sol,
             Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
@@ -622,14 +634,12 @@ impl MobileWallet {
             }],
         }
         .instruction()?;
-        let instructions: Vec<Instruction> = std::iter::once(deposit).chain(fee_transfer).collect();
         self.pending(
             Operation::Deposit {
                 mint: mint_name(&asset.mint),
                 amount,
-                fee: public_fee,
             },
-            self.message(&instructions)?,
+            self.message(&[deposit])?,
         )
     }
 
@@ -671,15 +681,28 @@ impl MobileWallet {
         Ok(activity::entries(&self.scan()?.history))
     }
 
-    /// Build and prove a private transfer of `mint` (SOL for `None`) to one
-    /// or more registered wallets, each receiving its payment as a private
-    /// output: a second payment can be the application's own fee. The proof
-    /// hides every amount and recipient. A transfer with two payments proves
-    /// with 4-output keys, which take at most 24 notes; past that it fails
-    /// with [`WalletError::MergeRequired`].
+    /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in
+    /// one transaction. A private output is a note for a registered wallet,
+    /// its amount hidden and the note tagged with the recipient's Solana
+    /// address on chain; a public output moves funds to a Solana account,
+    /// tokens to its associated token account, recipient and amount public.
+    /// An application's own fee is one more private output, to its
+    /// registered collector.
     ///
-    /// Refuses an unregistered recipient instead of paying it publicly:
-    /// [`Self::prepare_withdrawal`] makes a public payment explicit.
+    /// Before the network: no outputs fail with [`WalletError::NoOutputs`],
+    /// a zero amount with [`WalletError::AmountZero`]. Then, beside the note
+    /// selection, an unregistered private recipient fails with
+    /// [`WalletError::RecipientNotRegistered`] instead of being paid
+    /// publicly, and a public token recipient without an associated token
+    /// account with [`WalletError::RecipientTokenAccountMissing`]; the
+    /// application creates the account with its own Solana client.
+    ///
+    /// The private outputs and the change take the proof's output slots,
+    /// public outputs none: a spend with `k` private outputs proves with
+    /// `k + 1` outputs, whose keys take at most 40 notes for `k <= 1`, 24
+    /// for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`, within
+    /// [`WalletConfig::max_spend_inputs`]; past that it fails with
+    /// [`WalletError::MergeRequired`].
     ///
     /// `fee_payer` pays the network fee, this account when `None`. The proof
     /// binds it, so it cannot change after this call. Another fee payer signs
@@ -692,157 +715,94 @@ impl MobileWallet {
     /// itself before the message is built: a response that is not a proof of
     /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
     /// does not verify with [`WalletError::ProofInvalid`].
-    pub fn prepare_transfer(
+    pub fn prepare_spend(
         &mut self,
-        payments: Vec<Payment>,
+        outputs: Vec<Output>,
         mint: Option<String>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
     ) -> Result<PreparedTransaction, WalletError> {
-        let mut recipients = Vec::with_capacity(payments.len());
+        if outputs.is_empty() {
+            return Err(WalletError::NoOutputs);
+        }
+        let mut recipients = Vec::with_capacity(outputs.len());
         let mut total = 0u64;
-        for payment in &payments {
-            if payment.amount == 0 {
+        for output in &outputs {
+            if output.amount() == 0 {
                 return Err(WalletError::AmountZero);
             }
             total = total
-                .checked_add(payment.amount)
+                .checked_add(output.amount())
                 .ok_or(TransactionError::SelectedBalanceOverflow)?;
-            recipients.push(parse_pubkey(&payment.recipient)?);
+            recipients.push(parse_pubkey(output.recipient())?);
         }
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
         let asset = self.asset(mint)?;
-        // The payments and a change output.
-        let outputs = payments.len() + 1;
-        let (addresses, inputs) = beside(
-            || self.registered_addresses(&recipients),
-            || self.select_notes(asset, total, outputs),
+        let (legs, inputs) = beside(
+            || self.legs(asset, &outputs, &recipients),
+            || self.select_notes(asset, total, proof_outputs(&outputs)),
         );
-        let (addresses, inputs) = (addresses?, inputs?);
+        let (legs, inputs) = (legs?, inputs?);
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
-        for (address, payment) in addresses.iter().zip(&payments) {
-            match asset.token_program {
-                None => transaction.transfer_sol(address, payment.amount),
-                Some(_) => transaction.transfer(address, asset.mint, payment.amount),
-            }?;
-        }
-        let pending = self.proved(
-            Operation::Transfer {
-                mint: mint_name(&asset.mint),
-                payments,
-            },
-            self.prove(transaction, Vec::new(), payer, proving)?,
-        );
-        Ok(self.reserve(pending, spends))
-    }
-
-    /// Build and prove a withdrawal of private funds to the public account
-    /// `recipient`. Tokens go to its associated token account. Without one
-    /// the withdrawal could not settle, so it fails with
-    /// `recipient_token_account_missing` before proving; the application
-    /// creates the account with its own Solana client.
-    ///
-    /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
-    ///
-    /// `public_fee` is the application's fee: a public transfer of the same
-    /// asset from this account to the collector, after the withdrawal in the
-    /// same transaction, so both land or neither does. The account signs it
-    /// with the withdrawal, and pays it from its public balance, which a
-    /// withdrawal to itself has just filled. Before proving, a zero amount
-    /// fails with [`WalletError::AmountZero`], and a token fee whose
-    /// collector has no associated token account with
-    /// [`WalletError::RecipientTokenAccountMissing`] naming the collector. A
-    /// SOL fee to a collector that does not exist must cover its rent. The
-    /// proof does not bind the fee, so it adds nothing to the proof; it adds
-    /// accounts to the message, which a very wide spend may not have room
-    /// for.
-    pub fn prepare_withdrawal(
-        &mut self,
-        recipient: String,
-        mint: Option<String>,
-        amount: u64,
-        fee_payer: Option<String>,
-        proving: Option<Proving>,
-        public_fee: Option<Payment>,
-    ) -> Result<PreparedTransaction, WalletError> {
-        let recipient = parse_pubkey(&recipient)?;
-        let payer = self.fee_payer(fee_payer)?;
-        let proving = self.proving(proving)?;
-        let asset = self.asset(mint)?;
-        let token_account = asset.token_account(&recipient);
-        let (checks, inputs) = beside(
-            || -> Result<Option<Instruction>, WalletError> {
-                if let Some(token_account) = token_account {
-                    if self.client.get_account(token_account)?.is_none() {
-                        return Err(WalletError::RecipientTokenAccountMissing {
-                            recipient: recipient.to_string(),
-                            mint: asset.mint.to_string(),
-                        });
-                    }
+        let mut settlements = Vec::new();
+        for leg in legs {
+            match leg {
+                Leg::Private { address, amount } => {
+                    match asset.token_program {
+                        None => transaction.transfer_sol(&address, amount),
+                        Some(_) => transaction.transfer(&address, asset.mint, amount),
+                    }?;
                 }
-                self.public_fee(asset, public_fee.as_ref())
-            },
-            // A withdrawal pads its change to two outputs.
-            || self.select_notes(asset, amount, 2),
-        );
-        let fee_transfer = checks?;
-        let inputs = inputs?;
-        let spends = nullifiers(&inputs);
-        let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
-        let settlement =
-            transaction.withdraw_to(asset.mint, amount, recipient, asset.token_program)?;
-        let mut unsigned = self.prove(transaction, vec![settlement], payer, proving)?;
-        if let Some(transfer) = fee_transfer {
-            unsigned.message = fee::append(
-                &unsigned.message,
-                transfer,
-                fee::budget(self.client.compute_budget()),
-            )?;
+                Leg::Public { recipient, amount } => settlements.push(transaction.withdraw_to(
+                    asset.mint,
+                    amount,
+                    recipient,
+                    asset.token_program,
+                )?),
+            }
         }
         let pending = self.proved(
-            Operation::Withdrawal {
+            Operation::Spend {
                 mint: mint_name(&asset.mint),
-                recipient: recipient.to_string(),
-                amount,
-                fee: public_fee,
+                outputs,
             },
-            unsigned,
+            self.prove(transaction, settlements, payer, proving)?,
         );
         Ok(self.reserve(pending, spends))
     }
 
-    /// The transfer of the application's public fee, checked before anything
-    /// is proved. `None` for no fee.
-    fn public_fee(
+    /// `outputs` with each recipient checked on chain: a private recipient
+    /// is registered, a public recipient of a token has its associated token
+    /// account. SOL needs no account.
+    fn legs(
         &self,
         asset: Asset,
-        fee: Option<&Payment>,
-    ) -> Result<Option<Instruction>, WalletError> {
-        let Some(fee) = fee else { return Ok(None) };
-        if fee.amount == 0 {
-            return Err(WalletError::AmountZero);
-        }
-        let collector = parse_pubkey(&fee.recipient)?;
-        let mut decimals = 0;
-        if let Some(destination) = asset.token_account(&collector) {
-            if self.client.get_account(destination)?.is_none() {
-                return Err(WalletError::RecipientTokenAccountMissing {
-                    recipient: collector.to_string(),
-                    mint: asset.mint.to_string(),
-                });
-            }
-            let mint = self.client.get_account(asset.mint)?;
-            decimals = fee::mint_decimals(&asset.mint, &mint.map_or(Vec::new(), |m| m.data))?;
-        }
-        Ok(Some(fee::transfer(
-            &asset,
-            &self.owner,
-            &collector,
-            fee.amount,
-            decimals,
-        )))
+        outputs: &[Output],
+        recipients: &[Pubkey],
+    ) -> Result<Vec<Leg>, WalletError> {
+        outputs
+            .iter()
+            .zip(recipients)
+            .map(|(output, &recipient)| match *output {
+                Output::Private { amount, .. } => Ok(Leg::Private {
+                    address: self.registered_address(recipient)?,
+                    amount,
+                }),
+                Output::Public { amount, .. } => {
+                    if let Some(token_account) = asset.token_account(&recipient) {
+                        if self.client.get_account(token_account)?.is_none() {
+                            return Err(WalletError::RecipientTokenAccountMissing {
+                                recipient: recipient.to_string(),
+                                mint: asset.mint.to_string(),
+                            });
+                        }
+                    }
+                    Ok(Leg::Public { recipient, amount })
+                }
+            })
+            .collect()
     }
 
     fn fee_payer(&self, fee_payer: Option<String>) -> Result<Pubkey, WalletError> {
@@ -953,21 +913,13 @@ impl MobileWallet {
         )
     }
 
-    /// The shielded addresses of `recipients`, each registered.
-    fn registered_addresses(
-        &self,
-        recipients: &[Pubkey],
-    ) -> Result<Vec<ShieldedAddress>, WalletError> {
-        recipients
-            .iter()
-            .map(|recipient| {
-                try_resolve_registered_address(&self.client, *recipient)?
-                    .map(|registered| registered.address)
-                    .ok_or_else(|| WalletError::RecipientNotRegistered {
-                        recipient: recipient.to_string(),
-                    })
+    /// The shielded address `recipient` registered.
+    fn registered_address(&self, recipient: Pubkey) -> Result<ShieldedAddress, WalletError> {
+        try_resolve_registered_address(&self.client, recipient)?
+            .map(|registered| registered.address)
+            .ok_or_else(|| WalletError::RecipientNotRegistered {
+                recipient: recipient.to_string(),
             })
-            .collect()
     }
 
     /// The nullifiers of the notes prepared spends and merges reserve.
@@ -1243,6 +1195,17 @@ fn spend_failure(amount: u64, failure: TransactionError) -> WalletError {
     }
 }
 
+/// The proof's output slots a spend to `outputs` takes: each private output
+/// and the change, two at least, the narrowest keys' width. Public outputs
+/// settle outside the proof's outputs.
+fn proof_outputs(outputs: &[Output]) -> usize {
+    let private = outputs
+        .iter()
+        .filter(|output| matches!(output, Output::Private { .. }))
+        .count();
+    (private + 1).max(2)
+}
+
 /// The most notes a spend with `outputs` outputs takes: the widest pinned
 /// shape for them, within the Zolana SDK's selection cap.
 fn max_spend_inputs(outputs: usize) -> usize {
@@ -1500,11 +1463,18 @@ mod tests {
         open_with(signer, config())
     }
 
-    fn pay(recipient: &str, amount: u64) -> Vec<Payment> {
-        vec![Payment {
+    fn private(recipient: &str, amount: u64) -> Output {
+        Output::Private {
             recipient: recipient.to_string(),
             amount,
-        }]
+        }
+    }
+
+    fn public(recipient: &str, amount: u64) -> Output {
+        Output::Public {
+            recipient: recipient.to_string(),
+            amount,
+        }
     }
 
     /// A wallet whose transport reaches nothing: a request fails as a
@@ -1861,21 +1831,27 @@ mod tests {
         assert_eq!(reads, INDEXER_CATCH_UP.num_retries as usize + 1);
     }
 
+    /// The send error of a note the chain already spent, refused in
+    /// simulation.
+    fn nullifier_queued() -> serde_json::Value {
+        serde_json::json!({"error": {
+            "code": -32002,
+            "message": "Transaction simulation failed: custom program error: 0x1b83",
+            "data": {
+                "err": {"InstructionError": [0, {"Custom": 7043}]},
+                "logs": [], "accounts": null, "unitsConsumed": 0,
+                "returnData": null, "innerInstructions": null
+            }
+        }})
+    }
+
     /// A spend of a note the chain already spent fails as such, at once: the
     /// node refused it, so it cannot have landed.
     #[test]
     fn a_spent_note_is_notes_already_spent() {
         let signer = Keypair::new();
         let (wallet, asked) = rpc_wallet(&signer, |method| match method {
-            "sendTransaction" => serde_json::json!({"error": {
-                "code": -32002,
-                "message": "Transaction simulation failed: custom program error: 0x1b83",
-                "data": {
-                    "err": {"InstructionError": [0, {"Custom": 7043}]},
-                    "logs": [], "accounts": null, "unitsConsumed": 0,
-                    "returnData": null, "innerInstructions": null
-                }
-            }}),
+            "sendTransaction" => nullifier_queued(),
             _ => status(true),
         });
         let pending = unsigned(&signer);
@@ -2300,8 +2276,8 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let missing = |wallet: &mut MobileWallet, proving| {
             [
-                wallet.prepare_transfer(pay(&recipient, 1), None, None, proving),
-                wallet.prepare_withdrawal(recipient.clone(), None, 1, None, proving, None),
+                wallet.prepare_spend(vec![private(&recipient, 1)], None, None, proving),
+                wallet.prepare_spend(vec![public(&recipient, 1)], None, None, proving),
             ]
             .map(|result| result.err() == Some(WalletError::RemoteProverMissing))
         };
@@ -2322,13 +2298,11 @@ mod tests {
         assert_eq!(missing(&mut remote, None), [false; 2]);
     }
 
-    /// A deposit's public fee is a second instruction of the same message, so
-    /// both land or neither: the owner pays and signs once, and the operation
-    /// names the fee for the approval screen.
+    /// A deposit is one instruction this account pays for and signs, and the
+    /// operation names what it moves.
     #[test]
-    fn a_deposit_carries_its_public_fee_in_the_same_message() {
+    fn a_deposit_is_one_instruction_this_account_signs() {
         let signer = Keypair::new();
-        let collector = Pubkey::new_unique();
         let (mut wallet, _) = rpc_wallet(&signer, |method| match method {
             "getLatestBlockhash" => serde_json::json!({"result": {
                 "context": {"slot": 1},
@@ -2339,103 +2313,82 @@ mod tests {
             }}),
             _ => serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
         });
-
-        let plain = wallet.prepare_deposit(None, 100, None).unwrap();
-        assert_eq!(plain.message.instructions().len(), 1);
-        let fee = Payment {
-            recipient: collector.to_string(),
-            amount: 5,
-        };
-        let pending = wallet
-            .prepare_deposit(None, 100, Some(fee.clone()))
-            .unwrap();
+        let pending = wallet.prepare_deposit(None, 100).unwrap();
         assert_eq!(
             pending.operation(),
             Operation::Deposit {
                 mint: None,
-                amount: 100,
-                fee: Some(fee)
+                amount: 100
             }
         );
-        let instructions = pending.message.instructions();
-        assert_eq!(instructions.len(), 2);
-        // Adding an account can shift the indexes, so compare what they name.
-        let resolve = |message: &VersionedMessage, index: usize| {
-            let keys = message.static_account_keys();
-            let instruction = &message.instructions()[index];
-            (
-                keys[usize::from(instruction.program_id_index)],
-                instruction
-                    .accounts
-                    .iter()
-                    .map(|&account| keys[usize::from(account)])
-                    .collect::<Vec<_>>(),
-                instruction.data.clone(),
-            )
-        };
-        assert_eq!(
-            resolve(&pending.message, 0),
-            resolve(&plain.message, 0),
-            "the deposit is unchanged"
-        );
-        let keys = pending.message.static_account_keys();
-        let transfer = &instructions[1];
-        assert_eq!(
-            keys[usize::from(transfer.program_id_index)],
-            Pubkey::default()
-        );
-        assert_eq!(transfer.data, [2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(
-            transfer
-                .accounts
-                .iter()
-                .map(|&index| keys[usize::from(index)])
-                .collect::<Vec<_>>(),
-            [signer.pubkey(), collector]
-        );
+        assert_eq!(pending.message.instructions().len(), 1);
         assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
+        assert_eq!(pending.last_valid_block_height(), 9);
     }
 
-    /// A fee that cannot be built fails before anything is proved or sent.
+    /// The outputs are checked before anything is asked of the network: no
+    /// outputs, a zero amount and a total past `u64` each fail at once.
     #[test]
-    fn a_malformed_public_fee_fails_before_proving() {
+    fn a_spend_checks_its_outputs_before_the_network() {
         let signer = Keypair::new();
-        let mut wallet = open(&signer).unwrap();
-        let fee = |recipient: &str, amount| {
-            Some(Payment {
-                recipient: recipient.to_string(),
-                amount,
-            })
-        };
-        let collector = Pubkey::new_unique().to_string();
-        let recipient = signer.pubkey().to_string();
-        let error = |wallet: &mut MobileWallet, public_fee: Option<Payment>| {
-            [
-                wallet.prepare_deposit(None, 1, public_fee.clone()).err(),
-                wallet
-                    .prepare_withdrawal(recipient.clone(), None, 1, None, None, public_fee)
-                    .err(),
-            ]
-        };
-        let both = |error: WalletError| [Some(error.clone()), Some(error)];
-        assert_eq!(
-            error(&mut wallet, fee(&collector, 0)),
-            both(WalletError::AmountZero)
+        let (mut wallet, asked) = rpc_wallet(
+            &signer,
+            |_| serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
         );
+        let recipient = Keypair::new().pubkey().to_string();
+        let spend = |wallet: &mut MobileWallet, outputs| {
+            wallet
+                .prepare_spend(outputs, None, None, None)
+                .err()
+                .expect("fails before the network")
+        };
+        assert_eq!(spend(&mut wallet, vec![]), WalletError::NoOutputs);
         assert_eq!(
-            error(&mut wallet, fee("not-a-key", 1)),
-            both(WalletError::InvalidPubkey {
-                value: "not-a-key".into()
-            })
+            spend(
+                &mut wallet,
+                vec![private(&recipient, 1), public(&recipient, 0)]
+            ),
+            WalletError::AmountZero
         );
+        let overflow = spend(
+            &mut wallet,
+            vec![private(&recipient, u64::MAX), public(&recipient, 1)],
+        );
+        assert!(
+            matches!(&overflow, WalletError::Client { message } if message.contains("overflow")),
+            "{overflow:?}"
+        );
+        assert!(asked.lock().unwrap().is_empty());
     }
 
+    /// Private outputs and the change take the proof's output slots, public
+    /// outputs none; the slots pick the widest keys, and with them the notes
+    /// a spend can take.
     #[test]
-    fn a_second_payment_narrows_a_spend_to_the_widest_four_output_key() {
-        // One payment and change: the 2-output keys, up to the SDK's cap.
+    fn private_outputs_and_the_change_take_the_proof_slots() {
+        let recipient = Pubkey::new_unique().to_string();
+        let slots = |outputs: &[Output]| proof_outputs(outputs);
+        assert_eq!(slots(&[public(&recipient, 1)]), 2);
+        assert_eq!(slots(&[public(&recipient, 1), public(&recipient, 1)]), 2);
+        assert_eq!(slots(&[private(&recipient, 1)]), 2);
+        assert_eq!(slots(&[private(&recipient, 1), public(&recipient, 1)]), 2);
+        assert_eq!(slots(&[private(&recipient, 1), private(&recipient, 1)]), 3);
+        assert_eq!(
+            slots(&[
+                public(&recipient, 1),
+                private(&recipient, 1),
+                private(&recipient, 1),
+                private(&recipient, 1),
+            ]),
+            4
+        );
+        // One private output and change: the 2-output keys, up to the SDK's
+        // cap. Two or three: the 4-output keys, which stop at 24 notes.
         assert_eq!(max_spend_inputs(2), MAX_SPEND_INPUTS);
-        // Two payments and change: 4-output keys, which stop at 24 notes.
         assert_eq!(max_spend_inputs(3), 24);
+        assert_eq!(max_spend_inputs(4), 24);
+        assert_eq!(max_spend_inputs(5), 16);
+        assert_eq!(max_spend_inputs(9), 8);
         assert!(canonical_shape(24, 3).is_ok());
         assert!(canonical_shape(25, 3).is_err());
     }
@@ -2448,15 +2401,15 @@ mod tests {
         let invalid = Some(WalletError::InvalidPubkey { value: bad.clone() });
         let error = |result: Result<PreparedTransaction, WalletError>| result.err();
         assert_eq!(
-            error(wallet.prepare_transfer(pay(&bad, 1), None, None, None)),
+            error(wallet.prepare_spend(vec![private(&bad, 1)], None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_transfer(pay(&recipient, 1), None, Some(bad.clone()), None)),
+            error(wallet.prepare_spend(vec![public(&bad, 1)], None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_withdrawal(recipient, None, 1, Some(bad), None, None)),
+            error(wallet.prepare_spend(vec![private(&recipient, 1)], None, Some(bad), None)),
             invalid
         );
     }

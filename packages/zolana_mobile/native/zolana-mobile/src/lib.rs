@@ -12,7 +12,6 @@ use zolana_hasher::{Hasher, Poseidon};
 mod activity;
 mod asset;
 mod error;
-mod fee;
 mod keys;
 mod prover;
 mod transport;
@@ -27,7 +26,7 @@ pub use transport::{
     Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
 };
 pub use wallet::{
-    derivation_message, MobileWallet, Operation, Payment, PreparedTransaction, RegistrationStatus,
+    derivation_message, MobileWallet, Operation, Output, PreparedTransaction, RegistrationStatus,
     TokenBalance, WalletConfig, WalletKeys, WalletOverview,
 };
 

@@ -90,18 +90,18 @@ abstract interface class WalletBackend {
 /// and every spend read the wallet's notes from the indexer when they run,
 /// unless `WalletConfig.reuseNotesMs` lets a spend take them from a read
 /// made that recently.
-/// Only the notes its prepared spends reserve are kept, in memory: the next
-/// spend selects other notes until a prepared spend is submitted or
-/// confirmed, [release]d, or past its
-/// [PreparedTransaction.lastValidBlockHeight]. A spend that would need a
-/// reserved note fails with [WalletError.notesReserved].
+/// Only the notes its prepared spends reserve are kept, in memory, in this
+/// open wallet: the next spend selects other notes until the prepared
+/// spend is submitted or confirmed, [release]d, or past its
+/// [PreparedTransaction.lastValidBlockHeight]. A spend
+/// that would need a reserved note fails with [WalletError.notesReserved].
 ///
 /// Every operation runs after the previous one finishes: the native wallet
 /// holds one proving key at a time. [close] it when the application locks or
 /// switches accounts.
 ///
-/// [register], [deposit], [transfer] and [withdraw] prepare, sign with the
-/// wallet's [SolanaSigner] and submit. An application that signs and sends
+/// [register], [deposit] and [spend] prepare, sign with the wallet's
+/// [SolanaSigner] and submit. An application that signs and sends
 /// transactions itself uses the `prepare` methods, then [submit] or, after
 /// sending, [confirm].
 class ZolanaWallet {
@@ -169,8 +169,8 @@ class ZolanaWallet {
   /// [WalletError.invalidWalletKeys] unless each private key yields its
   /// public key.
   ///
-  /// Without a [signer], [register], [deposit], [transfer] and [withdraw] fail
-  /// with [WalletError.signerMissing]; the `prepare` methods, [submit] and
+  /// Without a [signer], [register], [deposit] and [spend] fail with
+  /// [WalletError.signerMissing]; the `prepare` methods, [submit] and
   /// [confirm] work. A [signer] for another account fails with
   /// [WalletError.signerMismatch].
   /// [transport] and [allowInsecureHttp] work as in [open].
@@ -246,9 +246,10 @@ class ZolanaWallet {
       _serial(() => _wallet.privateBalance(mint: mint));
 
   /// Transaction history, read from the indexer now, newest first: one entry
-  /// per asset each transaction moved. A spend whose outputs are all this
-  /// wallet's own is listed as a withdrawal, one with another wallet's output
-  /// as sent; the indexer does not say which spends were withdrawals.
+  /// per asset each transaction moved. A spend with a note for another
+  /// wallet is listed as `sent`, for its whole total; one with only public
+  /// outputs, whose notes are all this wallet's own, as `withdrawal`. The
+  /// indexer does not say which spends were withdrawals.
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
   /// [balances] and [activity] from one read of the indexer, which each of
@@ -283,7 +284,7 @@ class ZolanaWallet {
   ///
   /// A merge needs no signature of this account: [feePayer] (this account
   /// when null) pays and signs alone. [proving] works as in
-  /// [prepareTransfer]; a remote prover receives this wallet's nullifier
+  /// [prepareSpend]; a remote prover receives this wallet's nullifier
   /// secret and learns every merged amount. The proof expires ten minutes
   /// after this call, and [refresh] does not extend it.
   Future<PreparedTransaction> prepareMerge({
@@ -304,35 +305,36 @@ class ZolanaWallet {
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
-  ///
-  /// [publicFee] is the application's fee: a public transfer of the same
-  /// asset from this account to [native.Payment.recipient], in the same
-  /// transaction, so the deposit and the fee both land or neither does. The
-  /// account signs once. Fails before anything is sent with
-  /// [WalletError.amountZero] for a zero fee, [WalletError.invalidPubkey] for
-  /// a collector that is not a Solana public key, and, for a token,
-  /// [WalletError.recipientTokenAccountMissing] when the collector has no
-  /// associated token account for the mint. A SOL fee to a collector that
-  /// does not exist yet must cover its rent.
-  /// [native.Operation_Deposit.fee] shows it for the approval.
-  Future<PreparedTransaction> prepareDeposit(
-    BigInt amount, {
-    String? mint,
-    native.Payment? publicFee,
-  }) => _serial(
-    () => _prepare(
-      _wallet.prepareDeposit(mint: mint, amount: amount, publicFee: publicFee),
-    ),
-  );
+  Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
+      _serial(
+        () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),
+      );
 
-  /// Send private funds to the registered wallets of [payments], each
-  /// [Payment.recipient] a Solana public key, in one transaction: a second
-  /// payment can be the application's own fee, as private as the first.
-  /// Reads the spendable notes, takes the largest first, builds and proves
-  /// on the device. Fails with [WalletError.mergeRequired] when the total
-  /// needs more notes than one transaction spends (40 with one payment, 24
-  /// with two), and with [WalletError.tooManyInputTrees] when they are on
-  /// more than two trees.
+  /// Spend private funds of [mint] (SOL when null) to [outputs], each
+  /// recipient a Solana public key, in one transaction and one proof. An
+  /// [native.Output_Private] is a note for a registered wallet; an
+  /// [native.Output_Public] moves funds to a Solana account, tokens to its
+  /// associated token account. The application's own fee is one more private
+  /// output, to its registered collector. Reads the spendable notes, takes
+  /// the largest first, builds and proves on the device.
+  ///
+  /// What is public: this account, the asset, each public output's recipient
+  /// and amount, and the Solana address each private output's note is tagged
+  /// with on chain. The private amounts and the change are hidden.
+  ///
+  /// Fails before anything is asked with [WalletError.noOutputs] for an
+  /// empty list and [WalletError.amountZero] for a zero amount; then with
+  /// [WalletError.recipientNotRegistered] for a private recipient without a
+  /// shielded address, which a public output pays instead, and with
+  /// [WalletError.recipientTokenAccountMissing] for a public token recipient
+  /// without an associated token account, which the application creates with
+  /// its own Solana client. A spend with `k` private outputs proves with
+  /// `k + 1` outputs, its change included, and public outputs take no slot,
+  /// so it takes at most 40 notes for `k <= 1`, 24 for `k <= 3`, 16 for
+  /// `k <= 7` and 8 for `k <= 15`, within `WalletConfig.maxSpendInputs`.
+  /// Past that it fails with [WalletError.mergeRequired], and with
+  /// [WalletError.tooManyInputTrees] when the notes are on more than two
+  /// trees.
   ///
   /// [feePayer] (a Solana public key, such as the application's backend)
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,
@@ -347,53 +349,18 @@ class ZolanaWallet {
   /// response that is not a proof of the pinned key fails with
   /// [WalletError.proofMalformed], a proof that does not verify with
   /// [WalletError.proofInvalid].
-  Future<PreparedTransaction> prepareTransfer({
-    required List<native.Payment> payments,
+  Future<PreparedTransaction> prepareSpend({
+    required List<native.Output> outputs,
     String? mint,
     String? feePayer,
     native.Proving? proving,
   }) => _serial(
     () => _prepare(
-      _wallet.prepareTransfer(
-        payments: payments,
+      _wallet.prepareSpend(
+        outputs: outputs,
         mint: mint,
         feePayer: feePayer,
         proving: proving,
-      ),
-    ),
-  );
-
-  /// Move private funds to the public account [recipient]. The recipient,
-  /// asset and amount are public. Tokens go to the recipient's associated
-  /// token account; without one this fails with
-  /// [WalletError.recipientTokenAccountMissing] before proving. Create the
-  /// account with the application's Solana client first. [feePayer] and
-  /// [proving] work as in [prepareTransfer].
-  ///
-  /// [publicFee] is the application's fee: a public transfer of the same
-  /// asset from this account to [native.Payment.recipient], after the
-  /// withdrawal in the same transaction, so both land or neither does. This
-  /// account signs it with the withdrawal and pays it from its public
-  /// balance, which a withdrawal to itself has just filled. It is checked as
-  /// for [prepareDeposit], before proving. The proof does not cover it, but
-  /// the message gains its accounts, so a very wide spend may not have room
-  /// for it. [native.Operation_Withdrawal.fee] shows it for the approval.
-  Future<PreparedTransaction> prepareWithdrawal({
-    required String recipient,
-    required BigInt amount,
-    String? mint,
-    String? feePayer,
-    native.Proving? proving,
-    native.Payment? publicFee,
-  }) => _serial(
-    () => _prepare(
-      _wallet.prepareWithdrawal(
-        recipient: recipient,
-        mint: mint,
-        amount: amount,
-        feePayer: feePayer,
-        proving: proving,
-        publicFee: publicFee,
       ),
     ),
   );
@@ -434,8 +401,8 @@ class ZolanaWallet {
 
   /// Release the notes [transaction] reserves, for a prepared spend that will
   /// not be sent, such as one the user declined, so the next spend can select
-  /// them. [submit] and [confirm] release them, and [register], [deposit],
-  /// [transfer] and [withdraw] release them when the signer fails.
+  /// them. [submit] and [confirm] release them, and [register], [deposit]
+  /// and [spend] release them when the signer fails.
   Future<void> release(PreparedTransaction transaction) =>
       _serial(() => _wallet.release(pending: transaction));
 
@@ -488,43 +455,17 @@ class ZolanaWallet {
   );
 
   /// [prepareDeposit], signed and submitted.
-  Future<String> deposit(
-    BigInt amount, {
-    String? mint,
-    native.Payment? publicFee,
-  }) => _serial(
-    () => _send(
-      _wallet.prepareDeposit(mint: mint, amount: amount, publicFee: publicFee),
-    ),
-  );
+  Future<String> deposit(BigInt amount, {String? mint}) =>
+      _serial(() => _send(_wallet.prepareDeposit(mint: mint, amount: amount)));
 
-  /// [prepareTransfer], signed and submitted.
-  Future<String> transfer({
-    required List<native.Payment> payments,
+  /// [prepareSpend], signed and submitted by this account.
+  Future<String> spend({
+    required List<native.Output> outputs,
     String? mint,
     native.Proving? proving,
   }) => _serial(
     () => _send(
-      _wallet.prepareTransfer(payments: payments, mint: mint, proving: proving),
-    ),
-  );
-
-  /// [prepareWithdrawal], signed and submitted.
-  Future<String> withdraw({
-    required String recipient,
-    required BigInt amount,
-    String? mint,
-    native.Proving? proving,
-    native.Payment? publicFee,
-  }) => _serial(
-    () => _send(
-      _wallet.prepareWithdrawal(
-        recipient: recipient,
-        mint: mint,
-        amount: amount,
-        proving: proving,
-        publicFee: publicFee,
-      ),
+      _wallet.prepareSpend(outputs: outputs, mint: mint, proving: proving),
     ),
   );
 
@@ -558,7 +499,7 @@ class ZolanaWallet {
   /// Download ahead of time the proving keys of spends of up to [maxInputs]
   /// notes with [outputs] outputs, and of merges of up to [maxMergeInputs]
   /// notes, so the first proof of each shape does not wait for its key. A
-  /// transfer or withdrawal has two outputs.
+  /// spend with one private output, or none, has two outputs.
   ///
   /// The download starts when the stream is listened to and reports each
   /// part of a few MB; keys already on the device are skipped. Cancelling the

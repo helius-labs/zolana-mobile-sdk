@@ -57,8 +57,10 @@ void main() {
       DemoSigner.fromSeedHex(_account.seedHex, onSign: approvals?.add);
 
   Future<PreparedTransaction> payItself(ZolanaWallet wallet) =>
-      wallet.prepareTransfer(
-        payments: [Payment(recipient: _account.publicKey, amount: _amount)],
+      wallet.prepareSpend(
+        outputs: [
+          Output.private(recipient: _account.publicKey, amount: _amount),
+        ],
       );
 
   testWidgets('restores on a new phone from the signature', (tester) async {
