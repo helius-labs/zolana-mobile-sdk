@@ -11,6 +11,7 @@ import 'demo_keys.dart';
 import 'demo_signer.dart';
 import 'format.dart';
 import 'main.dart' show DemoScreen;
+import 'spend_limit.dart';
 import 'test_cluster_rpc.dart';
 
 const _apiKey = String.fromEnvironment('ZOLANA_API_KEY');
@@ -252,12 +253,28 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Future<void> _act(WalletAction action) async {
     final wallet = _wallet!;
-    final available = switch (action) {
-      WalletAction.shield => _maxShield(),
-      _ => _private ?? BigInt.zero,
+    final balance = _balance;
+    // Notes an unfinished payment holds are not free for this one.
+    final free = balance == null
+        ? BigInt.zero
+        : balance.amount - balance.reserved;
+    final (available, limit) = switch (action) {
+      WalletAction.shield => (_maxShield(), null),
+      // The recipient and the fee are private outputs.
+      WalletAction.send => (free, spendLimit(balance, 2)),
+      // The fee is the one private output: the withdrawal takes no slot.
+      WalletAction.unshield => (free, spendLimit(balance, 1)),
     };
     final other = demoAccounts.firstWhere((account) => account != _account);
     final mint = _asset.mint;
+    // The application's fee is one more private output, to its collector, in
+    // the same proof: the payment and the fee land together or not at all.
+    Output? fee(BigInt units) => demoFee(units) > BigInt.zero
+        ? Output.private(
+            recipient: demoFeeCollector.publicKey,
+            amount: demoFee(units),
+          )
+        : null;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -266,28 +283,28 @@ class _WalletScreenState extends State<WalletScreen> {
         action: action,
         asset: _asset,
         available: available,
-        suggestedRecipient: action == WalletAction.send ? other : null,
-        fee: action == WalletAction.send ? demoFee : null,
+        limit: limit,
+        suggestedRecipient: switch (action) {
+          WalletAction.send => other,
+          WalletAction.shield => null,
+          WalletAction.unshield => _account,
+        },
+        fee: action == WalletAction.shield ? null : demoFee,
         run: (units, recipient) => switch (action) {
-          // The fee is a second private output in the same proof: the chain
-          // sees neither amount.
           WalletAction.send => wallet.spend(
             outputs: [
               Output.private(recipient: recipient!, amount: units),
-              if (demoFee(units) > BigInt.zero)
-                Output.private(
-                  recipient: demoFeeCollector.publicKey,
-                  amount: demoFee(units),
-                ),
+              ?fee(units),
             ],
             mint: mint,
           ),
           WalletAction.shield => wallet.deposit(units, mint: mint),
-          // A token goes to this account's own token account, which holds
-          // the demo token already.
+          // A token goes to the recipient's token account, which must exist:
+          // this account's holds the demo token already.
           WalletAction.unshield => wallet.spend(
             outputs: [
-              Output.public(recipient: wallet.solanaPublicKey, amount: units),
+              Output.public(recipient: recipient!, amount: units),
+              ?fee(units),
             ],
             mint: mint,
           ),
@@ -555,8 +572,8 @@ class _Balances extends StatelessWidget {
   final BigInt? private;
   final BigInt? public;
 
-  /// The asset's notes: what prepared spends hold and what one spend can
-  /// take; `null` without notes.
+  /// The asset's notes, with what unfinished payments hold of them; `null`
+  /// without notes.
   final TokenBalance? balance;
   final bool refreshing;
 
@@ -566,10 +583,6 @@ class _Balances extends StatelessWidget {
     final muted = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    // A send to one wallet, or an unshield, proves with two outputs.
-    final limit = balance?.limits
-        .where((limit) => limit.outputs == BigInt.two)
-        .firstOrNull;
     return Column(
       children: [
         Text('Private balance', style: muted),
@@ -586,11 +599,11 @@ class _Balances extends StatelessWidget {
               : 'Public ${public == null ? '—' : asset.format(public!)}',
           style: muted,
         ),
-        if (balance != null && limit != null) ...[
+        if (balance case final balance?) ...[
           const SizedBox(height: 4),
           Text(
-            'Reserved ${asset.format(balance!.reserved)} · '
-            'Up to ${asset.format(limit.amount)} in one send',
+            'Reserved ${asset.format(balance.reserved)} · '
+            'Free ${asset.format(balance.amount - balance.reserved)}',
             style: muted,
           ),
         ],
@@ -653,7 +666,14 @@ class _ActivityRow extends StatelessWidget {
         'Private → Public',
         '−',
       ),
-      ActivityKind.sent => (Icons.north_east, 'Sent', 'Private transfer', '−'),
+      // A send, or an unshield that paid a private fee: the chain does not
+      // tell them apart.
+      ActivityKind.sent => (
+        Icons.north_east,
+        'Sent',
+        'From private balance',
+        '−',
+      ),
       ActivityKind.received => (
         Icons.south_west,
         'Received',
