@@ -6926,7 +6926,7 @@ dependencies = [
  "zolana-keypair",
  "zolana-program",
  "zolana-transaction",
- "zopro-prover",
+ "zopro-zolana",
 ]
 
 [[package]]
@@ -7003,7 +7003,6 @@ dependencies = [
  "miniz_oxide 0.8.9",
  "rand 0.8.8",
  "rayon",
- "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-rayon",
@@ -7032,7 +7031,6 @@ dependencies = [
  "ark-ff",
  "js-sys",
  "log",
- "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "zopro-core",
@@ -7051,6 +7049,18 @@ dependencies = [
  "rayon",
  "web-time",
  "wgpu",
+]
+
+[[package]]
+name = "zopro-zolana"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254 0.5.0",
+ "ark-ff",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "zopro-prover",
 ]
 
 [[package]]

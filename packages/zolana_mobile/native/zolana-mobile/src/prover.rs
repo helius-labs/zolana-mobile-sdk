@@ -74,7 +74,7 @@ pub(crate) fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
         .unwrap_or_default();
     name.push(format!(
         ".solver{}",
-        zopro_prover::zopro_core::solver_image_version()
+        zopro_zolana::zopro_core::solver_image_version()
     ));
     key.with_file_name(name)
 }
@@ -82,7 +82,7 @@ pub(crate) fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
 /// A key file loaded: the prover, with its solver from the cached image
 /// beside `path` when there is one, cached there after a build from the
 /// program.
-pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_prover::Prover, WalletError> {
+pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_zolana::Prover, WalletError> {
     device_log();
     let failed = |e: &dyn std::fmt::Display| {
         log::warn!("zopro: {}: {e}", path.display());
@@ -90,11 +90,11 @@ pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_prover::Prover, W
     };
     let bytes = std::fs::read(path).map_err(|e| failed(&e))?;
     let artifact =
-        zopro_prover::zopro_core::artifact::Artifact::parse(&bytes).map_err(|e| failed(&e))?;
+        zopro_zolana::zopro_core::artifact::Artifact::parse(&bytes).map_err(|e| failed(&e))?;
     let vectors = artifact.vectors().map_err(|e| failed(&e))?;
     let cache = solver_image_path(path);
     let cached = std::fs::read(&cache).ok();
-    let prover = zopro_prover::Prover::from_artifact(&artifact, &vectors, cached.as_deref())
+    let prover = zopro_zolana::Prover::from_artifact(&artifact, &vectors, cached.as_deref())
         .map_err(|e| failed(&e))?;
     if cached.is_none() {
         if let Some(image) = prover.solver_image() {
@@ -178,8 +178,8 @@ impl NativeProver {
         let load_ms = elapsed_ms(loading);
         let loaded = state.loaded.as_mut().ok_or(WalletError::ProverClosed)?;
         let proof = loaded.prover.prove(body).map_err(|error| match error {
-            zopro_prover::Error::Unsupported => WalletError::UnsupportedCircuit,
-            zopro_prover::Error::Prove(message) => {
+            zopro_zolana::Error::Unsupported => WalletError::UnsupportedCircuit,
+            zopro_zolana::Error::Prove(message) => {
                 log::warn!("zopro: {name}: {message}");
                 WalletError::ProofFailed
             }

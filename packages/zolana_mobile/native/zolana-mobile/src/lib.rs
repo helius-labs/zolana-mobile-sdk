@@ -49,7 +49,7 @@ struct Loaded {
     /// the application loaded itself as a [`LocalProver`]. The native prover
     /// switches keys only in the first case.
     key: Option<String>,
-    prover: zopro_prover::Prover,
+    prover: zopro_zolana::Prover,
 }
 
 impl ProverState {
@@ -183,7 +183,7 @@ impl LocalProver {
             return Err(WalletError::ProverClosed);
         }
         let proof = proof.map_err(|error| match error {
-            zopro_prover::Error::Unsupported | zopro_prover::Error::Shape => {
+            zopro_zolana::Error::Unsupported | zopro_zolana::Error::Shape => {
                 WalletError::UnsupportedCircuit
             }
             _ => WalletError::ProofFailed,
