@@ -39,7 +39,7 @@ jobs:
 
   # A pull request that changes the Rust crate has no precompiled binaries, so
   # every consumer and example build compiles it from source. sccache keeps the
-  # compiler outputs between steps and, with the Go build cache, between runs.
+  # compiler outputs between steps and between runs.
   # Its keys include the build paths, so the consumer builds run at a fixed path
   # (ZOLANA_CONSUMER_DIR). The builds run in jobs of their own, in parallel:
   # what sccache cannot cache, such as the vendored OpenSSL build and the final
@@ -53,9 +53,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
@@ -72,18 +69,13 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
-          key: native-tests-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-tests-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-tests-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: native-tests-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-
       - run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
       - run: cargo test --workspace
-      # -count=1: the restored Go build cache must not replay a test result.
-      - run: go test -count=1 ./...
-        working-directory: packages/zolana_mobile/native/rust-gnark/go
         env:
           ZOLANA_TEST_KEYS: ${{ github.workspace }}/packages/zolana_mobile/example/assets/proving
-      - run: cargo test -p zolana-mobile proves_the_staged_request -- --ignored
       - run: cargo test -p zolana-mobile proves_a_client_request_with_the_pinned_key -- --ignored
         env:
           ZOLANA_TEST_KEY_DIR: ${{ github.workspace }}/.cache/proving
@@ -94,7 +86,6 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
   # The device tests on emulators. Proof timing comes from phones, in release
@@ -111,9 +102,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
@@ -136,9 +124,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
-          key: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-android-sccache0.18.0-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/rust/Cargo.lock') }}
+          restore-keys: native-android-sccache0.18.0-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
       - run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
       - name: Enable emulator acceleration
@@ -166,7 +153,6 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
   android-example:
@@ -177,9 +163,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
@@ -200,9 +183,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
-          key: native-android-example-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-android-example-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-android-example-sccache0.18.0-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock') }}
+          restore-keys: native-android-example-sccache0.18.0-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
       - run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
       - run: flutter pub get && flutter analyze && flutter build apk --release
@@ -217,7 +199,6 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
   # When the release for the crate hash has the iOS binaries, cargokit builds
@@ -234,9 +215,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
@@ -268,9 +246,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/Library/Caches/go-build
-          key: native-ios-arm64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-ios-arm64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-ios-arm64-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock') }}
+          restore-keys: native-ios-arm64-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-
       - if: steps.precompiled.outputs.found != 'true'
         run: sccache --start-server
       - run: bash scripts/patch-flutter-tool.sh
@@ -291,7 +268,6 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/Library/Caches/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - if: failure()
         uses: actions/upload-artifact@v7
@@ -307,9 +283,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
@@ -341,9 +314,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/Library/Caches/go-build
-          key: native-ios-example-x86_64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-ios-example-x86_64-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-ios-example-x86_64-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock') }}
+          restore-keys: native-ios-example-x86_64-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-
       - if: steps.precompiled.outputs.found != 'true'
         run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
@@ -378,11 +350,9 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/Library/Caches/go-build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
   upstream:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: bash scripts/check-upstream.sh

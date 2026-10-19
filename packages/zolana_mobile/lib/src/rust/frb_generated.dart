@@ -82,11 +82,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 abstract class RustLibApi extends BaseApi {
   Future<void> zolanaMobileLocalProverClose({required LocalProver that});
 
-  Future<LocalProver> zolanaMobileLocalProverLoad({
-    required String circuitPath,
-    required String provingKeyPath,
-    required String verifyingKeyPath,
-  });
+  Future<LocalProver> zolanaMobileLocalProverLoad({required String keyPath});
 
   BigInt zolanaMobileLocalProverLoadMs({required LocalProver that});
 
@@ -357,18 +353,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "LocalProver_close", argNames: ["that"]);
 
   @override
-  Future<LocalProver> zolanaMobileLocalProverLoad({
-    required String circuitPath,
-    required String provingKeyPath,
-    required String verifyingKeyPath,
-  }) {
+  Future<LocalProver> zolanaMobileLocalProverLoad({required String keyPath}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(circuitPath, serializer);
-          sse_encode_String(provingKeyPath, serializer);
-          sse_encode_String(verifyingKeyPath, serializer);
+          sse_encode_String(keyPath, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -382,17 +372,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileLocalProverLoadConstMeta,
-        argValues: [circuitPath, provingKeyPath, verifyingKeyPath],
+        argValues: [keyPath],
         apiImpl: this,
       ),
     );
   }
 
   TaskConstMeta get kZolanaMobileLocalProverLoadConstMeta =>
-      const TaskConstMeta(
-        debugName: "LocalProver_load",
-        argNames: ["circuitPath", "provingKeyPath", "verifyingKeyPath"],
-      );
+      const TaskConstMeta(debugName: "LocalProver_load", argNames: ["keyPath"]);
 
   @override
   BigInt zolanaMobileLocalProverLoadMs({required LocalProver that}) {
@@ -2764,58 +2751,56 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 32:
         return WalletError_ProverUnavailable();
       case 33:
-        return WalletError_ProverInitFailed();
-      case 34:
         return WalletError_ProverLoadFailed();
-      case 35:
+      case 34:
         return WalletError_UnsupportedCircuit();
-      case 36:
+      case 35:
         return WalletError_RpcUrlInsecure(url: dco_decode_String(raw[1]));
-      case 37:
+      case 36:
         return WalletError_IndexerUrlInsecure(url: dco_decode_String(raw[1]));
-      case 38:
+      case 37:
         return WalletError_ProvingKeyUrlInsecure(
           url: dco_decode_String(raw[1]),
         );
-      case 39:
+      case 38:
         return WalletError_ProverUrlInsecure(url: dco_decode_String(raw[1]));
-      case 40:
+      case 39:
         return WalletError_ProvingKeyUnknown(name: dco_decode_String(raw[1]));
-      case 41:
+      case 40:
         return WalletError_ProvingKeyMismatch(name: dco_decode_String(raw[1]));
-      case 42:
+      case 41:
         return WalletError_ProvingKeyDownloadFailed(
           name: dco_decode_String(raw[1]),
         );
-      case 43:
+      case 42:
         return WalletError_ProvingKeyCorrupt(name: dco_decode_String(raw[1]));
-      case 44:
+      case 43:
         return WalletError_ProvingKeyStoreFailed(
           path: dco_decode_String(raw[1]),
         );
-      case 45:
+      case 44:
         return WalletError_PoseidonInputCountInvalid(
           count: dco_decode_u_64(raw[1]),
         );
-      case 46:
+      case 45:
         return WalletError_PoseidonInputLengthInvalid(
           index: dco_decode_u_64(raw[1]),
           length: dco_decode_u_64(raw[2]),
         );
-      case 47:
+      case 46:
         return WalletError_SignerMissing();
-      case 48:
+      case 47:
         return WalletError_SignerMismatch(
           wallet: dco_decode_String(raw[1]),
           signer: dco_decode_String(raw[2]),
         );
-      case 49:
+      case 48:
         return WalletError_UnexpectedSigners(
           signers: dco_decode_list_String(raw[1]),
         );
-      case 50:
+      case 49:
         return WalletError_WalletClosed();
-      case 51:
+      case 50:
         return WalletError_Client(message: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
@@ -3840,63 +3825,61 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 32:
         return WalletError_ProverUnavailable();
       case 33:
-        return WalletError_ProverInitFailed();
-      case 34:
         return WalletError_ProverLoadFailed();
-      case 35:
+      case 34:
         return WalletError_UnsupportedCircuit();
-      case 36:
+      case 35:
         var var_url = sse_decode_String(deserializer);
         return WalletError_RpcUrlInsecure(url: var_url);
-      case 37:
+      case 36:
         var var_url = sse_decode_String(deserializer);
         return WalletError_IndexerUrlInsecure(url: var_url);
-      case 38:
+      case 37:
         var var_url = sse_decode_String(deserializer);
         return WalletError_ProvingKeyUrlInsecure(url: var_url);
-      case 39:
+      case 38:
         var var_url = sse_decode_String(deserializer);
         return WalletError_ProverUrlInsecure(url: var_url);
-      case 40:
+      case 39:
         var var_name = sse_decode_String(deserializer);
         return WalletError_ProvingKeyUnknown(name: var_name);
-      case 41:
+      case 40:
         var var_name = sse_decode_String(deserializer);
         return WalletError_ProvingKeyMismatch(name: var_name);
-      case 42:
+      case 41:
         var var_name = sse_decode_String(deserializer);
         return WalletError_ProvingKeyDownloadFailed(name: var_name);
-      case 43:
+      case 42:
         var var_name = sse_decode_String(deserializer);
         return WalletError_ProvingKeyCorrupt(name: var_name);
-      case 44:
+      case 43:
         var var_path = sse_decode_String(deserializer);
         return WalletError_ProvingKeyStoreFailed(path: var_path);
-      case 45:
+      case 44:
         var var_count = sse_decode_u_64(deserializer);
         return WalletError_PoseidonInputCountInvalid(count: var_count);
-      case 46:
+      case 45:
         var var_index = sse_decode_u_64(deserializer);
         var var_length = sse_decode_u_64(deserializer);
         return WalletError_PoseidonInputLengthInvalid(
           index: var_index,
           length: var_length,
         );
-      case 47:
+      case 46:
         return WalletError_SignerMissing();
-      case 48:
+      case 47:
         var var_wallet = sse_decode_String(deserializer);
         var var_signer = sse_decode_String(deserializer);
         return WalletError_SignerMismatch(
           wallet: var_wallet,
           signer: var_signer,
         );
-      case 49:
+      case 48:
         var var_signers = sse_decode_list_String(deserializer);
         return WalletError_UnexpectedSigners(signers: var_signers);
-      case 50:
+      case 49:
         return WalletError_WalletClosed();
-      case 51:
+      case 50:
         var var_message = sse_decode_String(deserializer);
         return WalletError_Client(message: var_message);
       default:
@@ -4917,65 +4900,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_i_32(31, serializer);
       case WalletError_ProverUnavailable():
         sse_encode_i_32(32, serializer);
-      case WalletError_ProverInitFailed():
-        sse_encode_i_32(33, serializer);
       case WalletError_ProverLoadFailed():
-        sse_encode_i_32(34, serializer);
+        sse_encode_i_32(33, serializer);
       case WalletError_UnsupportedCircuit():
-        sse_encode_i_32(35, serializer);
+        sse_encode_i_32(34, serializer);
       case WalletError_RpcUrlInsecure(url: final url):
-        sse_encode_i_32(36, serializer);
+        sse_encode_i_32(35, serializer);
         sse_encode_String(url, serializer);
       case WalletError_IndexerUrlInsecure(url: final url):
-        sse_encode_i_32(37, serializer);
+        sse_encode_i_32(36, serializer);
         sse_encode_String(url, serializer);
       case WalletError_ProvingKeyUrlInsecure(url: final url):
-        sse_encode_i_32(38, serializer);
+        sse_encode_i_32(37, serializer);
         sse_encode_String(url, serializer);
       case WalletError_ProverUrlInsecure(url: final url):
-        sse_encode_i_32(39, serializer);
+        sse_encode_i_32(38, serializer);
         sse_encode_String(url, serializer);
       case WalletError_ProvingKeyUnknown(name: final name):
-        sse_encode_i_32(40, serializer);
+        sse_encode_i_32(39, serializer);
         sse_encode_String(name, serializer);
       case WalletError_ProvingKeyMismatch(name: final name):
-        sse_encode_i_32(41, serializer);
+        sse_encode_i_32(40, serializer);
         sse_encode_String(name, serializer);
       case WalletError_ProvingKeyDownloadFailed(name: final name):
-        sse_encode_i_32(42, serializer);
+        sse_encode_i_32(41, serializer);
         sse_encode_String(name, serializer);
       case WalletError_ProvingKeyCorrupt(name: final name):
-        sse_encode_i_32(43, serializer);
+        sse_encode_i_32(42, serializer);
         sse_encode_String(name, serializer);
       case WalletError_ProvingKeyStoreFailed(path: final path):
-        sse_encode_i_32(44, serializer);
+        sse_encode_i_32(43, serializer);
         sse_encode_String(path, serializer);
       case WalletError_PoseidonInputCountInvalid(count: final count):
-        sse_encode_i_32(45, serializer);
+        sse_encode_i_32(44, serializer);
         sse_encode_u_64(count, serializer);
       case WalletError_PoseidonInputLengthInvalid(
         index: final index,
         length: final length,
       ):
-        sse_encode_i_32(46, serializer);
+        sse_encode_i_32(45, serializer);
         sse_encode_u_64(index, serializer);
         sse_encode_u_64(length, serializer);
       case WalletError_SignerMissing():
-        sse_encode_i_32(47, serializer);
+        sse_encode_i_32(46, serializer);
       case WalletError_SignerMismatch(
         wallet: final wallet,
         signer: final signer,
       ):
-        sse_encode_i_32(48, serializer);
+        sse_encode_i_32(47, serializer);
         sse_encode_String(wallet, serializer);
         sse_encode_String(signer, serializer);
       case WalletError_UnexpectedSigners(signers: final signers):
-        sse_encode_i_32(49, serializer);
+        sse_encode_i_32(48, serializer);
         sse_encode_list_String(signers, serializer);
       case WalletError_WalletClosed():
-        sse_encode_i_32(50, serializer);
+        sse_encode_i_32(49, serializer);
       case WalletError_Client(message: final message):
-        sse_encode_i_32(51, serializer);
+        sse_encode_i_32(50, serializer);
         sse_encode_String(message, serializer);
     }
   }
@@ -5019,19 +5000,19 @@ class LocalProverImpl extends RustOpaque implements LocalProver {
         RustLib.instance.api.rust_arc_decrement_strong_count_LocalProverPtr,
   );
 
-  /// Release the circuit, after the proof in progress, which then fails with
+  /// Release the key, after the proof in progress, which then fails with
   /// `prover_closed`. Later proofs fail the same way.
   Future<void> close() =>
       RustLib.instance.api.zolanaMobileLocalProverClose(that: this);
 
-  /// How long loading the circuit took.
+  /// How long loading the key took.
   BigInt get loadMs =>
       RustLib.instance.api.zolanaMobileLocalProverLoadMs(that: this);
 
-  /// Prove `request_json`, a Zolana `/prove` request, and verify the proof.
-  /// One proof at a time: another fails with `prover_busy`. Fails with
-  /// `prover_closed` after `close`, also when the close came while this proof
-  /// ran.
+  /// Prove `request_json`, a Zolana `/prove` request; the proof is
+  /// verified. One proof at a time: another fails with `prover_busy`.
+  /// Fails with `prover_closed` after `close`, also when the close came
+  /// while this proof ran.
   Future<LocalProofResult> prove({required String requestJson}) => RustLib
       .instance
       .api

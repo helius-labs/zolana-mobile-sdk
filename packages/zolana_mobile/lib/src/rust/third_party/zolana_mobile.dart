@@ -25,30 +25,22 @@ Future<Uint8List> poseidonHash({required List<Uint8List> inputs}) =>
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LocalProver>>
 abstract class LocalProver implements RustOpaqueInterface {
-  /// Release the circuit, after the proof in progress, which then fails with
+  /// Release the key, after the proof in progress, which then fails with
   /// `prover_closed`. Later proofs fail the same way.
   Future<void> close();
 
-  /// Load the circuit from its compiled constraints (`circuit_path`, the
-  /// `.r1cs` file) and keys. Fails with `prover_busy` while another circuit
-  /// is loaded or proving.
-  static Future<LocalProver> load({
-    required String circuitPath,
-    required String provingKeyPath,
-    required String verifyingKeyPath,
-  }) => RustLib.instance.api.zolanaMobileLocalProverLoad(
-    circuitPath: circuitPath,
-    provingKeyPath: provingKeyPath,
-    verifyingKeyPath: verifyingKeyPath,
-  );
+  /// Load the zopro key at `key_path`. Fails with `prover_busy` while
+  /// another key is loaded or proving.
+  static Future<LocalProver> load({required String keyPath}) =>
+      RustLib.instance.api.zolanaMobileLocalProverLoad(keyPath: keyPath);
 
-  /// How long loading the circuit took.
+  /// How long loading the key took.
   BigInt get loadMs;
 
-  /// Prove `request_json`, a Zolana `/prove` request, and verify the proof.
-  /// One proof at a time: another fails with `prover_busy`. Fails with
-  /// `prover_closed` after `close`, also when the close came while this proof
-  /// ran.
+  /// Prove `request_json`, a Zolana `/prove` request; the proof is
+  /// verified. One proof at a time: another fails with `prover_busy`.
+  /// Fails with `prover_closed` after `close`, also when the close came
+  /// while this proof ran.
   Future<LocalProofResult> prove({required String requestJson});
 }
 
@@ -413,8 +405,11 @@ enum ActivityKind {
   selfTransfer,
 }
 
+/// A proof by a [`LocalProver`] and where its time went, in milliseconds.
 class LocalProofResult {
   final String proofJson;
+
+  /// Every proof is verified before it is returned.
   final bool verified;
   final int inputs;
   final int outputs;
@@ -1132,9 +1127,6 @@ sealed class WalletError with _$WalletError implements FrbException {
 
   /// The prover state of this process is unusable.
   const factory WalletError.proverUnavailable() = WalletError_ProverUnavailable;
-
-  /// gnark could not be initialized.
-  const factory WalletError.proverInitFailed() = WalletError_ProverInitFailed;
 
   /// The proving key could not be loaded into gnark.
   const factory WalletError.proverLoadFailed() = WalletError_ProverLoadFailed;

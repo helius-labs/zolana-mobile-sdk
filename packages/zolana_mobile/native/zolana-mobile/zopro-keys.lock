@@ -1,0 +1,47 @@
+{
+  "prefix": "proving-keys/3a1c88f90f609eb1",
+  "keys": {
+    "merge_24_1.key": {
+      "file": "merge_24_1.zopro",
+      "size": 139209558,
+      "sha256": "b7fd19f365c2f3b3635642b6210ef41bd8342862e839fd7e5f05d1b5a512b55c",
+      "key_sha256": "a0dfaa1e73d2d9e1159d2ebab82baa6d0602482d75f24dcbff596322dc389c88"
+    },
+    "transfer_confidential_16_2.key": {
+      "file": "transfer_confidential_16_2.zopro",
+      "size": 88339536,
+      "sha256": "1bf5578163969607b5dcfeaaa2fb30934f350022603a3ce323a33e0506b299a4",
+      "key_sha256": "27370f44f8b9c0c05f9d2c6738ab5294582fd40c869114baf0d7fb15e6d08e2a"
+    },
+    "transfer_confidential_1_2.key": {
+      "file": "transfer_confidential_1_2.zopro",
+      "size": 6866842,
+      "sha256": "1325a4b67aa0d961c2691f1e77a490607cf9935642758913d892f47eec7f1454",
+      "key_sha256": "7ef987966b0dfba5d86eab7c67068be00dbe581d823d45cdbbf6d338bfacb640"
+    },
+    "transfer_confidential_24_2.key": {
+      "file": "transfer_confidential_24_2.zopro",
+      "size": 145352023,
+      "sha256": "7be3e8b95687b410303ce4b3a20a2b8a5a38e061c3a189de9897f4b31988d833",
+      "key_sha256": "7b98beac6e0f89d568a30f569c690267bc37fcb8472ad88c292b89433c2f91d9"
+    },
+    "transfer_confidential_2_2.key": {
+      "file": "transfer_confidential_2_2.zopro",
+      "size": 12181629,
+      "sha256": "690c97517e756baf65a734633a77b463b45fc52d2849c406f25cd682298fd559",
+      "key_sha256": "e810d52962f4558b0bd50b768a89490759e15a0623d4c2c43318f541b8cc61ff"
+    },
+    "transfer_confidential_4_2.key": {
+      "file": "transfer_confidential_4_2.zopro",
+      "size": 22606169,
+      "sha256": "f47628b62a6f3c174c445e523426c7bfe66fa812d2242ebaa496821667dc7208",
+      "key_sha256": "aea0c474e4c67499c45f11f30d2d03e53ee5dd7c6b7940a0f61cfefa2e61e38e"
+    },
+    "transfer_confidential_8_2.key": {
+      "file": "transfer_confidential_8_2.zopro",
+      "size": 43928005,
+      "sha256": "f1107615f8690277fddb9c82bee6793dae5c33211e4d73d6750041a579842ce6",
+      "key_sha256": "24250fd74a86f1a07847e9dbb769cf9b2bebf20d29f18018186ea7900f69bbe4"
+    }
+  }
+}

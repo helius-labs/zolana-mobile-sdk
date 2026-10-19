@@ -11,7 +11,7 @@ use std::{
 
 use zolana_client::{prover::ExpectedProvingKey, ClientError, Proof, ProveRequest, Prover};
 
-use crate::{elapsed_ms, error::WalletError, init_gnark, keys, Loaded, ProvedRequest, PREPARED};
+use crate::{elapsed_ms, error::WalletError, keys, Loaded, ProvedRequest, PREPARED};
 
 /// Where a spend is proved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,30 +26,20 @@ pub enum Proving {
 }
 
 /// Proves each `/prove` body with the key the client names for it, loading
-/// that key into the shared prepared slot when it changes. Request bodies
-/// carry nullifier secrets and never leave the process. Clones share one
-/// prover.
+/// that key into the shared slot when it changes. Request bodies carry
+/// nullifier secrets and never leave the process. Clones share one prover.
 #[derive(Clone)]
 pub(crate) struct NativeProver(Arc<Native>);
 
 struct Native {
     keys: Arc<keys::KeyStore>,
-    /// Id of the prepared system this prover loaded last; 0 before the first.
+    /// Id of the key this prover loaded last; 0 before the first.
     loaded: AtomicU64,
 }
 
-/// The zopro prover's view of a loaded key: the kernel with its solver
-/// plan, and the proving key's fixed points for the assembly. gnark builds
-/// the witness and verifies; zopro solves, runs the MSMs (on the GPU where
-/// there is one) and assembles.
-pub(crate) struct ZoproKey {
-    key: zopro_core::Key,
-    fixed: zopro_core::groth16::FixedPoints,
-}
-
-/// zopro's log lines into the device log: warnings (a proof that fell back
-/// to gnark), and with the zopro-trace feature the stage timings the
-/// Device Farm bench reads.
+/// The prover's log lines into the device log: warnings (a GPU proof that
+/// failed to verify), and with the zopro-trace feature the stage timings
+/// the Device Farm bench reads.
 fn device_log() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -77,144 +67,45 @@ fn device_log() {
 /// Where the kernel's solver image for a key file is kept: parsing the
 /// solver program is most of a key load (seconds on a phone), the image
 /// loads in milliseconds. The name carries the image format's version.
-fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
     let mut name = key
         .file_name()
         .map(|n| n.to_os_string())
         .unwrap_or_default();
-    name.push(format!(".solver{}", zopro_core::solver_image_version()));
+    name.push(format!(
+        ".solver{}",
+        zopro_prover::zopro_core::solver_image_version()
+    ));
     key.with_file_name(name)
 }
 
-/// The keys whose zopro proof failed in this process: gnark proves them.
-static ZOPRO_FAILED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-
-fn zopro_failed(name: &str) -> bool {
-    ZOPRO_FAILED
-        .lock()
-        .is_ok_and(|failed| failed.iter().any(|n| n == name))
-}
-
-fn set_zopro_failed(name: &str) {
-    if let Ok(mut failed) = ZOPRO_FAILED.lock() {
-        failed.push(name.to_string());
-    }
-}
-
-/// Memory the process may still use, in bytes, where the system says.
-fn available_memory() -> Option<u64> {
-    #[cfg(target_os = "ios")]
-    {
-        unsafe extern "C" {
-            fn os_proc_available_memory() -> usize;
+/// A key file loaded: the prover, with its solver from the cached image
+/// beside `path` when there is one, cached there after a build from the
+/// program.
+pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_prover::Prover, WalletError> {
+    device_log();
+    let failed = |e: &dyn std::fmt::Display| {
+        log::warn!("zopro: {}: {e}", path.display());
+        WalletError::ProverLoadFailed
+    };
+    let bytes = std::fs::read(path).map_err(|e| failed(&e))?;
+    let artifact =
+        zopro_prover::zopro_core::artifact::Artifact::parse(&bytes).map_err(|e| failed(&e))?;
+    let vectors = artifact.vectors().map_err(|e| failed(&e))?;
+    let cache = solver_image_path(path);
+    let cached = std::fs::read(&cache).ok();
+    let prover = zopro_prover::Prover::from_artifact(&artifact, &vectors, cached.as_deref())
+        .map_err(|e| failed(&e))?;
+    if cached.is_none() {
+        if let Some(image) = prover.solver_image() {
+            // Whole or absent: written beside, then renamed.
+            let partial = cache.with_extension("partial");
+            if std::fs::write(&partial, &image).is_ok() {
+                let _ = std::fs::rename(&partial, &cache);
+            }
         }
-        // SAFETY: a plain libSystem query, iOS 13 and later.
-        return Some(unsafe { os_proc_available_memory() } as u64);
     }
-    #[cfg(target_os = "android")]
-    {
-        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
-        let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"))?;
-        let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
-        return Some(kb * 1024);
-    }
-    #[allow(unreachable_code)]
-    None
-}
-
-/// zopro's peak memory for a key, from its point vectors: measured at about
-/// nine times their size (GPU buffers, solver plan, proving temporaries).
-const ZOPRO_PEAK_PER_VECTOR_BYTE: u64 = 9;
-
-impl ZoproKey {
-    /// None with ZOLANA_PROVER=gnark, or for a key zopro cannot solve. The
-    /// solver comes from its cached image beside `key_path` when there is
-    /// one, and is cached there after a build from the program.
-    fn build(
-        prover: &rust_gnark::PreparedProver,
-        key_path: Option<&std::path::Path>,
-    ) -> Option<Self> {
-        if std::env::var("ZOLANA_PROVER").is_ok_and(|v| v == "gnark") {
-            return None;
-        }
-        device_log();
-        let cache = key_path.map(solver_image_path);
-        let built = prover
-            .with_zopro_inputs(|inputs| {
-                // A phone that cannot hold zopro's peak for this key proves it
-                // with gnark, which needs less (an iPhone 12 was killed loading
-                // the widest key).
-                let vectors = [inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2]
-                    .iter()
-                    .map(|v| v.len() as u64)
-                    .sum::<u64>();
-                if let Some(available) = available_memory() {
-                    let needed = vectors * ZOPRO_PEAK_PER_VECTOR_BYTE;
-                    log::info!(
-                        "ZOPRO_TRACE memory available {} MB needed {} MB",
-                        available >> 20,
-                        needed >> 20
-                    );
-                    if available < needed {
-                        return None;
-                    }
-                }
-                let mut key = zopro_core::Key::build(
-                    inputs.a,
-                    inputs.b,
-                    inputs.k,
-                    inputs.z,
-                    inputs.b2,
-                    inputs.domain,
-                )
-                .ok()?;
-                let cached = cache.as_ref().and_then(|path| std::fs::read(path).ok());
-                let solved = match &cached {
-                    Some(image) if key.set_solver_image(image) => true,
-                    _ => key.set_solver(inputs.program, inputs.coefficients),
-                };
-                if !solved {
-                    return None;
-                }
-                if let (Some(path), None) = (&cache, &cached) {
-                    if let Some(image) = key.solver_image() {
-                        // Whole or absent: written beside, then renamed.
-                        let partial = path.with_extension("partial");
-                        if std::fs::write(&partial, &image).is_ok() {
-                            let _ = std::fs::rename(&partial, path);
-                        }
-                    }
-                }
-                let fixed = zopro_core::groth16::FixedPoints::decode(inputs.fixed)?;
-                Some(Self { key, fixed })
-            })
-            .ok()??;
-        // gnark's copy of the vectors goes: a phone has no room for two.
-        prover.zopro_release_proving_key().ok()?;
-        Some(built)
-    }
-
-    fn prove(
-        &self,
-        prover: &rust_gnark::PreparedProver,
-        body: &str,
-    ) -> Result<rust_gnark::Groth16ProofResult, WalletError> {
-        let (witness, witness_ms) = prover
-            .zopro_witness(body)
-            .map_err(|_| WalletError::ProofFailed)?;
-        let started = Instant::now();
-        let parts = self
-            .key
-            .solve(&witness)
-            .map_err(|_| WalletError::ProofFailed)?;
-        let proof = zopro_core::groth16::assemble(&parts, &self.fixed);
-        let prove_ms = elapsed_ms(started);
-        let mut result = prover
-            .zopro_finish(&proof, prove_ms)
-            .map_err(|_| WalletError::ProofFailed)?;
-        result.witness_ms = witness_ms;
-        Ok(result)
-    }
+    Ok(prover)
 }
 
 /// Why a proof on the device failed, carried through the client as
@@ -242,41 +133,27 @@ impl NativeProver {
         Ok(self.prove_request(body, key)?.proof_json)
     }
 
-    /// Prove `body` with `key`, fetched and loaded as needed, and say where
-    /// the time went.
-    /// Loads a key in place of the loaded one (gnark holds one), with
-    /// zopro's kernel when `zopro`.
+    /// Loads a key in place of the loaded one (a phone has room for one).
     fn load(
         &self,
         state: &mut crate::ProverState,
         name: &str,
         path: &std::path::Path,
-        zopro: bool,
     ) -> Result<(), WalletError> {
         state.loaded = None;
-        init_gnark()?;
-        let image = keys::image_path(path);
-        let prover = rust_gnark::PreparedProver::load_key(
-            &path.display().to_string(),
-            Some(&image.display().to_string()),
-        )
-        .map_err(|_| WalletError::ProverLoadFailed)?;
+        let prover = load_key(path)?;
         let id = state.next_id()?;
         self.0.loaded.store(id, Ordering::Relaxed);
-        let zopro = if zopro {
-            ZoproKey::build(&prover, Some(path))
-        } else {
-            None
-        };
         state.loaded = Some(Loaded {
             id,
             key: Some(name.to_string()),
             prover,
-            zopro,
         });
         Ok(())
     }
 
+    /// Prove `body` with `key`, fetched and loaded as needed, and say where
+    /// the time went. The proof is verified before it leaves.
     pub(crate) fn prove_request(
         &self,
         body: &str,
@@ -289,43 +166,27 @@ impl NativeProver {
         let mut state = PREPARED
             .lock()
             .map_err(|_| WalletError::ProverUnavailable)?;
-        let loaded_key = state.loaded.as_ref().map(|loaded| loaded.key.as_deref());
         let loading = Instant::now();
+        let loaded_key = state.loaded.as_ref().map(|loaded| loaded.key.as_deref());
         if loaded_key != Some(Some(name)) {
             if loaded_key == Some(None) {
-                // The application holds its own prepared system; leave it.
+                // The application holds its own key; leave it.
                 return Err(WalletError::ProverBusy);
             }
-            let zopro = !zopro_failed(name);
-            self.load(&mut state, name, &path, zopro)?;
+            self.load(&mut state, name, &path)?;
         }
         let load_ms = elapsed_ms(loading);
-        let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
-        let proof = match &loaded.zopro {
-            Some(zopro) => match zopro.prove(&loaded.prover, body) {
-                Ok(proof) => proof,
-                // zopro's proof is verified before it leaves; one that
-                // failed (a device whose GPU miscomputes) sends the key
-                // back to gnark for this process, reloaded with the vectors
-                // zopro had gnark release.
-                Err(_) => {
-                    log::warn!("zopro: the proof failed; {name} proves with gnark");
-                    set_zopro_failed(name);
-                    self.load(&mut state, name, &path, false)?;
-                    let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
-                    loaded
-                        .prover
-                        .prove_request(body)
-                        .map_err(|_| WalletError::ProofFailed)?
-                }
-            },
-            None => loaded
-                .prover
-                .prove_request(body)
-                .map_err(|_| WalletError::ProofFailed)?,
-        };
+        let loaded = state.loaded.as_mut().ok_or(WalletError::ProverClosed)?;
+        let proof = loaded.prover.prove(body).map_err(|error| match error {
+            zopro_prover::Error::Unsupported => WalletError::UnsupportedCircuit,
+            zopro_prover::Error::Prove(message) => {
+                log::warn!("zopro: {name}: {message}");
+                WalletError::ProofFailed
+            }
+            _ => WalletError::ProofFailed,
+        })?;
         Ok(ProvedRequest {
-            proof_json: proof.proof_json,
+            proof_json: proof.proof_json.to_string(),
             key: name.to_string(),
             downloaded_bytes,
             download_ms,
@@ -744,7 +605,7 @@ mod tests {
             "the eddsa rail has no BSB22 commitment"
         );
         // The key's image is beside it for the next session.
-        let image = keys::image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap().0);
+        let image = solver_image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap().0);
         assert!(image.is_file(), "{}", image.display());
         // The same key serves the next proof without reloading.
         prover.prove(&Captured(transfer_2_2_key())).unwrap();

@@ -7,11 +7,7 @@
 **/ephemeral/
 **/Generated.xcconfig
 **/flutter_export_environment.sh
-**/assets/proving/*.key
-**/assets/proving/*.bin
-**/assets/proving/*.pk
-**/assets/proving/*.vk
-**/assets/proving/*.r1cs
+**/assets/proving/*.zopro
 **/assets/proving/*.json
 *.iml
 .DS_Store

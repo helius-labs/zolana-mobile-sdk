@@ -1,9 +1,9 @@
 # Zolana mobile demo
 
-This app generates and verifies a Groth16 proof locally through Mopro's native
-gnark adapter using a public structured Zolana 2→2 request fixture. It prepares
-the circuit and keys once per session and shows key loading, witness preparation,
-proving, and verification timings separately.
+This app generates and verifies a Groth16 proof on the device with zopro, from
+a public structured Zolana 2→2 request fixture. It loads the key once per
+session and shows key loading, witness preparation, proving, and verification
+timings separately.
 
 From the repository root:
 
@@ -13,9 +13,8 @@ cd packages/zolana_mobile/example
 flutter run --release -d YOUR_DEVICE_ID
 ```
 
-The circuit and proving key are large and ignored by Git. The staging script
-downloads one checksum-locked packed key and prepares the Mopro files; users do
-not run `mopro init` or `mopro build`.
+The proving key is large and ignored by Git. The staging script downloads one
+checksum-locked zopro key.
 
 Use **Lock / discard** to reject a pending result. Backgrounding the app also
 locks the demo. The native proof finishes before its keys are released; unlock
