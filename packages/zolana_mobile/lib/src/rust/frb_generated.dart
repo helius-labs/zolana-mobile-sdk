@@ -2233,6 +2233,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<SpendLimit> dco_decode_list_spend_limit(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_spend_limit).toList();
+  }
+
+  @protected
   List<TokenBalance> dco_decode_list_token_balance(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_token_balance).toList();
@@ -2446,15 +2452,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SpendLimit dco_decode_spend_limit(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return SpendLimit(
+      outputs: dco_decode_u_64(arr[0]),
+      amount: dco_decode_u_64(arr[1]),
+    );
+  }
+
+  @protected
   TokenBalance dco_decode_token_balance(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return TokenBalance(
       mint: dco_decode_opt_String(arr[0]),
       amount: dco_decode_u_64(arr[1]),
       notes: dco_decode_u_64(arr[2]),
+      reserved: dco_decode_u_64(arr[3]),
+      limits: dco_decode_list_spend_limit(arr[4]),
     );
   }
 
@@ -3197,6 +3217,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<SpendLimit> sse_decode_list_spend_limit(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SpendLimit>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_spend_limit(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<TokenBalance> sse_decode_list_token_balance(
     SseDeserializer deserializer,
   ) {
@@ -3476,12 +3508,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SpendLimit sse_decode_spend_limit(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_outputs = sse_decode_u_64(deserializer);
+    var var_amount = sse_decode_u_64(deserializer);
+    return SpendLimit(outputs: var_outputs, amount: var_amount);
+  }
+
+  @protected
   TokenBalance sse_decode_token_balance(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_mint = sse_decode_opt_String(deserializer);
     var var_amount = sse_decode_u_64(deserializer);
     var var_notes = sse_decode_u_64(deserializer);
-    return TokenBalance(mint: var_mint, amount: var_amount, notes: var_notes);
+    var var_reserved = sse_decode_u_64(deserializer);
+    var var_limits = sse_decode_list_spend_limit(deserializer);
+    return TokenBalance(
+      mint: var_mint,
+      amount: var_amount,
+      notes: var_notes,
+      reserved: var_reserved,
+      limits: var_limits,
+    );
   }
 
   @protected
@@ -4315,6 +4363,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_spend_limit(
+    List<SpendLimit> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_spend_limit(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_token_balance(
     List<TokenBalance> self,
     SseSerializer serializer,
@@ -4553,11 +4613,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_spend_limit(SpendLimit self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.outputs, serializer);
+    sse_encode_u_64(self.amount, serializer);
+  }
+
+  @protected
   void sse_encode_token_balance(TokenBalance self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_opt_String(self.mint, serializer);
     sse_encode_u_64(self.amount, serializer);
     sse_encode_u_64(self.notes, serializer);
+    sse_encode_u_64(self.reserved, serializer);
+    sse_encode_list_spend_limit(self.limits, serializer);
   }
 
   @protected
@@ -4934,7 +5003,8 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
       RustLib.instance.api.zolanaMobileMobileWalletActivity(that: this);
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the configured mints.
+  /// held in SOL and the configured mints, each with what prepared spends
+  /// reserve of it and the most one spend can take per proof width.
   Future<List<TokenBalance>> balances() =>
       RustLib.instance.api.zolanaMobileMobileWalletBalances(that: this);
 
@@ -5044,7 +5114,8 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// `k + 1` outputs, whose keys take at most 40 notes for `k <= 1`, 24
   /// for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`, within
   /// [`WalletConfig::max_spend_inputs`]; past that it fails with
-  /// [`WalletError::MergeRequired`].
+  /// [`WalletError::MergeRequired`]. [`TokenBalance::limits`] says what
+  /// each width can take now.
   ///
   /// `fee_payer` pays the network fee, this account when `None`. The proof
   /// binds it, so it cannot change after this call. Another fee payer signs

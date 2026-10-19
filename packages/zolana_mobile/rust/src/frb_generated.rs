@@ -2120,10 +2120,17 @@ const _: fn() = || {
         let _: u64 = ProvingKeyStatus.downloaded;
     }
     {
+        let SpendLimit = None::<zolana_mobile::SpendLimit>.unwrap();
+        let _: u64 = SpendLimit.outputs;
+        let _: u64 = SpendLimit.amount;
+    }
+    {
         let TokenBalance = None::<zolana_mobile::TokenBalance>.unwrap();
         let _: Option<String> = TokenBalance.mint;
         let _: u64 = TokenBalance.amount;
         let _: u64 = TokenBalance.notes;
+        let _: u64 = TokenBalance.reserved;
+        let _: Vec<zolana_mobile::SpendLimit> = TokenBalance.limits;
     }
     {
         let TransportFailure = None::<zolana_mobile::TransportFailure>.unwrap();
@@ -2708,6 +2715,18 @@ impl SseDecode for Vec<(String, String)> {
     }
 }
 
+impl SseDecode for Vec<zolana_mobile::SpendLimit> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<zolana_mobile::SpendLimit>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<zolana_mobile::TokenBalance> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3019,16 +3038,32 @@ impl SseDecode for zolana_mobile::RegistrationStatus {
     }
 }
 
+impl SseDecode for zolana_mobile::SpendLimit {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_outputs = <u64>::sse_decode(deserializer);
+        let mut var_amount = <u64>::sse_decode(deserializer);
+        return zolana_mobile::SpendLimit {
+            outputs: var_outputs,
+            amount: var_amount,
+        };
+    }
+}
+
 impl SseDecode for zolana_mobile::TokenBalance {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_mint = <Option<String>>::sse_decode(deserializer);
         let mut var_amount = <u64>::sse_decode(deserializer);
         let mut var_notes = <u64>::sse_decode(deserializer);
+        let mut var_reserved = <u64>::sse_decode(deserializer);
+        let mut var_limits = <Vec<zolana_mobile::SpendLimit>>::sse_decode(deserializer);
         return zolana_mobile::TokenBalance {
             mint: var_mint,
             amount: var_amount,
             notes: var_notes,
+            reserved: var_reserved,
+            limits: var_limits,
         };
     }
 }
@@ -3940,12 +3975,35 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::RegistrationSta
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::SpendLimit> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.outputs.into_into_dart().into_dart(),
+            self.0.amount.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::SpendLimit>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::SpendLimit>>
+    for zolana_mobile::SpendLimit
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::SpendLimit> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::TokenBalance> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.0.mint.into_into_dart().into_dart(),
             self.0.amount.into_into_dart().into_dart(),
             self.0.notes.into_into_dart().into_dart(),
+            self.0.reserved.into_into_dart().into_dart(),
+            self.0.limits.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4570,6 +4628,16 @@ impl SseEncode for Vec<(String, String)> {
     }
 }
 
+impl SseEncode for Vec<zolana_mobile::SpendLimit> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <zolana_mobile::SpendLimit>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<zolana_mobile::TokenBalance> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4818,12 +4886,22 @@ impl SseEncode for zolana_mobile::RegistrationStatus {
     }
 }
 
+impl SseEncode for zolana_mobile::SpendLimit {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.outputs, serializer);
+        <u64>::sse_encode(self.amount, serializer);
+    }
+}
+
 impl SseEncode for zolana_mobile::TokenBalance {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Option<String>>::sse_encode(self.mint, serializer);
         <u64>::sse_encode(self.amount, serializer);
         <u64>::sse_encode(self.notes, serializer);
+        <u64>::sse_encode(self.reserved, serializer);
+        <Vec<zolana_mobile::SpendLimit>>::sse_encode(self.limits, serializer);
     }
 }
 

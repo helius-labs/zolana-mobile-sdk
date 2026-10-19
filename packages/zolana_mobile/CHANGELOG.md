@@ -18,9 +18,13 @@ Unreleased.
   `WalletError.amountZero` for a zero amount.
 * `WalletConfig.maxSpendInputs` caps the notes a spend takes on the device
   (40 when unset); a spend that needs more fails with
-  `WalletError.mergeRequired` before proving. `TokenBalance.notes` counts
-  the notes a balance is in, for an application that merges before spends
-  grow wide.
+  `WalletError.mergeRequired` before proving.
+* `TokenBalance` reports `amount`, `reserved` included; `notes`, how many
+  the amount is in; `reserved`, what this wallet's prepared spends hold; and
+  `limits`, the most one spend of 2, 4, 8 or 16 outputs can take now without
+  a merge, from the unreserved notes within the width's note cap and two
+  trees. A spend with `k` private outputs uses `k + 1` outputs, public
+  outputs take no slot.
 * `WalletConfig.reuseNotesMs` lets a spend take its notes from a read made
   within that window instead of reading the indexer again; a send or a
   confirmation ends the reuse. A spend's other lookups, the recipient's

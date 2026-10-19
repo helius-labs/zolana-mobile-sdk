@@ -24,6 +24,7 @@
 //! against the pinned verifying key before the wallet builds the message.
 
 use std::{
+    cmp::Reverse,
     collections::{HashMap, HashSet},
     str::FromStr,
     sync::{Arc, Mutex},
@@ -50,7 +51,7 @@ use zolana_client::{
     ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, Submission, UnsignedMessage, UtxoScan,
     UtxoScanResult, ZolanaClient,
 };
-use zolana_interface::pda;
+use zolana_interface::{pda, MAX_INPUT_TREES};
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
 use zolana_program::instruction::{
     AssetDeposit, Deposit, DepositAsset, DepositSplAccounts, TransactInterfaceTransferAccounts,
@@ -60,8 +61,8 @@ use zolana_transaction::{
         merge::{MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT},
         transact::{ConfidentialTransaction, MAX_SPEND_INPUTS},
     },
-    select_merge, select_spend_excluding, LocalShieldedKeys, SpendableDecryptionResult,
-    TransactionError, WalletUtxo,
+    select_merge, select_spend_excluding, AssetBalance, LocalShieldedKeys,
+    SpendableDecryptionResult, TransactionError, WalletUtxo,
 };
 
 use crate::{
@@ -276,20 +277,12 @@ pub struct WalletOverview {
     pub activity: Vec<ActivityEntry>,
 }
 
-fn token_balances(spendable: &SpendableDecryptionResult) -> Vec<TokenBalance> {
-    spendable
-        .balances
-        .assets
-        .iter()
-        .map(|balance| TokenBalance {
-            mint: mint_name(&balance.mint),
-            amount: balance.amount,
-            notes: balance.utxos.len() as u64,
-        })
-        .collect()
-}
-
 /// A spendable private balance. `mint` is `None` for SOL.
+///
+/// `amount` is what the indexer has confirmed for this wallet, `reserved`
+/// included: a payment or change on its way appears once its transaction is
+/// confirmed and indexed. Reservations live in this open wallet's memory
+/// only.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TokenBalance {
     pub mint: Option<String>,
@@ -297,6 +290,96 @@ pub struct TokenBalance {
     /// How many spendable notes the amount is in: what a spend of all of it
     /// takes, and what a merge reduces.
     pub notes: u64,
+    /// The part of `amount` in notes this wallet's prepared spends hold.
+    pub reserved: u64,
+    /// One entry per proof width the pinned shapes offer (2, 4, 8 and 16
+    /// outputs), ascending. A spend with `k` private outputs proves with
+    /// `k + 1` outputs, its change included, and public outputs take no
+    /// slot: a withdrawal, a withdrawal with one private fee, or a send to
+    /// one wallet reads the entry with `outputs: 2`, a send to one wallet
+    /// with a fee the entry with `outputs: 4`. The limits include any
+    /// application fee the spend pays.
+    pub limits: Vec<SpendLimit>,
+}
+
+/// The most one spend of up to `outputs` outputs, change included, can take
+/// now without a merge: from the unreserved notes, largest first, within the
+/// note cap of that width and two trees.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpendLimit {
+    pub outputs: u64,
+    pub amount: u64,
+}
+
+/// `balance` with what prepared spends reserve of it and its limit per proof
+/// width, each capped at `configured_cap` notes.
+fn token_balance(
+    balance: &AssetBalance,
+    reserved: &HashSet<[u8; 32]>,
+    configured_cap: usize,
+) -> TokenBalance {
+    TokenBalance {
+        mint: mint_name(&balance.mint),
+        amount: balance.amount,
+        notes: balance.utxos.len() as u64,
+        reserved: balance
+            .utxos
+            .iter()
+            .filter(|note| reserved.contains(&note.nullifier))
+            .map(|note| note.utxo.amount)
+            .sum(),
+        limits: proof_widths()
+            .into_iter()
+            .map(|outputs| SpendLimit {
+                outputs: outputs as u64,
+                amount: spend_limit(
+                    &balance.utxos,
+                    reserved,
+                    configured_cap.min(max_spend_inputs(outputs)),
+                ),
+            })
+            .collect(),
+    }
+}
+
+/// The distinct output counts of the pinned shapes, ascending.
+fn proof_widths() -> Vec<usize> {
+    let mut widths: Vec<usize> = zolana_client::SPP_SUPPORTED_SHAPES
+        .iter()
+        .map(|shape| shape.n_outputs())
+        .collect();
+    widths.sort_unstable();
+    widths.dedup();
+    widths
+}
+
+/// The most a spend of up to `cap` notes can take from `notes`, those in
+/// `reserved` left out, as selection would take them: the largest first,
+/// stopping before a note past the cap or on a third tree. Every amount up
+/// to it selects; one more fails. The candidates are the Zolana SDK's, whose
+/// filter is not public: positive notes the default-ring circuit spends.
+fn spend_limit(notes: &[WalletUtxo], reserved: &HashSet<[u8; 32]>, cap: usize) -> u64 {
+    let mut candidates: Vec<&WalletUtxo> = notes
+        .iter()
+        .filter(|note| {
+            note.utxo.amount > 0
+                && note.is_default_ring_spendable()
+                && !reserved.contains(&note.nullifier)
+        })
+        .collect();
+    candidates.sort_by_key(|note| Reverse(note.utxo.amount));
+    let mut trees: Vec<u16> = Vec::with_capacity(MAX_INPUT_TREES);
+    let mut limit = 0u64;
+    for note in candidates.into_iter().take(cap) {
+        if !trees.contains(&note.tree_id()) {
+            if trees.len() == MAX_INPUT_TREES {
+                break;
+            }
+            trees.push(note.tree_id());
+        }
+        limit = limit.saturating_add(note.utxo.amount);
+    }
+    limit
 }
 
 /// A read of the wallet's notes and history, and when it finished.
@@ -644,9 +727,11 @@ impl MobileWallet {
     }
 
     /// Spendable private balances, read from the indexer now: one per asset
-    /// held in SOL and the configured mints.
+    /// held in SOL and the configured mints, each with what prepared spends
+    /// reserve of it and the most one spend can take per proof width.
     pub fn balances(&mut self) -> Result<Vec<TokenBalance>, WalletError> {
-        Ok(token_balances(&self.spendable()?))
+        let spendable = self.spendable()?;
+        self.token_balances(&spendable)
     }
 
     /// [`Self::balances`] and [`Self::activity`] from one read of the
@@ -654,9 +739,24 @@ impl MobileWallet {
     pub fn overview(&mut self) -> Result<WalletOverview, WalletError> {
         let scan = self.scan()?;
         Ok(WalletOverview {
-            balances: token_balances(&scan.spendable),
+            balances: self.token_balances(&scan.spendable)?,
             activity: activity::entries(&scan.history),
         })
+    }
+
+    /// [`TokenBalance`]s of `spendable`, against the notes prepared spends
+    /// reserve now.
+    fn token_balances(
+        &self,
+        spendable: &SpendableDecryptionResult,
+    ) -> Result<Vec<TokenBalance>, WalletError> {
+        let reserved = self.reserved()?;
+        Ok(spendable
+            .balances
+            .assets
+            .iter()
+            .map(|balance| token_balance(balance, &reserved, self.max_spend_inputs))
+            .collect())
     }
 
     /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -702,7 +802,8 @@ impl MobileWallet {
     /// `k + 1` outputs, whose keys take at most 40 notes for `k <= 1`, 24
     /// for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`, within
     /// [`WalletConfig::max_spend_inputs`]; past that it fails with
-    /// [`WalletError::MergeRequired`].
+    /// [`WalletError::MergeRequired`]. [`TokenBalance::limits`] says what
+    /// each width can take now.
     ///
     /// `fee_payer` pays the network fee, this account when `None`. The proof
     /// binds it, so it cannot change after this call. Another fee payer signs
@@ -1905,16 +2006,126 @@ mod tests {
         }
     }
 
+    /// The SOL balance of `notes`.
+    fn balance(notes: Vec<WalletUtxo>) -> AssetBalance {
+        spendable(notes).balances.assets.remove(0)
+    }
+
+    fn reserved(nullifiers: &[u8]) -> HashSet<[u8; 32]> {
+        nullifiers.iter().map(|&n| [n; 32]).collect()
+    }
+
+    fn limits(balance: &TokenBalance) -> Vec<(u64, u64)> {
+        balance
+            .limits
+            .iter()
+            .map(|limit| (limit.outputs, limit.amount))
+            .collect()
+    }
+
     #[test]
-    fn balances_count_their_notes() {
+    fn balances_count_their_notes_and_what_prepared_spends_hold() {
+        let notes = || vec![note(50, 1, 0), note(30, 2, 0), note(0, 3, 0)];
         assert_eq!(
-            token_balances(&spendable(vec![note(50, 1, 0), note(30, 2, 0)])),
-            vec![TokenBalance {
+            token_balance(&balance(notes()), &reserved(&[]), MAX_SPEND_INPUTS),
+            TokenBalance {
                 mint: None,
                 amount: 80,
-                notes: 2
-            }]
+                notes: 3,
+                reserved: 0,
+                limits: [2, 4, 8, 16]
+                    .map(|outputs| SpendLimit {
+                        outputs,
+                        amount: 80
+                    })
+                    .to_vec(),
+            }
         );
+        // A reserved note stays in the amount and leaves the limits.
+        let held = token_balance(&balance(notes()), &reserved(&[1]), MAX_SPEND_INPUTS);
+        assert_eq!((held.amount, held.reserved), (80, 50));
+        assert_eq!(limits(&held), [(2, 30), (4, 30), (8, 30), (16, 30)]);
+    }
+
+    /// Each width's limit is what selection takes from the free notes,
+    /// largest first: at most the width's cap, or the configured one, and
+    /// nothing from a third tree.
+    #[test]
+    fn limits_stop_at_the_cap_and_before_a_third_tree() {
+        let three = || vec![note(50, 1, 0), note(30, 2, 0), note(20, 3, 0)];
+        assert_eq!(
+            limits(&token_balance(&balance(three()), &reserved(&[]), 2)),
+            [(2, 80), (4, 80), (8, 80), (16, 80)]
+        );
+        assert_eq!(
+            limits(&token_balance(&balance(three()), &reserved(&[]), 1)),
+            [(2, 50), (4, 50), (8, 50), (16, 50)]
+        );
+        // The note on the third tree stops the count, and the smaller note
+        // on the first tree after it is not taken either.
+        let trees = vec![
+            note(30, 1, 0),
+            note(20, 2, 1),
+            note(10, 3, 2),
+            note(5, 4, 0),
+        ];
+        assert_eq!(
+            token_balance(&balance(trees), &reserved(&[]), MAX_SPEND_INPUTS).limits[0].amount,
+            50
+        );
+        // Of 25 equal notes, the 2-output keys take all, the 4-output keys
+        // 24, the 8-output keys 16 and the 16-output keys 8.
+        let many = balance((1..=25).map(|n| note(10, n, 0)).collect());
+        assert_eq!(
+            limits(&token_balance(&many, &reserved(&[]), MAX_SPEND_INPUTS)),
+            [(2, 250), (4, 240), (8, 160), (16, 80)]
+        );
+        assert_eq!(proof_widths(), [2, 4, 8, 16]);
+    }
+
+    /// Every amount up to a width's limit selects within that width's cap,
+    /// and one more fails: short, too many notes or too many trees.
+    #[test]
+    fn every_amount_up_to_a_limit_selects_and_one_more_does_not() {
+        let sets: [Vec<WalletUtxo>; 5] = [
+            vec![note(50, 1, 0), note(30, 2, 0), note(20, 3, 0)],
+            vec![
+                note(30, 1, 0),
+                note(20, 2, 1),
+                note(10, 3, 2),
+                note(5, 4, 0),
+            ],
+            (1..=41).map(|n| note(10, n, 0)).collect(),
+            vec![note(7, 1, 0), note(7, 2, 1), note(7, 3, 2)],
+            vec![note(0, 1, 0), note(9, 2, 0)],
+        ];
+        let free = reserved(&[]);
+        for notes in sets {
+            let spendable = spendable(notes);
+            let balance = &spendable.balances.assets[0];
+            for width in proof_widths() {
+                let cap = max_spend_inputs(width);
+                let limit = spend_limit(&balance.utxos, &free, cap);
+                let select = |amount| {
+                    select_spend_excluding(
+                        spendable.utxos(),
+                        zolana_transaction::SOL_MINT,
+                        amount,
+                        &free,
+                    )
+                    .map_err(|failure| spend_failure(amount, failure))
+                    .and_then(|inputs| within_cap(inputs, amount, cap))
+                };
+                for amount in 1..=limit {
+                    assert!(select(amount).is_ok(), "{amount} of {limit} at {width}");
+                }
+                assert!(
+                    select(limit + 1).is_err(),
+                    "{} past {limit} at {width}",
+                    limit + 1
+                );
+            }
+        }
     }
 
     #[test]

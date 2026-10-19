@@ -94,7 +94,8 @@ abstract interface class WalletBackend {
 /// open wallet: the next spend selects other notes until the prepared
 /// spend is submitted or confirmed, [release]d, or past its
 /// [PreparedTransaction.lastValidBlockHeight]. A spend
-/// that would need a reserved note fails with [WalletError.notesReserved].
+/// that would need a reserved note fails with [WalletError.notesReserved];
+/// [native.TokenBalance.reserved] says how much the reserved notes hold.
 ///
 /// Every operation runs after the previous one finishes: the native wallet
 /// holds one proving key at a time. [close] it when the application locks or
@@ -239,6 +240,18 @@ class ZolanaWallet {
 
   /// Spendable private balances, read from the indexer now: one per asset
   /// held in SOL and the mints of `WalletConfig.mints`.
+  ///
+  /// Each [native.TokenBalance.amount] is what the indexer has confirmed,
+  /// [native.TokenBalance.reserved] included: the notes this wallet's
+  /// prepared spends hold, in memory, in this open wallet only. A payment or
+  /// change on its way appears once its transaction is confirmed and
+  /// indexed. [native.TokenBalance.limits] says the most one spend can take
+  /// now per proof width (2, 4, 8 or 16 outputs) without a merge, from the
+  /// unreserved notes. A spend with `k` private outputs uses `k + 1` outputs,
+  /// its change included, and public outputs take no slot: a withdrawal, a
+  /// withdrawal with one private fee, or a send to one wallet reads the entry
+  /// with `outputs: 2`, a send to one wallet with a fee the entry with
+  /// `outputs: 4`. The limits include any application fee the spend pays.
   Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
 
   /// Spendable private balance of [mint], read from the indexer now.
@@ -334,7 +347,7 @@ class ZolanaWallet {
   /// `k <= 7` and 8 for `k <= 15`, within `WalletConfig.maxSpendInputs`.
   /// Past that it fails with [WalletError.mergeRequired], and with
   /// [WalletError.tooManyInputTrees] when the notes are on more than two
-  /// trees.
+  /// trees; [native.TokenBalance.limits] says what each width can take now.
   ///
   /// [feePayer] (a Solana public key, such as the application's backend)
   /// pays the network fee instead of [solanaPublicKey]. The proof binds it,

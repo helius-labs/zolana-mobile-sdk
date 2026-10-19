@@ -234,6 +234,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<(String, String)> dco_decode_list_record_string_string(dynamic raw);
 
   @protected
+  List<SpendLimit> dco_decode_list_spend_limit(dynamic raw);
+
+  @protected
   List<TokenBalance> dco_decode_list_token_balance(dynamic raw);
 
   @protected
@@ -292,6 +295,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RegistrationStatus dco_decode_registration_status(dynamic raw);
+
+  @protected
+  SpendLimit dco_decode_spend_limit(dynamic raw);
 
   @protected
   TokenBalance dco_decode_token_balance(dynamic raw);
@@ -535,6 +541,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<SpendLimit> sse_decode_list_spend_limit(SseDeserializer deserializer);
+
+  @protected
   List<TokenBalance> sse_decode_list_token_balance(
     SseDeserializer deserializer,
   );
@@ -605,6 +614,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RegistrationStatus sse_decode_registration_status(
     SseDeserializer deserializer,
   );
+
+  @protected
+  SpendLimit sse_decode_spend_limit(SseDeserializer deserializer);
 
   @protected
   TokenBalance sse_decode_token_balance(SseDeserializer deserializer);
@@ -904,6 +916,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_spend_limit(
+    List<SpendLimit> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_token_balance(
     List<TokenBalance> self,
     SseSerializer serializer,
@@ -990,6 +1008,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     RegistrationStatus self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_spend_limit(SpendLimit self, SseSerializer serializer);
 
   @protected
   void sse_encode_token_balance(TokenBalance self, SseSerializer serializer);

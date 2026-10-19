@@ -64,7 +64,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<List<ActivityEntry>> activity();
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the configured mints.
+  /// held in SOL and the configured mints, each with what prepared spends
+  /// reserve of it and the most one spend can take per proof width.
   Future<List<TokenBalance>> balances();
 
   /// Wait for a transaction the application sent itself: until Solana
@@ -182,7 +183,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// `k + 1` outputs, whose keys take at most 40 notes for `k <= 1`, 24
   /// for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`, within
   /// [`WalletConfig::max_spend_inputs`]; past that it fails with
-  /// [`WalletError::MergeRequired`].
+  /// [`WalletError::MergeRequired`]. [`TokenBalance::limits`] says what
+  /// each width can take now.
   ///
   /// `fee_payer` pays the network fee, this account when `None`. The proof
   /// binds it, so it cannot change after this call. Another fee payer signs
@@ -682,7 +684,33 @@ enum RegistrationStatus {
   conflict,
 }
 
+/// The most one spend of up to `outputs` outputs, change included, can take
+/// now without a merge: from the unreserved notes, largest first, within the
+/// note cap of that width and two trees.
+class SpendLimit {
+  final BigInt outputs;
+  final BigInt amount;
+
+  const SpendLimit({required this.outputs, required this.amount});
+
+  @override
+  int get hashCode => outputs.hashCode ^ amount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SpendLimit &&
+          runtimeType == other.runtimeType &&
+          outputs == other.outputs &&
+          amount == other.amount;
+}
+
 /// A spendable private balance. `mint` is `None` for SOL.
+///
+/// `amount` is what the indexer has confirmed for this wallet, `reserved`
+/// included: a payment or change on its way appears once its transaction is
+/// confirmed and indexed. Reservations live in this open wallet's memory
+/// only.
 class TokenBalance {
   final String? mint;
   final BigInt amount;
@@ -691,10 +719,33 @@ class TokenBalance {
   /// takes, and what a merge reduces.
   final BigInt notes;
 
-  const TokenBalance({this.mint, required this.amount, required this.notes});
+  /// The part of `amount` in notes this wallet's prepared spends hold.
+  final BigInt reserved;
+
+  /// One entry per proof width the pinned shapes offer (2, 4, 8 and 16
+  /// outputs), ascending. A spend with `k` private outputs proves with
+  /// `k + 1` outputs, its change included, and public outputs take no
+  /// slot: a withdrawal, a withdrawal with one private fee, or a send to
+  /// one wallet reads the entry with `outputs: 2`, a send to one wallet
+  /// with a fee the entry with `outputs: 4`. The limits include any
+  /// application fee the spend pays.
+  final List<SpendLimit> limits;
+
+  const TokenBalance({
+    this.mint,
+    required this.amount,
+    required this.notes,
+    required this.reserved,
+    required this.limits,
+  });
 
   @override
-  int get hashCode => mint.hashCode ^ amount.hashCode ^ notes.hashCode;
+  int get hashCode =>
+      mint.hashCode ^
+      amount.hashCode ^
+      notes.hashCode ^
+      reserved.hashCode ^
+      limits.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -703,7 +754,9 @@ class TokenBalance {
           runtimeType == other.runtimeType &&
           mint == other.mint &&
           amount == other.amount &&
-          notes == other.notes;
+          notes == other.notes &&
+          reserved == other.reserved &&
+          limits == other.limits;
 }
 
 /// Why the application's transport has no response.

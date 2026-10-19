@@ -129,7 +129,8 @@ await wallet.spend(
   included, and public outputs take no proof slot: the keys take at most 40
   notes for `k <= 1`, 24 for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`,
   within `WalletConfig.maxSpendInputs`. Past that the spend fails with
-  `WalletError.mergeRequired`. The prepared spend's
+  `WalletError.mergeRequired`; `TokenBalance.limits` says what each width can
+  take now (see [Balances](#balances)). The prepared spend's
   `Operation_Spend` lists each output in order. An empty list fails with
   `WalletError.noOutputs`, a zero amount with `WalletError.amountZero`,
   before anything is asked of the network.
@@ -404,7 +405,8 @@ sends through the wallet's RPC instead.
   wallet only. The next spend selects other notes until it is submitted or
   confirmed, released with `wallet.release(tx)` (for example when the user
   declines it), or past its `lastValidBlockHeight`. A spend that needs a
-  reserved note fails with `WalletError.notesReserved`. `register`,
+  reserved note fails with `WalletError.notesReserved`;
+  `TokenBalance.reserved` says how much the reserved notes hold. `register`,
   `deposit` and `spend` release the notes themselves when signing fails.
 - After a restart the prepared transaction is gone, but its signature and
   its `lastValidBlockHeight`, saved before sending, are enough:
@@ -545,15 +547,40 @@ close a `LocalProver` before the wallet proves. A spend of zero fails with
 `WalletError.amountZero`. Proof time and memory grow with the notes a spend
 takes, so set the cap to what the phones you support prove in the time you
 accept, and merge before spends need more: `TokenBalance.notes` says how
-many notes each balance is in.
+many notes each balance is in, and `TokenBalance.limits` what one spend can
+take now.
+
+### Balances
+
+`balances()` returns one `TokenBalance` per asset held, and `overview()` the
+same from one read with the history:
+
+- `amount` is what the indexer has confirmed for this wallet, `reserved`
+  included. A payment or change on its way appears once its transaction is
+  confirmed and indexed.
+- `notes` is how many spendable notes the amount is in.
+- `reserved` is the part of `amount` in notes this wallet's prepared spends
+  hold. Reservations live in memory, in this open wallet only.
+- `limits` has one `SpendLimit` per proof width the pinned keys offer (2, 4,
+  8 and 16 outputs), ascending: the most one spend of up to that many outputs
+  can take now without a merge, from the unreserved notes, largest first,
+  within the width's note cap and `WalletConfig.maxSpendInputs`, from at
+  most two trees. A spend with `k` private outputs uses `k + 1` outputs, and
+  public outputs take no slot: a withdrawal, a withdrawal with one private
+  fee, or a send to one wallet reads the entry with `outputs: 2`, a send to
+  one wallet with a fee the entry with `outputs: 4`. The limits include any
+  application fee the spend pays. Every amount up to a limit selects; one
+  more fails with `WalletError.mergeRequired`,
+  `WalletError.tooManyInputTrees` or `WalletError.insufficientPrivateBalance`.
 
 ### Merges
 
 A merge combines up to 54 notes of one asset on one tree into one note of
 their sum. Merge when a spend fails with `WalletError.mergeRequired` or
 `WalletError.tooManyInputTrees`, then prepare the spend again; or before
-that, when `TokenBalance.notes` grows past what a spend should take, so
-that spends stay narrow and fast.
+that, when `TokenBalance.notes` grows past what a spend should take, or
+`TokenBalance.limits` falls short of what the user wants to send, so that
+spends stay narrow and fast.
 
 ```dart
 await wallet.setMerging(true); // once per account; this account signs

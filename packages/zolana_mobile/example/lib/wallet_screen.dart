@@ -202,15 +202,20 @@ class _WalletScreenState extends State<WalletScreen> {
         : rpc.tokenBalance(wallet.solanaPublicKey, mint);
   }
 
-  /// The selected asset's private balance; `null` until the first refresh.
-  BigInt? get _private {
+  /// The selected asset's balance; `null` until the first refresh. An asset
+  /// without notes has none.
+  TokenBalance? get _balance {
     final balances = _balances;
     if (balances == null) return null;
     for (final balance in balances) {
-      if (balance.mint == _asset.mint) return balance.amount;
+      if (balance.mint == _asset.mint) return balance;
     }
-    return BigInt.zero;
+    return null;
   }
+
+  /// The selected asset's private balance; `null` until the first refresh.
+  BigInt? get _private =>
+      _balances == null ? null : _balance?.amount ?? BigInt.zero;
 
   BigInt? get _public => _publics[_asset.mint];
 
@@ -469,6 +474,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 asset: _asset,
                 private: _private,
                 public: _public,
+                balance: _balance,
                 refreshing: _refreshing,
               ),
               const SizedBox(height: 32),
@@ -541,12 +547,17 @@ class _Balances extends StatelessWidget {
     required this.asset,
     required this.private,
     required this.public,
+    required this.balance,
     required this.refreshing,
   });
 
   final DemoAsset asset;
   final BigInt? private;
   final BigInt? public;
+
+  /// The asset's notes: what prepared spends hold and what one spend can
+  /// take; `null` without notes.
+  final TokenBalance? balance;
   final bool refreshing;
 
   @override
@@ -555,6 +566,10 @@ class _Balances extends StatelessWidget {
     final muted = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    // A send to one wallet, or an unshield, proves with two outputs.
+    final limit = balance?.limits
+        .where((limit) => limit.outputs == BigInt.two)
+        .firstOrNull;
     return Column(
       children: [
         Text('Private balance', style: muted),
@@ -571,6 +586,14 @@ class _Balances extends StatelessWidget {
               : 'Public ${public == null ? '—' : asset.format(public!)}',
           style: muted,
         ),
+        if (balance != null && limit != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Reserved ${asset.format(balance!.reserved)} · '
+            'Up to ${asset.format(limit.amount)} in one send',
+            style: muted,
+          ),
+        ],
       ],
     );
   }
