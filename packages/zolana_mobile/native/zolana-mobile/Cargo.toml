@@ -11,8 +11,8 @@ publish = false
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
-# ringil's stage timings in the device log (the Device Farm bench).
-ringil-trace = ["ringil-core/trace"]
+# zopro's stage timings in the device log (the Device Farm bench).
+zopro-trace = ["zopro-core/trace"]
 default = []
 flutter = ["dep:mopro-ffi", "mopro-ffi/flutter"]
 
@@ -26,10 +26,10 @@ mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa
 reqwest = { version = "0.12", default-features = false }
 reqwest-middleware = "0.4"
 rust-gnark = { path = "../rust-gnark" }
-# The ringil prover (experiment): the arithmetic in Rust, on the GPU where
+# The zopro prover (experiment): the arithmetic in Rust, on the GPU where
 # there is one; gnark builds the witness and verifies. ZOLANA_PROVER=gnark
 # keeps gnark proving.
-ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core" }
+zopro-core = { path = "/Users/sergei/Developer/zopro/crates/zopro-core" }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 solana-commitment-config = "3.1"
@@ -57,7 +57,7 @@ solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
 zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-ringil-core = { path = "/Users/sergei/Developer/ringil/crates/ringil-core", features = ["metal"] }
+zopro-core = { path = "/Users/sergei/Developer/zopro/crates/zopro-core", features = ["metal"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 oslog = "0.2"

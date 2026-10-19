@@ -50,8 +50,8 @@ struct Loaded {
     /// switches keys only in the first case.
     key: Option<String>,
     prover: rust_gnark::PreparedProver,
-    /// The ringil prover's kernel for this key, when it proves it.
-    ringil: Option<prover::RingilKey>,
+    /// The zopro prover's kernel for this key, when it proves it.
+    zopro: Option<prover::ZoproKey>,
 }
 
 impl ProverState {
@@ -155,7 +155,7 @@ impl LocalProver {
             id,
             key: None,
             prover,
-            ringil: None,
+            zopro: None,
         });
         Ok(LocalProver {
             id,

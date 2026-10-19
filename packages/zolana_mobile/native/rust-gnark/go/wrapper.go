@@ -30,13 +30,13 @@ typedef struct {
 typedef struct {
     C_Bytes a, b, k, z, b2, program, coefficients, fixed, domain;
     char *error;
-} C_RingilInputs;
+} C_ZoproInputs;
 
 typedef struct {
     C_Bytes witness;
     uint64_t witness_ms;
     char *error;
-} C_RingilWitness;
+} C_ZoproWitness;
 */
 import "C"
 
@@ -202,9 +202,9 @@ func freeBytes(bytes C.C_Bytes) {
 	}
 }
 
-//export gnark_prepared_ringil_inputs
-func gnark_prepared_ringil_inputs(handle C.uint64_t) (output *C.C_RingilInputs) {
-	output = (*C.C_RingilInputs)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_RingilInputs{}))))
+//export gnark_prepared_zopro_inputs
+func gnark_prepared_zopro_inputs(handle C.uint64_t) (output *C.C_ZoproInputs) {
+	output = (*C.C_ZoproInputs)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_ZoproInputs{}))))
 	if output == nil {
 		return nil
 	}
@@ -213,7 +213,7 @@ func gnark_prepared_ringil_inputs(handle C.uint64_t) (output *C.C_RingilInputs) 
 			output.error = cError(errBackend)
 		}
 	}()
-	inputs, err := backendCall(func() (ringilInputs, error) { return ringilInputsOf(uint64(handle)) })
+	inputs, err := backendCall(func() (zoproInputs, error) { return zoproInputsOf(uint64(handle)) })
 	if err != nil {
 		output.error = cError(err)
 		return output
@@ -230,8 +230,8 @@ func gnark_prepared_ringil_inputs(handle C.uint64_t) (output *C.C_RingilInputs) 
 	return output
 }
 
-//export gnark_free_ringil_inputs
-func gnark_free_ringil_inputs(inputs *C.C_RingilInputs) {
+//export gnark_free_zopro_inputs
+func gnark_free_zopro_inputs(inputs *C.C_ZoproInputs) {
 	if inputs == nil {
 		return
 	}
@@ -244,9 +244,9 @@ func gnark_free_ringil_inputs(inputs *C.C_RingilInputs) {
 	C.free(unsafe.Pointer(inputs))
 }
 
-//export gnark_prepared_ringil_witness
-func gnark_prepared_ringil_witness(handle C.uint64_t, input *C.char) (output *C.C_RingilWitness) {
-	output = (*C.C_RingilWitness)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_RingilWitness{}))))
+//export gnark_prepared_zopro_witness
+func gnark_prepared_zopro_witness(handle C.uint64_t, input *C.char) (output *C.C_ZoproWitness) {
+	output = (*C.C_ZoproWitness)(C.calloc(1, C.size_t(unsafe.Sizeof(C.C_ZoproWitness{}))))
 	if output == nil {
 		return nil
 	}
@@ -260,7 +260,7 @@ func gnark_prepared_ringil_witness(handle C.uint64_t, input *C.char) (output *C.
 		ms     uint64
 	}
 	result, err := backendCall(func() (built, error) {
-		vector, ms, err := ringilWitnessOf(uint64(handle), C.GoString(input))
+		vector, ms, err := zoproWitnessOf(uint64(handle), C.GoString(input))
 		return built{vector, ms}, err
 	})
 	if err != nil {
@@ -272,8 +272,8 @@ func gnark_prepared_ringil_witness(handle C.uint64_t, input *C.char) (output *C.
 	return output
 }
 
-//export gnark_free_ringil_witness
-func gnark_free_ringil_witness(w *C.C_RingilWitness) {
+//export gnark_free_zopro_witness
+func gnark_free_zopro_witness(w *C.C_ZoproWitness) {
 	if w == nil {
 		return
 	}
@@ -284,18 +284,18 @@ func gnark_free_ringil_witness(w *C.C_RingilWitness) {
 	C.free(unsafe.Pointer(w))
 }
 
-//export gnark_prepared_ringil_release_pk
-func gnark_prepared_ringil_release_pk(handle C.uint64_t) (output *C.char) {
+//export gnark_prepared_zopro_release_pk
+func gnark_prepared_zopro_release_pk(handle C.uint64_t) (output *C.char) {
 	defer recoverError(&output)
-	_, err := backendCall(func() (struct{}, error) { return struct{}{}, ringilReleaseProvingKey(uint64(handle)) })
+	_, err := backendCall(func() (struct{}, error) { return struct{}{}, zoproReleaseProvingKey(uint64(handle)) })
 	return cError(err)
 }
 
-//export gnark_prepared_ringil_finish
-func gnark_prepared_ringil_finish(handle C.uint64_t, proof *C.uint8_t, length C.uint64_t, proveMS C.uint64_t) (output *C.C_Groth16ProofResult) {
+//export gnark_prepared_zopro_finish
+func gnark_prepared_zopro_finish(handle C.uint64_t, proof *C.uint8_t, length C.uint64_t, proveMS C.uint64_t) (output *C.C_Groth16ProofResult) {
 	defer recoverProof(&output)
 	raw := C.GoBytes(unsafe.Pointer(proof), C.int(length))
 	return exportProof(backendCall(func() (proofResult, error) {
-		return ringilFinish(uint64(handle), raw, uint64(proveMS))
+		return zoproFinish(uint64(handle), raw, uint64(proveMS))
 	}))
 }

@@ -103,14 +103,14 @@ impl PreparedProver {
     }
 }
 
-/// What the ringil prover takes from a loaded key: the five point vectors
+/// What the zopro prover takes from a loaded key: the five point vectors
 /// and the solver program and coefficients in the kernel's encoding, the
 /// proving key's fixed points (448 bytes) and the domain's generator and
 /// coset generator (64 bytes). Borrowed from the bridge's buffers, which
-/// live for the call of [`PreparedProver::with_ringil_inputs`]: a wide key
+/// live for the call of [`PreparedProver::with_zopro_inputs`]: a wide key
 /// is hundreds of megabytes, and a phone has no room for another copy.
 #[derive(Debug, Clone, Copy)]
-pub struct RingilInputs<'a> {
+pub struct ZoproInputs<'a> {
     pub a: &'a [u8],
     pub b: &'a [u8],
     pub k: &'a [u8],
@@ -122,16 +122,16 @@ pub struct RingilInputs<'a> {
     pub domain: &'a [u8],
 }
 
-struct RingilInputsGuard(*mut bind::C_RingilInputs);
-impl Drop for RingilInputsGuard {
+struct ZoproInputsGuard(*mut bind::C_ZoproInputs);
+impl Drop for ZoproInputsGuard {
     fn drop(&mut self) {
-        unsafe { bind::gnark_free_ringil_inputs(self.0) };
+        unsafe { bind::gnark_free_zopro_inputs(self.0) };
     }
 }
-struct RingilWitnessGuard(*mut bind::C_RingilWitness);
-impl Drop for RingilWitnessGuard {
+struct ZoproWitnessGuard(*mut bind::C_ZoproWitness);
+impl Drop for ZoproWitnessGuard {
     fn drop(&mut self) {
-        unsafe { bind::gnark_free_ringil_witness(self.0) };
+        unsafe { bind::gnark_free_zopro_witness(self.0) };
     }
 }
 
@@ -147,19 +147,19 @@ fn borrow_bytes(bytes: &bind::C_Bytes) -> &[u8] {
 }
 
 impl PreparedProver {
-    /// Runs `take` on the key's inputs for ringil, borrowed from the
+    /// Runs `take` on the key's inputs for zopro, borrowed from the
     /// bridge's buffers, which are freed when it returns.
-    pub fn with_ringil_inputs<R>(&self, take: impl FnOnce(RingilInputs<'_>) -> R) -> Result<R> {
-        let raw = unsafe { bind::gnark_prepared_ringil_inputs(self.handle) };
+    pub fn with_zopro_inputs<R>(&self, take: impl FnOnce(ZoproInputs<'_>) -> R) -> Result<R> {
+        let raw = unsafe { bind::gnark_prepared_zopro_inputs(self.handle) };
         if raw.is_null() {
             bail!("gnark operation failed");
         }
-        let guard = RingilInputsGuard(raw);
+        let guard = ZoproInputsGuard(raw);
         let inputs = unsafe { &*guard.0 };
         if !inputs.error.is_null() {
             return Err(backend_error(inputs.error));
         }
-        Ok(take(RingilInputs {
+        Ok(take(ZoproInputs {
             a: borrow_bytes(&inputs.a),
             b: borrow_bytes(&inputs.b),
             k: borrow_bytes(&inputs.k),
@@ -172,11 +172,11 @@ impl PreparedProver {
         }))
     }
 
-    /// Drops gnark's proving key vectors once ringil holds the key; the
+    /// Drops gnark's proving key vectors once zopro holds the key; the
     /// verifying key and constraint system stay for the witness and the
     /// verification. gnark can no longer prove with this handle.
-    pub fn ringil_release_proving_key(&self) -> Result<()> {
-        let error = unsafe { bind::gnark_prepared_ringil_release_pk(self.handle) };
+    pub fn zopro_release_proving_key(&self) -> Result<()> {
+        let error = unsafe { bind::gnark_prepared_zopro_release_pk(self.handle) };
         if error.is_null() {
             return Ok(());
         }
@@ -187,14 +187,14 @@ impl PreparedProver {
 
     /// The request's witness vector (public then secret, no ONE wire) in
     /// the kernel's encoding, and how long building it took.
-    pub fn ringil_witness(&self, request_json: &str) -> Result<(Vec<u8>, u64)> {
+    pub fn zopro_witness(&self, request_json: &str) -> Result<(Vec<u8>, u64)> {
         let input = input_string(request_json)?;
         let raw =
-            unsafe { bind::gnark_prepared_ringil_witness(self.handle, input.as_ptr().cast_mut()) };
+            unsafe { bind::gnark_prepared_zopro_witness(self.handle, input.as_ptr().cast_mut()) };
         if raw.is_null() {
             bail!("gnark operation failed");
         }
-        let guard = RingilWitnessGuard(raw);
+        let guard = ZoproWitnessGuard(raw);
         let witness = unsafe { &*guard.0 };
         if !witness.error.is_null() {
             return Err(backend_error(witness.error));
@@ -202,11 +202,11 @@ impl PreparedProver {
         Ok((copy_bytes(&witness.witness), witness.witness_ms))
     }
 
-    /// Verifies and encodes a proof ringil assembled from the last witness:
+    /// Verifies and encodes a proof zopro assembled from the last witness:
     /// Ar, Krs, Bs in gnark's raw encoding, 256 bytes.
-    pub fn ringil_finish(&self, proof: &[u8], prove_ms: u64) -> Result<Groth16ProofResult> {
+    pub fn zopro_finish(&self, proof: &[u8], prove_ms: u64) -> Result<Groth16ProofResult> {
         let raw = unsafe {
-            bind::gnark_prepared_ringil_finish(
+            bind::gnark_prepared_zopro_finish(
                 self.handle,
                 proof.as_ptr().cast_mut(),
                 proof.len() as u64,

@@ -38,24 +38,24 @@ struct Native {
     loaded: AtomicU64,
 }
 
-/// The ringil prover's view of a loaded key: the kernel with its solver
+/// The zopro prover's view of a loaded key: the kernel with its solver
 /// plan, and the proving key's fixed points for the assembly. gnark builds
-/// the witness and verifies; ringil solves, runs the MSMs (on the GPU where
+/// the witness and verifies; zopro solves, runs the MSMs (on the GPU where
 /// there is one) and assembles.
-pub(crate) struct RingilKey {
-    key: ringil_core::Key,
-    fixed: ringil_core::groth16::FixedPoints,
+pub(crate) struct ZoproKey {
+    key: zopro_core::Key,
+    fixed: zopro_core::groth16::FixedPoints,
 }
 
-/// ringil's log lines into the device log: warnings (a proof that fell back
-/// to gnark), and with the ringil-trace feature the stage timings the
+/// zopro's log lines into the device log: warnings (a proof that fell back
+/// to gnark), and with the zopro-trace feature the stage timings the
 /// Device Farm bench reads.
 fn device_log() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         #[cfg(target_os = "ios")]
-        let _ = oslog::OsLogger::new("zolana.ringil")
-            .level_filter(if cfg!(feature = "ringil-trace") {
+        let _ = oslog::OsLogger::new("zolana.zopro")
+            .level_filter(if cfg!(feature = "zopro-trace") {
                 log::LevelFilter::Info
             } else {
                 log::LevelFilter::Warn
@@ -64,12 +64,12 @@ fn device_log() {
         #[cfg(target_os = "android")]
         android_logger::init_once(
             android_logger::Config::default()
-                .with_max_level(if cfg!(feature = "ringil-trace") {
+                .with_max_level(if cfg!(feature = "zopro-trace") {
                     log::LevelFilter::Info
                 } else {
                     log::LevelFilter::Warn
                 })
-                .with_tag("ringil"),
+                .with_tag("zopro"),
         );
     });
 }
@@ -82,21 +82,21 @@ fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
         .file_name()
         .map(|n| n.to_os_string())
         .unwrap_or_default();
-    name.push(format!(".solver{}", ringil_core::solver_image_version()));
+    name.push(format!(".solver{}", zopro_core::solver_image_version()));
     key.with_file_name(name)
 }
 
-/// The keys whose ringil proof failed in this process: gnark proves them.
-static RINGIL_FAILED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// The keys whose zopro proof failed in this process: gnark proves them.
+static ZOPRO_FAILED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
-fn ringil_failed(name: &str) -> bool {
-    RINGIL_FAILED
+fn zopro_failed(name: &str) -> bool {
+    ZOPRO_FAILED
         .lock()
         .is_ok_and(|failed| failed.iter().any(|n| n == name))
 }
 
-fn set_ringil_failed(name: &str) {
-    if let Ok(mut failed) = RINGIL_FAILED.lock() {
+fn set_zopro_failed(name: &str) {
+    if let Ok(mut failed) = ZOPRO_FAILED.lock() {
         failed.push(name.to_string());
     }
 }
@@ -122,12 +122,12 @@ fn available_memory() -> Option<u64> {
     None
 }
 
-/// ringil's peak memory for a key, from its point vectors: measured at about
+/// zopro's peak memory for a key, from its point vectors: measured at about
 /// nine times their size (GPU buffers, solver plan, proving temporaries).
-const RINGIL_PEAK_PER_VECTOR_BYTE: u64 = 9;
+const ZOPRO_PEAK_PER_VECTOR_BYTE: u64 = 9;
 
-impl RingilKey {
-    /// None with ZOLANA_PROVER=gnark, or for a key ringil cannot solve. The
+impl ZoproKey {
+    /// None with ZOLANA_PROVER=gnark, or for a key zopro cannot solve. The
     /// solver comes from its cached image beside `key_path` when there is
     /// one, and is cached there after a build from the program.
     fn build(
@@ -140,8 +140,8 @@ impl RingilKey {
         device_log();
         let cache = key_path.map(solver_image_path);
         let built = prover
-            .with_ringil_inputs(|inputs| {
-                // A phone that cannot hold ringil's peak for this key proves it
+            .with_zopro_inputs(|inputs| {
+                // A phone that cannot hold zopro's peak for this key proves it
                 // with gnark, which needs less (an iPhone 12 was killed loading
                 // the widest key).
                 let vectors = [inputs.a, inputs.b, inputs.k, inputs.z, inputs.b2]
@@ -149,9 +149,9 @@ impl RingilKey {
                     .map(|v| v.len() as u64)
                     .sum::<u64>();
                 if let Some(available) = available_memory() {
-                    let needed = vectors * RINGIL_PEAK_PER_VECTOR_BYTE;
+                    let needed = vectors * ZOPRO_PEAK_PER_VECTOR_BYTE;
                     log::info!(
-                        "RINGIL_TRACE memory available {} MB needed {} MB",
+                        "ZOPRO_TRACE memory available {} MB needed {} MB",
                         available >> 20,
                         needed >> 20
                     );
@@ -159,7 +159,7 @@ impl RingilKey {
                         return None;
                     }
                 }
-                let mut key = ringil_core::Key::build(
+                let mut key = zopro_core::Key::build(
                     inputs.a,
                     inputs.b,
                     inputs.k,
@@ -185,12 +185,12 @@ impl RingilKey {
                         }
                     }
                 }
-                let fixed = ringil_core::groth16::FixedPoints::decode(inputs.fixed)?;
+                let fixed = zopro_core::groth16::FixedPoints::decode(inputs.fixed)?;
                 Some(Self { key, fixed })
             })
             .ok()??;
         // gnark's copy of the vectors goes: a phone has no room for two.
-        prover.ringil_release_proving_key().ok()?;
+        prover.zopro_release_proving_key().ok()?;
         Some(built)
     }
 
@@ -200,17 +200,17 @@ impl RingilKey {
         body: &str,
     ) -> Result<rust_gnark::Groth16ProofResult, WalletError> {
         let (witness, witness_ms) = prover
-            .ringil_witness(body)
+            .zopro_witness(body)
             .map_err(|_| WalletError::ProofFailed)?;
         let started = Instant::now();
         let parts = self
             .key
             .solve(&witness)
             .map_err(|_| WalletError::ProofFailed)?;
-        let proof = ringil_core::groth16::assemble(&parts, &self.fixed);
+        let proof = zopro_core::groth16::assemble(&parts, &self.fixed);
         let prove_ms = elapsed_ms(started);
         let mut result = prover
-            .ringil_finish(&proof, prove_ms)
+            .zopro_finish(&proof, prove_ms)
             .map_err(|_| WalletError::ProofFailed)?;
         result.witness_ms = witness_ms;
         Ok(result)
@@ -245,13 +245,13 @@ impl NativeProver {
     /// Prove `body` with `key`, fetched and loaded as needed, and say where
     /// the time went.
     /// Loads a key in place of the loaded one (gnark holds one), with
-    /// ringil's kernel when `ringil`.
+    /// zopro's kernel when `zopro`.
     fn load(
         &self,
         state: &mut crate::ProverState,
         name: &str,
         path: &std::path::Path,
-        ringil: bool,
+        zopro: bool,
     ) -> Result<(), WalletError> {
         state.loaded = None;
         init_gnark()?;
@@ -263,8 +263,8 @@ impl NativeProver {
         .map_err(|_| WalletError::ProverLoadFailed)?;
         let id = state.next_id()?;
         self.0.loaded.store(id, Ordering::Relaxed);
-        let ringil = if ringil {
-            RingilKey::build(&prover, Some(path))
+        let zopro = if zopro {
+            ZoproKey::build(&prover, Some(path))
         } else {
             None
         };
@@ -272,7 +272,7 @@ impl NativeProver {
             id,
             key: Some(name.to_string()),
             prover,
-            ringil,
+            zopro,
         });
         Ok(())
     }
@@ -296,21 +296,21 @@ impl NativeProver {
                 // The application holds its own prepared system; leave it.
                 return Err(WalletError::ProverBusy);
             }
-            let ringil = !ringil_failed(name);
-            self.load(&mut state, name, &path, ringil)?;
+            let zopro = !zopro_failed(name);
+            self.load(&mut state, name, &path, zopro)?;
         }
         let load_ms = elapsed_ms(loading);
         let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
-        let proof = match &loaded.ringil {
-            Some(ringil) => match ringil.prove(&loaded.prover, body) {
+        let proof = match &loaded.zopro {
+            Some(zopro) => match zopro.prove(&loaded.prover, body) {
                 Ok(proof) => proof,
-                // ringil's proof is verified before it leaves; one that
+                // zopro's proof is verified before it leaves; one that
                 // failed (a device whose GPU miscomputes) sends the key
                 // back to gnark for this process, reloaded with the vectors
-                // ringil had gnark release.
+                // zopro had gnark release.
                 Err(_) => {
-                    log::warn!("ringil: the proof failed; {name} proves with gnark");
-                    set_ringil_failed(name);
+                    log::warn!("zopro: the proof failed; {name} proves with gnark");
+                    set_zopro_failed(name);
                     self.load(&mut state, name, &path, false)?;
                     let loaded = state.loaded.as_ref().ok_or(WalletError::ProverClosed)?;
                     loaded

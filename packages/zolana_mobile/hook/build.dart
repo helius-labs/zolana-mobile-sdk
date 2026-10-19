@@ -84,7 +84,7 @@ void main(List<String> args) async {
       'Security',
       '-lresolv',
       '-lc++',
-      // What ringil's Metal driver needs.
+      // What zopro's Metal driver needs.
       '-framework',
       'Foundation',
       '-framework',

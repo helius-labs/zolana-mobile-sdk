@@ -3355,39 +3355,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ringil-core"
-version = "0.1.0"
-dependencies = [
- "ark-bn254 0.5.0",
- "ark-ec",
- "ark-ff",
- "ark-poly",
- "getrandom 0.2.17",
- "js-sys",
- "libc",
- "log",
- "rand 0.8.8",
- "rayon",
- "ringil-metal",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-rayon",
- "web-time",
-]
-
-[[package]]
-name = "ringil-metal"
-version = "0.1.0"
-dependencies = [
- "ark-bn254 0.5.0",
- "ark-ec",
- "ark-ff",
- "metal",
- "objc",
- "rayon",
-]
-
-[[package]]
 name = "rust-gnark"
 version = "0.0.3"
 dependencies = [
@@ -6276,7 +6243,6 @@ dependencies = [
  "oslog",
  "reqwest",
  "reqwest-middleware",
- "ringil-core",
  "rust-gnark",
  "serde",
  "serde_json",
@@ -6306,6 +6272,7 @@ dependencies = [
  "zolana-keypair",
  "zolana-program",
  "zolana-transaction",
+ "zopro-core",
 ]
 
 [[package]]
@@ -6365,6 +6332,39 @@ dependencies = [
  "solana-instruction",
  "solana-pubkey 4.2.0",
  "solana-secp256r1-program",
+]
+
+[[package]]
+name = "zopro-core"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254 0.5.0",
+ "ark-ec",
+ "ark-ff",
+ "ark-poly",
+ "getrandom 0.2.17",
+ "js-sys",
+ "libc",
+ "log",
+ "rand 0.8.8",
+ "rayon",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-rayon",
+ "web-time",
+ "zopro-metal",
+]
+
+[[package]]
+name = "zopro-metal"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254 0.5.0",
+ "ark-ec",
+ "ark-ff",
+ "metal",
+ "objc",
+ "rayon",
 ]
 
 [[package]]
