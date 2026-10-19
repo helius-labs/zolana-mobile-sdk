@@ -5008,10 +5008,15 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<List<TokenBalance>> balances() =>
       RustLib.instance.api.zolanaMobileMobileWalletBalances(that: this);
 
-  /// Wait for a transaction the application sent itself: until Solana
+  /// Wait for a transaction the application sent itself, as
+  /// [`Self::submit`] waits for a send whose response was lost: until Solana
   /// confirms it and, for shielded-pool transactions, the indexer has it,
   /// so the next balance or spend reads the notes it created and not the
-  /// ones it spent.
+  /// ones it spent; the chain's error when the chain refused it;
+  /// [`WalletError::TransactionExpired`] when it did not land before
+  /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
+  /// when that cannot be told. A spend's notes are released with every
+  /// outcome but the unknown one.
   ///
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
@@ -5175,7 +5180,8 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
 
   /// Release the notes `pending` reserves, so the next spend can select
   /// them: for a prepared spend that will not be sent, such as one the user
-  /// declined. Submitting or confirming it does this too.
+  /// declined. [`Self::submit`] and [`Self::confirm`] do this once the
+  /// outcome is known.
   Future<void> release({required PreparedTransaction pending}) => RustLib
       .instance
       .api
@@ -5188,7 +5194,10 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// Returns the signature.
   ///
   /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
-  /// before anything is sent.
+  /// before anything is sent. A spend's notes are released once the send
+  /// has an outcome: spent when it landed, free again when the chain
+  /// refused it, it expired or it spent a note the chain already had. They
+  /// stay reserved while the outcome is unknown, since it may still land.
   Future<String> submit({
     required PreparedTransaction pending,
     required List<Uint8List> signatures,

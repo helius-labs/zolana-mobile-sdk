@@ -88,7 +88,9 @@ Unreleased.
 * `registrationStatus()`: `notRegistered`, `registered` or `conflict`.
   `register()` never replaces a record that holds other keys.
 * Prepared spends reserve their notes, so the next spend selects others;
-  `release(tx)` frees them. `waitForTransaction(signature,
+  `release(tx)` frees them, and so does a send with a verdict: landed,
+  refused by the chain, expired, or a note already spent. A send whose
+  outcome is unknown keeps them. `waitForTransaction(signature,
   lastValidBlockHeight:)` waits for a transaction sent before a restart and
   ends confirmed, refused, expired or unknown, as `submit` does.
 * `refresh(tx)`: a prepared transaction with a new blockhash and the same

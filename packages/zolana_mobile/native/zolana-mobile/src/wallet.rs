@@ -389,7 +389,7 @@ struct RecentRead {
 }
 
 /// Notes reserved by prepared spends. The next spend selects other notes
-/// until a spend is submitted or confirmed, released, or past its
+/// until a spend's outcome is known, it is released, or it is past its
 /// `last_valid_block_height`, when it can no longer land.
 #[derive(Default)]
 struct Reservations {
@@ -981,7 +981,8 @@ impl MobileWallet {
 
     /// Release the notes `pending` reserves, so the next spend can select
     /// them: for a prepared spend that will not be sent, such as one the user
-    /// declined. Submitting or confirming it does this too.
+    /// declined. [`Self::submit`] and [`Self::confirm`] do this once the
+    /// outcome is known.
     pub fn release(&self, pending: &PreparedTransaction) {
         self.reservations().reserved.remove(&pending.id);
     }
@@ -1166,7 +1167,10 @@ impl MobileWallet {
     /// Returns the signature.
     ///
     /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
-    /// before anything is sent.
+    /// before anything is sent. A spend's notes are released once the send
+    /// has an outcome: spent when it landed, free again when the chain
+    /// refused it, it expired or it spent a note the chain already had. They
+    /// stay reserved while the outcome is unknown, since it may still land.
     pub fn submit(
         &self,
         pending: &PreparedTransaction,
@@ -1202,24 +1206,29 @@ impl MobileWallet {
         self.forget_notes();
         match self.client.process_transaction(transaction) {
             Ok(_) => {}
-            Err(failure) if settles_the_send(&failure) => return Err(failure.into()),
+            // The chain refused it, in simulation or after it ran: it never
+            // spent its notes.
+            Err(failure) if settles_the_send(&failure) => {
+                self.release(pending);
+                return Err(failure.into());
+            }
             // A send can fail after the transaction went out, such as when
             // the RPC loses the confirmation: look for it before failing.
-            Err(_) => reconcile(
-                &self.client,
-                signature,
-                Some(pending.last_valid_block_height),
-                self.send_lookup,
-            )?,
+            Err(_) => self.outcome(pending, signature)?,
         }
-        self.settle(pending, signature)?;
+        self.settle(pending, signature, true)?;
         Ok(signature.to_string())
     }
 
-    /// Wait for a transaction the application sent itself: until Solana
+    /// Wait for a transaction the application sent itself, as
+    /// [`Self::submit`] waits for a send whose response was lost: until Solana
     /// confirms it and, for shielded-pool transactions, the indexer has it,
     /// so the next balance or spend reads the notes it created and not the
-    /// ones it spent.
+    /// ones it spent; the chain's error when the chain refused it;
+    /// [`WalletError::TransactionExpired`] when it did not land before
+    /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
+    /// when that cannot be told. A spend's notes are released with every
+    /// outcome but the unknown one.
     ///
     /// `signature` is the transaction signature, the fee payer's; it is
     /// checked against `pending` before anything is asked.
@@ -1234,7 +1243,7 @@ impl MobileWallet {
         if !signed_by(fee_payer, &pending.message(), signature.as_array()) {
             return Err(WalletError::SignatureInvalid);
         }
-        self.settle(pending, signature)
+        self.settle(pending, signature, false)
     }
 
     /// Wait for a shielded-pool transaction by its signature, such as one sent
@@ -1265,11 +1274,15 @@ impl MobileWallet {
         Ok(self.client.confirm_private_transaction_sync(signature)?)
     }
 
-    /// Once it settles, a spend's notes are spent and no longer reserved.
+    /// Wait for `pending`, sent as `signature`: a registration or a merging
+    /// change until Solana confirms it, a shielded-pool transaction until its
+    /// outcome is known and the indexer has it. `landed` when the send
+    /// already confirmed it, so its status is not asked again.
     fn settle(
         &self,
         pending: &PreparedTransaction,
         signature: Signature,
+        landed: bool,
     ) -> Result<(), WalletError> {
         self.forget_notes();
         if matches!(
@@ -1278,9 +1291,34 @@ impl MobileWallet {
         ) {
             return wait_for_confirmation(&self.client, signature);
         }
-        self.client.confirm_private_transaction_sync(signature)?;
-        self.release(pending);
-        Ok(())
+        if landed {
+            self.release(pending);
+        } else {
+            self.outcome(pending, signature)?;
+        }
+        Ok(self.client.confirm_private_transaction_sync(signature)?)
+    }
+
+    /// What became of `pending`, sent as `signature`, as [`reconcile`] tells
+    /// it. Every outcome but the unknown one releases its notes: spent once
+    /// it landed, free again when the chain refused it, it expired or it
+    /// spent a note the chain already had. An unknown outcome keeps them
+    /// reserved, since the transaction may still land.
+    fn outcome(
+        &self,
+        pending: &PreparedTransaction,
+        signature: Signature,
+    ) -> Result<(), WalletError> {
+        let outcome = reconcile(
+            &self.client,
+            signature,
+            Some(pending.last_valid_block_height),
+            self.send_lookup,
+        );
+        if !matches!(outcome, Err(WalletError::TransactionOutcomeUnknown { .. })) {
+            self.release(pending);
+        }
+        outcome
     }
 }
 
@@ -2602,6 +2640,75 @@ mod tests {
         assert_eq!(max_spend_inputs(9), 8);
         assert!(canonical_shape(24, 3).is_ok());
         assert!(canonical_shape(25, 3).is_err());
+    }
+
+    /// A spend whose send has a verdict frees its notes at once: refused in
+    /// simulation, or expired after a lost send, through `submit` or
+    /// `confirm`. One whose outcome stays unknown keeps them: it may still
+    /// land.
+    #[test]
+    fn a_failed_send_releases_its_notes_unless_the_outcome_is_unknown() {
+        let signer = Keypair::new();
+        let internal =
+            || serde_json::json!({"error": {"code": -32603, "message": "Internal error"}});
+        let spend = |wallet: &MobileWallet| {
+            let pending = PreparedTransaction {
+                operation: Operation::Spend {
+                    mint: None,
+                    outputs: Vec::new(),
+                },
+                last_valid_block_height: 5,
+                ..unsigned(&signer)
+            };
+            wallet.reserve(pending, vec![[1; 32]])
+        };
+        let signed = |pending: &PreparedTransaction| {
+            vec![signer.sign_message(&pending.message()).as_ref().to_vec()]
+        };
+        let held = |wallet: &MobileWallet| wallet.reservations().reserved.len();
+
+        let (wallet, _) = rpc_wallet(&signer, |method| match method {
+            "sendTransaction" => nullifier_queued(),
+            _ => status(true),
+        });
+        let pending = spend(&wallet);
+        assert_eq!(held(&wallet), 1);
+        assert_eq!(
+            wallet.submit(&pending, signed(&pending)).unwrap_err(),
+            WalletError::NotesAlreadySpent
+        );
+        assert_eq!(held(&wallet), 0, "refused: the notes are free");
+
+        let expired = move |method: &str| match method {
+            "sendTransaction" => internal(),
+            "getBlockHeight" => serde_json::json!({"result": 10}),
+            _ => status(false),
+        };
+        let (wallet, _) = rpc_wallet(&signer, expired);
+        let pending = spend(&wallet);
+        assert!(matches!(
+            wallet.submit(&pending, signed(&pending)),
+            Err(WalletError::TransactionExpired { .. })
+        ));
+        assert_eq!(held(&wallet), 0, "expired: the notes are free");
+
+        let (wallet, _) = rpc_wallet(&signer, expired);
+        let pending = spend(&wallet);
+        let signature = signer.sign_message(&pending.message()).to_string();
+        assert!(matches!(
+            wallet.confirm(&pending, signature),
+            Err(WalletError::TransactionExpired { .. })
+        ));
+        assert_eq!(held(&wallet), 0, "expired after the app sent it");
+
+        let (mut wallet, _) = rpc_wallet(&signer, move |_| internal());
+        wallet.send_lookup = QUICK;
+        let pending = spend(&wallet);
+        assert!(matches!(
+            wallet.submit(&pending, signed(&pending)),
+            Err(WalletError::TransactionOutcomeUnknown { .. })
+        ));
+        assert_eq!(held(&wallet), 1, "unknown: the notes stay reserved");
     }
 
     #[test]

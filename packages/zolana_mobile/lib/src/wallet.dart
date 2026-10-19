@@ -92,8 +92,8 @@ abstract interface class WalletBackend {
 /// made that recently.
 /// Only the notes its prepared spends reserve are kept, in memory, in this
 /// open wallet: the next spend selects other notes until the prepared
-/// spend is submitted or confirmed, [release]d, or past its
-/// [PreparedTransaction.lastValidBlockHeight]. A spend
+/// spend's outcome is known through [submit] or [confirm], it is [release]d,
+/// or it is past its [PreparedTransaction.lastValidBlockHeight]. A spend
 /// that would need a reserved note fails with [WalletError.notesReserved];
 /// [native.TokenBalance.reserved] says how much the reserved notes hold.
 ///
@@ -394,6 +394,12 @@ class ZolanaWallet {
   /// fails without the chain's verdict, such as a lost confirmation, is
   /// checked against the signature's status until the blockhash expires. A
   /// note the chain already spent fails with [WalletError.notesAlreadySpent].
+  ///
+  /// A spend's notes are released once the send has an outcome: spent when
+  /// it landed, free for the next spend when the chain refused it, it
+  /// expired ([WalletError.transactionExpired]) or it spent a note the chain
+  /// already had. They stay reserved while the outcome is unknown
+  /// ([WalletError.transactionOutcomeUnknown]), since it may still land.
   Future<String> submit(
     PreparedTransaction transaction,
     List<Uint8List> signatures,
@@ -402,11 +408,16 @@ class ZolanaWallet {
   );
 
   /// Wait for a transaction the application sent itself, by its base58
-  /// [signature]: until Solana confirms it and, for shielded-pool
-  /// transactions, the indexer has it, so the next balance or spend reads the
-  /// notes it created and not the ones it spent. Fails with
-  /// [WalletError.signatureInvalid] unless [signature] is the fee payer's
-  /// signature over [PreparedTransaction.message].
+  /// [signature], as [submit] waits for a send whose response was lost:
+  /// until Solana confirms it and, for shielded-pool transactions, the
+  /// indexer has it, so the next balance or spend reads the notes it created
+  /// and not the ones it spent; the chain's error when the chain refused it;
+  /// [WalletError.transactionExpired] when it did not land before
+  /// [PreparedTransaction.lastValidBlockHeight]; and
+  /// [WalletError.transactionOutcomeUnknown] when that cannot be told. A
+  /// spend's notes are released with every outcome but the unknown one.
+  /// Fails with [WalletError.signatureInvalid] unless [signature] is the fee
+  /// payer's signature over [PreparedTransaction.message].
   Future<void> confirm(PreparedTransaction transaction, String signature) =>
       _serial(
         () => _wallet.confirm(pending: transaction, signature: signature),
@@ -414,8 +425,9 @@ class ZolanaWallet {
 
   /// Release the notes [transaction] reserves, for a prepared spend that will
   /// not be sent, such as one the user declined, so the next spend can select
-  /// them. [submit] and [confirm] release them, and [register], [deposit]
-  /// and [spend] release them when the signer fails.
+  /// them. [submit] and [confirm] release them once the outcome is known,
+  /// and [register], [deposit] and [spend] release them when the signer
+  /// fails.
   Future<void> release(PreparedTransaction transaction) =>
       _serial(() => _wallet.release(pending: transaction));
 

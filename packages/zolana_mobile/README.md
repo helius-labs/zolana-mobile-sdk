@@ -402,12 +402,16 @@ sends through the wallet's RPC instead.
   keeps its last 500); after that the program rejects it as stale, and the
   spend is prepared again.
 - A prepared spend reserves the notes it spends, in memory, in this open
-  wallet only. The next spend selects other notes until it is submitted or
-  confirmed, released with `wallet.release(tx)` (for example when the user
-  declines it), or past its `lastValidBlockHeight`. A spend that needs a
-  reserved note fails with `WalletError.notesReserved`;
-  `TokenBalance.reserved` says how much the reserved notes hold. `register`,
-  `deposit` and `spend` release the notes themselves when signing fails.
+  wallet only. The next spend selects other notes until the spend's outcome
+  is known through `submit` or `confirm`, it is released with
+  `wallet.release(tx)` (for example when the user declines it), or it is
+  past its `lastValidBlockHeight`. A spend that needs a reserved note fails
+  with `WalletError.notesReserved`; `TokenBalance.reserved` says how much the
+  reserved notes hold. `register`, `deposit` and `spend` release the notes
+  themselves when signing fails. A send with a verdict releases them at
+  once: the chain refused it, it expired, or it spent a note the chain
+  already had. One whose outcome is unknown keeps them, since it may still
+  land.
 - After a restart the prepared transaction is gone, but its signature and
   its `lastValidBlockHeight`, saved before sending, are enough:
   `wallet.waitForTransaction(signature, lastValidBlockHeight: height)` ends
