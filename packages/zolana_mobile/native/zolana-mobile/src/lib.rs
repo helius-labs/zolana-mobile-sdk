@@ -12,7 +12,6 @@ use zolana_hasher::{Hasher, Poseidon};
 mod activity;
 mod asset;
 mod error;
-mod fee;
 mod keys;
 mod prover;
 mod transport;
@@ -27,8 +26,8 @@ pub use transport::{
     Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
 };
 pub use wallet::{
-    derivation_message, MobileWallet, Operation, Payment, PreparedTransaction, RegistrationStatus,
-    TokenBalance, WalletConfig, WalletKeys, WalletOverview,
+    derivation_message, MobileWallet, Operation, Output, PreparedTransaction, RegistrationStatus,
+    SpendLimit, TokenBalance, WalletConfig, WalletKeys, WalletOverview,
 };
 
 static GNARK_INIT: OnceLock<Result<(), WalletError>> = OnceLock::new();

@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1608780066;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 108739387;
 
 // Section: executor
 
@@ -655,7 +655,6 @@ fn wire__zolana_mobile__MobileWallet_prepare_deposit_impl(
             >>::sse_decode(&mut deserializer);
             let api_mint = <Option<String>>::sse_decode(&mut deserializer);
             let api_amount = <u64>::sse_decode(&mut deserializer);
-            let api_public_fee = <Option<zolana_mobile::Payment>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, zolana_mobile::WalletError>((move || {
@@ -677,7 +676,6 @@ fn wire__zolana_mobile__MobileWallet_prepare_deposit_impl(
                         &mut *api_that_guard,
                         api_mint,
                         api_amount,
-                        api_public_fee,
                     )?;
                     Ok(output_ok)
                 })())
@@ -847,7 +845,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_registration_impl(
         },
     )
 }
-fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
+fn wire__zolana_mobile__MobileWallet_prepare_spend_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -855,7 +853,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "MobileWallet_prepare_transfer",
+            debug_name: "MobileWallet_prepare_spend",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -872,7 +870,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
             let api_that = <RustOpaqueMoi<
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
             >>::sse_decode(&mut deserializer);
-            let api_payments = <Vec<zolana_mobile::Payment>>::sse_decode(&mut deserializer);
+            let api_outputs = <Vec<zolana_mobile::Output>>::sse_decode(&mut deserializer);
             let api_mint = <Option<String>>::sse_decode(&mut deserializer);
             let api_fee_payer = <Option<String>>::sse_decode(&mut deserializer);
             let api_proving = <Option<zolana_mobile::Proving>>::sse_decode(&mut deserializer);
@@ -893,75 +891,12 @@ fn wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
                         }
                     }
                     let mut api_that_guard = api_that_guard.unwrap();
-                    let output_ok = zolana_mobile::MobileWallet::prepare_transfer(
+                    let output_ok = zolana_mobile::MobileWallet::prepare_spend(
                         &mut *api_that_guard,
-                        api_payments,
+                        api_outputs,
                         api_mint,
                         api_fee_payer,
                         api_proving,
-                    )?;
-                    Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
-fn wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "MobileWallet_prepare_withdrawal",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_that = <RustOpaqueMoi<
-                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
-            >>::sse_decode(&mut deserializer);
-            let api_recipient = <String>::sse_decode(&mut deserializer);
-            let api_mint = <Option<String>>::sse_decode(&mut deserializer);
-            let api_amount = <u64>::sse_decode(&mut deserializer);
-            let api_fee_payer = <Option<String>>::sse_decode(&mut deserializer);
-            let api_proving = <Option<zolana_mobile::Proving>>::sse_decode(&mut deserializer);
-            let api_public_fee = <Option<zolana_mobile::Payment>>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, zolana_mobile::WalletError>((move || {
-                    let mut api_that_guard = None;
-                    let decode_indices_ =
-                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
-                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
-                                &api_that, 0, true,
-                            ),
-                        ]);
-                    for i in decode_indices_ {
-                        match i {
-                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
-                            _ => unreachable!(),
-                        }
-                    }
-                    let mut api_that_guard = api_that_guard.unwrap();
-                    let output_ok = zolana_mobile::MobileWallet::prepare_withdrawal(
-                        &mut *api_that_guard,
-                        api_recipient,
-                        api_mint,
-                        api_amount,
-                        api_fee_payer,
-                        api_proving,
-                        api_public_fee,
                     )?;
                     Ok(output_ok)
                 })())
@@ -2127,25 +2062,13 @@ const _: fn() = || {
     }
     match None::<zolana_mobile::Operation>.unwrap() {
         zolana_mobile::Operation::Registration => {}
-        zolana_mobile::Operation::Deposit { mint, amount, fee } => {
+        zolana_mobile::Operation::Deposit { mint, amount } => {
             let _: Option<String> = mint;
             let _: u64 = amount;
-            let _: Option<zolana_mobile::Payment> = fee;
         }
-        zolana_mobile::Operation::Transfer { mint, payments } => {
+        zolana_mobile::Operation::Spend { mint, outputs } => {
             let _: Option<String> = mint;
-            let _: Vec<zolana_mobile::Payment> = payments;
-        }
-        zolana_mobile::Operation::Withdrawal {
-            mint,
-            recipient,
-            amount,
-            fee,
-        } => {
-            let _: Option<String> = mint;
-            let _: String = recipient;
-            let _: u64 = amount;
-            let _: Option<zolana_mobile::Payment> = fee;
+            let _: Vec<zolana_mobile::Output> = outputs;
         }
         zolana_mobile::Operation::Merging { enabled } => {
             let _: bool = enabled;
@@ -2158,10 +2081,15 @@ const _: fn() = || {
             let _: Vec<String> = programs;
         }
     }
-    {
-        let Payment = None::<zolana_mobile::Payment>.unwrap();
-        let _: String = Payment.recipient;
-        let _: u64 = Payment.amount;
+    match None::<zolana_mobile::Output>.unwrap() {
+        zolana_mobile::Output::Private { recipient, amount } => {
+            let _: String = recipient;
+            let _: u64 = amount;
+        }
+        zolana_mobile::Output::Public { recipient, amount } => {
+            let _: String = recipient;
+            let _: u64 = amount;
+        }
     }
     {
         let ProvedRequest = None::<zolana_mobile::ProvedRequest>.unwrap();
@@ -2192,10 +2120,17 @@ const _: fn() = || {
         let _: u64 = ProvingKeyStatus.downloaded;
     }
     {
+        let SpendLimit = None::<zolana_mobile::SpendLimit>.unwrap();
+        let _: u64 = SpendLimit.outputs;
+        let _: u64 = SpendLimit.amount;
+    }
+    {
         let TokenBalance = None::<zolana_mobile::TokenBalance>.unwrap();
         let _: Option<String> = TokenBalance.mint;
         let _: u64 = TokenBalance.amount;
         let _: u64 = TokenBalance.notes;
+        let _: u64 = TokenBalance.reserved;
+        let _: Vec<zolana_mobile::SpendLimit> = TokenBalance.limits;
     }
     {
         let TransportFailure = None::<zolana_mobile::TransportFailure>.unwrap();
@@ -2252,6 +2187,7 @@ const _: fn() = || {
             let _: u64 = max_trees;
         }
         zolana_mobile::WalletError::AmountZero => {}
+        zolana_mobile::WalletError::NoOutputs => {}
         zolana_mobile::WalletError::NothingToMerge { mint } => {
             let _: Option<String> = mint;
         }
@@ -2719,13 +2655,13 @@ impl SseDecode for Vec<zolana_mobile::MintConfig> {
     }
 }
 
-impl SseDecode for Vec<zolana_mobile::Payment> {
+impl SseDecode for Vec<zolana_mobile::Output> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut len_ = <i32>::sse_decode(deserializer);
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
-            ans_.push(<zolana_mobile::Payment>::sse_decode(deserializer));
+            ans_.push(<zolana_mobile::Output>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -2774,6 +2710,18 @@ impl SseDecode for Vec<(String, String)> {
         let mut ans_ = vec![];
         for idx_ in 0..len_ {
             ans_.push(<(String, String)>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<zolana_mobile::SpendLimit> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<zolana_mobile::SpendLimit>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -2838,40 +2786,26 @@ impl SseDecode for zolana_mobile::Operation {
             1 => {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
                 let mut var_amount = <u64>::sse_decode(deserializer);
-                let mut var_fee = <Option<zolana_mobile::Payment>>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Deposit {
                     mint: var_mint,
                     amount: var_amount,
-                    fee: var_fee,
                 };
             }
             2 => {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
-                let mut var_payments = <Vec<zolana_mobile::Payment>>::sse_decode(deserializer);
-                return zolana_mobile::Operation::Transfer {
+                let mut var_outputs = <Vec<zolana_mobile::Output>>::sse_decode(deserializer);
+                return zolana_mobile::Operation::Spend {
                     mint: var_mint,
-                    payments: var_payments,
+                    outputs: var_outputs,
                 };
             }
             3 => {
-                let mut var_mint = <Option<String>>::sse_decode(deserializer);
-                let mut var_recipient = <String>::sse_decode(deserializer);
-                let mut var_amount = <u64>::sse_decode(deserializer);
-                let mut var_fee = <Option<zolana_mobile::Payment>>::sse_decode(deserializer);
-                return zolana_mobile::Operation::Withdrawal {
-                    mint: var_mint,
-                    recipient: var_recipient,
-                    amount: var_amount,
-                    fee: var_fee,
-                };
-            }
-            4 => {
                 let mut var_enabled = <bool>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Merging {
                     enabled: var_enabled,
                 };
             }
-            5 => {
+            4 => {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
                 let mut var_amount = <u64>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Merge {
@@ -2879,7 +2813,7 @@ impl SseDecode for zolana_mobile::Operation {
                     amount: var_amount,
                 };
             }
-            6 => {
+            5 => {
                 let mut var_programs = <Vec<String>>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Custom {
                     programs: var_programs,
@@ -2908,17 +2842,6 @@ impl SseDecode for Option<PreparedTransaction> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<PreparedTransaction>::sse_decode(deserializer));
-        } else {
-            return None;
-        }
-    }
-}
-
-impl SseDecode for Option<zolana_mobile::Payment> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        if (<bool>::sse_decode(deserializer)) {
-            return Some(<zolana_mobile::Payment>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -2991,15 +2914,31 @@ impl SseDecode for Option<u64> {
     }
 }
 
-impl SseDecode for zolana_mobile::Payment {
+impl SseDecode for zolana_mobile::Output {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_recipient = <String>::sse_decode(deserializer);
-        let mut var_amount = <u64>::sse_decode(deserializer);
-        return zolana_mobile::Payment {
-            recipient: var_recipient,
-            amount: var_amount,
-        };
+        let mut tag_ = <i32>::sse_decode(deserializer);
+        match tag_ {
+            0 => {
+                let mut var_recipient = <String>::sse_decode(deserializer);
+                let mut var_amount = <u64>::sse_decode(deserializer);
+                return zolana_mobile::Output::Private {
+                    recipient: var_recipient,
+                    amount: var_amount,
+                };
+            }
+            1 => {
+                let mut var_recipient = <String>::sse_decode(deserializer);
+                let mut var_amount = <u64>::sse_decode(deserializer);
+                return zolana_mobile::Output::Public {
+                    recipient: var_recipient,
+                    amount: var_amount,
+                };
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -3099,16 +3038,32 @@ impl SseDecode for zolana_mobile::RegistrationStatus {
     }
 }
 
+impl SseDecode for zolana_mobile::SpendLimit {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_outputs = <u64>::sse_decode(deserializer);
+        let mut var_amount = <u64>::sse_decode(deserializer);
+        return zolana_mobile::SpendLimit {
+            outputs: var_outputs,
+            amount: var_amount,
+        };
+    }
+}
+
 impl SseDecode for zolana_mobile::TokenBalance {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_mint = <Option<String>>::sse_decode(deserializer);
         let mut var_amount = <u64>::sse_decode(deserializer);
         let mut var_notes = <u64>::sse_decode(deserializer);
+        let mut var_reserved = <u64>::sse_decode(deserializer);
+        let mut var_limits = <Vec<zolana_mobile::SpendLimit>>::sse_decode(deserializer);
         return zolana_mobile::TokenBalance {
             mint: var_mint,
             amount: var_amount,
             notes: var_notes,
+            reserved: var_reserved,
+            limits: var_limits,
         };
     }
 }
@@ -3272,13 +3227,16 @@ impl SseDecode for zolana_mobile::WalletError {
                 return zolana_mobile::WalletError::AmountZero;
             }
             4 => {
+                return zolana_mobile::WalletError::NoOutputs;
+            }
+            5 => {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::NothingToMerge { mint: var_mint };
             }
-            5 => {
+            6 => {
                 return zolana_mobile::WalletError::MergingDisabled;
             }
-            6 => {
+            7 => {
                 let mut var_indexerSlot = <u64>::sse_decode(deserializer);
                 let mut var_rpcSlot = <u64>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::IndexerBehind {
@@ -3286,20 +3244,20 @@ impl SseDecode for zolana_mobile::WalletError {
                     rpc_slot: var_rpcSlot,
                 };
             }
-            7 => {
+            8 => {
                 return zolana_mobile::WalletError::NotesAlreadySpent;
             }
-            8 => {
+            9 => {
                 let mut var_amount = <u64>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::NotesReserved { amount: var_amount };
             }
-            9 => {
+            10 => {
                 let mut var_recipient = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::RecipientNotRegistered {
                     recipient: var_recipient,
                 };
             }
-            10 => {
+            11 => {
                 let mut var_recipient = <String>::sse_decode(deserializer);
                 let mut var_mint = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::RecipientTokenAccountMissing {
@@ -3307,23 +3265,23 @@ impl SseDecode for zolana_mobile::WalletError {
                     mint: var_mint,
                 };
             }
-            11 => {
+            12 => {
                 let mut var_owner = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::RegistrationConflict { owner: var_owner };
             }
-            12 => {
+            13 => {
                 let mut var_mint = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::AssetNotSupported { mint: var_mint };
             }
-            13 => {
+            14 => {
                 let mut var_mint = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::MintNotConfigured { mint: var_mint };
             }
-            14 => {
+            15 => {
                 let mut var_mint = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::InvalidMint { mint: var_mint };
             }
-            15 => {
+            16 => {
                 let mut var_mint = <String>::sse_decode(deserializer);
                 let mut var_tokenProgram = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::InvalidTokenProgram {
@@ -3331,11 +3289,11 @@ impl SseDecode for zolana_mobile::WalletError {
                     token_program: var_tokenProgram,
                 };
             }
-            16 => {
+            17 => {
                 let mut var_value = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::InvalidPubkey { value: var_value };
             }
-            17 => {
+            18 => {
                 let mut var_maxInputs = <u64>::sse_decode(deserializer);
                 let mut var_limit = <u64>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::InvalidMaxSpendInputs {
@@ -3343,22 +3301,22 @@ impl SseDecode for zolana_mobile::WalletError {
                     limit: var_limit,
                 };
             }
-            18 => {
+            19 => {
                 return zolana_mobile::WalletError::InvalidDerivationSignature;
             }
-            19 => {
+            20 => {
                 return zolana_mobile::WalletError::InvalidWalletKeys;
             }
-            20 => {
+            21 => {
                 let mut var_message = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::TransportFailed {
                     message: var_message,
                 };
             }
-            21 => {
+            22 => {
                 return zolana_mobile::WalletError::SignatureInvalid;
             }
-            22 => {
+            23 => {
                 let mut var_expected = <u64>::sse_decode(deserializer);
                 let mut var_got = <u64>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::SignatureCountMismatch {
@@ -3366,19 +3324,19 @@ impl SseDecode for zolana_mobile::WalletError {
                     got: var_got,
                 };
             }
-            23 => {
+            24 => {
                 let mut var_signature = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::TransactionNotConfirmed {
                     signature: var_signature,
                 };
             }
-            24 => {
+            25 => {
                 let mut var_signature = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::TransactionExpired {
                     signature: var_signature,
                 };
             }
-            25 => {
+            26 => {
                 let mut var_signature = <String>::sse_decode(deserializer);
                 let mut var_message = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::TransactionOutcomeUnknown {
@@ -3386,77 +3344,77 @@ impl SseDecode for zolana_mobile::WalletError {
                     message: var_message,
                 };
             }
-            26 => {
+            27 => {
                 return zolana_mobile::WalletError::RemoteProverMissing;
             }
-            27 => {
+            28 => {
                 return zolana_mobile::WalletError::ProofMalformed;
             }
-            28 => {
+            29 => {
                 return zolana_mobile::WalletError::ProofInvalid;
             }
-            29 => {
+            30 => {
                 return zolana_mobile::WalletError::ProofFailed;
             }
-            30 => {
+            31 => {
                 return zolana_mobile::WalletError::ProverBusy;
             }
-            31 => {
+            32 => {
                 return zolana_mobile::WalletError::ProverClosed;
             }
-            32 => {
+            33 => {
                 return zolana_mobile::WalletError::ProverUnavailable;
             }
-            33 => {
+            34 => {
                 return zolana_mobile::WalletError::ProverInitFailed;
             }
-            34 => {
+            35 => {
                 return zolana_mobile::WalletError::ProverLoadFailed;
             }
-            35 => {
-                return zolana_mobile::WalletError::UnsupportedCircuit;
-            }
             36 => {
-                let mut var_url = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::RpcUrlInsecure { url: var_url };
+                return zolana_mobile::WalletError::UnsupportedCircuit;
             }
             37 => {
                 let mut var_url = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::IndexerUrlInsecure { url: var_url };
+                return zolana_mobile::WalletError::RpcUrlInsecure { url: var_url };
             }
             38 => {
                 let mut var_url = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::ProvingKeyUrlInsecure { url: var_url };
+                return zolana_mobile::WalletError::IndexerUrlInsecure { url: var_url };
             }
             39 => {
                 let mut var_url = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::ProverUrlInsecure { url: var_url };
+                return zolana_mobile::WalletError::ProvingKeyUrlInsecure { url: var_url };
             }
             40 => {
-                let mut var_name = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::ProvingKeyUnknown { name: var_name };
+                let mut var_url = <String>::sse_decode(deserializer);
+                return zolana_mobile::WalletError::ProverUrlInsecure { url: var_url };
             }
             41 => {
                 let mut var_name = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::ProvingKeyMismatch { name: var_name };
+                return zolana_mobile::WalletError::ProvingKeyUnknown { name: var_name };
             }
             42 => {
                 let mut var_name = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::ProvingKeyDownloadFailed { name: var_name };
+                return zolana_mobile::WalletError::ProvingKeyMismatch { name: var_name };
             }
             43 => {
                 let mut var_name = <String>::sse_decode(deserializer);
-                return zolana_mobile::WalletError::ProvingKeyCorrupt { name: var_name };
+                return zolana_mobile::WalletError::ProvingKeyDownloadFailed { name: var_name };
             }
             44 => {
+                let mut var_name = <String>::sse_decode(deserializer);
+                return zolana_mobile::WalletError::ProvingKeyCorrupt { name: var_name };
+            }
+            45 => {
                 let mut var_path = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::ProvingKeyStoreFailed { path: var_path };
             }
-            45 => {
+            46 => {
                 let mut var_count = <u64>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::PoseidonInputCountInvalid { count: var_count };
             }
-            46 => {
+            47 => {
                 let mut var_index = <u64>::sse_decode(deserializer);
                 let mut var_length = <u64>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::PoseidonInputLengthInvalid {
@@ -3464,10 +3422,10 @@ impl SseDecode for zolana_mobile::WalletError {
                     length: var_length,
                 };
             }
-            47 => {
+            48 => {
                 return zolana_mobile::WalletError::SignerMissing;
             }
-            48 => {
+            49 => {
                 let mut var_wallet = <String>::sse_decode(deserializer);
                 let mut var_signer = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::SignerMismatch {
@@ -3475,16 +3433,16 @@ impl SseDecode for zolana_mobile::WalletError {
                     signer: var_signer,
                 };
             }
-            49 => {
+            50 => {
                 let mut var_signers = <Vec<String>>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::UnexpectedSigners {
                     signers: var_signers,
                 };
             }
-            50 => {
+            51 => {
                 return zolana_mobile::WalletError::WalletClosed;
             }
-            51 => {
+            52 => {
                 let mut var_message = <String>::sse_decode(deserializer);
                 return zolana_mobile::WalletError::Client {
                     message: var_message,
@@ -3573,58 +3531,49 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        17 => wire__zolana_mobile__MobileWallet_prepare_transfer_impl(
+        17 => {
+            wire__zolana_mobile__MobileWallet_prepare_spend_impl(port, ptr, rust_vec_len, data_len)
+        }
+        18 => wire__zolana_mobile__MobileWallet_private_balance_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__zolana_mobile__MobileWallet_prepare_withdrawal_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        19 => wire__zolana_mobile__MobileWallet_private_balance_impl(
-            port,
-            ptr,
-            rust_vec_len,
-            data_len,
-        ),
-        20 => {
+        19 => {
             wire__zolana_mobile__MobileWallet_proving_keys_impl(port, ptr, rust_vec_len, data_len)
         }
-        21 => wire__zolana_mobile__MobileWallet_refresh_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__zolana_mobile__MobileWallet_registration_status_impl(
+        20 => wire__zolana_mobile__MobileWallet_refresh_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__zolana_mobile__MobileWallet_registration_status_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        23 => wire__zolana_mobile__MobileWallet_release_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__zolana_mobile__MobileWallet_shielded_address_impl(
+        22 => wire__zolana_mobile__MobileWallet_release_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__zolana_mobile__MobileWallet_shielded_address_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        25 => wire__zolana_mobile__MobileWallet_submit_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
+        24 => wire__zolana_mobile__MobileWallet_submit_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        32 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        40 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3638,15 +3587,15 @@ fn pde_ffi_dispatcher_sync_impl(
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
         3 => wire__zolana_mobile__LocalProver_load_ms_impl(ptr, rust_vec_len, data_len),
-        27 => wire__zolana_mobile__PreparedTransaction_fee_payer_impl(ptr, rust_vec_len, data_len),
-        28 => wire__zolana_mobile__PreparedTransaction_last_valid_block_height_impl(
+        26 => wire__zolana_mobile__PreparedTransaction_fee_payer_impl(ptr, rust_vec_len, data_len),
+        27 => wire__zolana_mobile__PreparedTransaction_last_valid_block_height_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        29 => wire__zolana_mobile__PreparedTransaction_message_impl(ptr, rust_vec_len, data_len),
-        30 => wire__zolana_mobile__PreparedTransaction_operation_impl(ptr, rust_vec_len, data_len),
-        31 => wire__zolana_mobile__PreparedTransaction_signers_impl(ptr, rust_vec_len, data_len),
+        28 => wire__zolana_mobile__PreparedTransaction_message_impl(ptr, rust_vec_len, data_len),
+        29 => wire__zolana_mobile__PreparedTransaction_operation_impl(ptr, rust_vec_len, data_len),
+        30 => wire__zolana_mobile__PreparedTransaction_signers_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3832,43 +3781,29 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Operation> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
             zolana_mobile::Operation::Registration => [0.into_dart()].into_dart(),
-            zolana_mobile::Operation::Deposit { mint, amount, fee } => [
+            zolana_mobile::Operation::Deposit { mint, amount } => [
                 1.into_dart(),
                 mint.into_into_dart().into_dart(),
                 amount.into_into_dart().into_dart(),
-                fee.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            zolana_mobile::Operation::Transfer { mint, payments } => [
+            zolana_mobile::Operation::Spend { mint, outputs } => [
                 2.into_dart(),
                 mint.into_into_dart().into_dart(),
-                payments.into_into_dart().into_dart(),
-            ]
-            .into_dart(),
-            zolana_mobile::Operation::Withdrawal {
-                mint,
-                recipient,
-                amount,
-                fee,
-            } => [
-                3.into_dart(),
-                mint.into_into_dart().into_dart(),
-                recipient.into_into_dart().into_dart(),
-                amount.into_into_dart().into_dart(),
-                fee.into_into_dart().into_dart(),
+                outputs.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::Operation::Merging { enabled } => {
-                [4.into_dart(), enabled.into_into_dart().into_dart()].into_dart()
+                [3.into_dart(), enabled.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::Operation::Merge { mint, amount } => [
-                5.into_dart(),
+                4.into_dart(),
                 mint.into_into_dart().into_dart(),
                 amount.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::Operation::Custom { programs } => {
-                [6.into_dart(), programs.into_into_dart().into_dart()].into_dart()
+                [5.into_dart(), programs.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -3888,23 +3823,35 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::Operation>>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Payment> {
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Output> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [
-            self.0.recipient.into_into_dart().into_dart(),
-            self.0.amount.into_into_dart().into_dart(),
-        ]
-        .into_dart()
+        match self.0 {
+            zolana_mobile::Output::Private { recipient, amount } => [
+                0.into_dart(),
+                recipient.into_into_dart().into_dart(),
+                amount.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            zolana_mobile::Output::Public { recipient, amount } => [
+                1.into_dart(),
+                recipient.into_into_dart().into_dart(),
+                amount.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for FrbWrapper<zolana_mobile::Payment>
+    for FrbWrapper<zolana_mobile::Output>
 {
 }
-impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::Payment>>
-    for zolana_mobile::Payment
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::Output>>
+    for zolana_mobile::Output
 {
-    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::Payment> {
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::Output> {
         self.into()
     }
 }
@@ -4028,12 +3975,35 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::RegistrationSta
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::SpendLimit> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.outputs.into_into_dart().into_dart(),
+            self.0.amount.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::SpendLimit>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::SpendLimit>>
+    for zolana_mobile::SpendLimit
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::SpendLimit> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::TokenBalance> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.0.mint.into_into_dart().into_dart(),
             self.0.amount.into_into_dart().into_dart(),
             self.0.notes.into_into_dart().into_dart(),
+            self.0.reserved.into_into_dart().into_dart(),
+            self.0.limits.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4193,145 +4163,146 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::WalletError> {
             ]
             .into_dart(),
             zolana_mobile::WalletError::AmountZero => [3.into_dart()].into_dart(),
+            zolana_mobile::WalletError::NoOutputs => [4.into_dart()].into_dart(),
             zolana_mobile::WalletError::NothingToMerge { mint } => {
-                [4.into_dart(), mint.into_into_dart().into_dart()].into_dart()
+                [5.into_dart(), mint.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::MergingDisabled => [5.into_dart()].into_dart(),
+            zolana_mobile::WalletError::MergingDisabled => [6.into_dart()].into_dart(),
             zolana_mobile::WalletError::IndexerBehind {
                 indexer_slot,
                 rpc_slot,
             } => [
-                6.into_dart(),
+                7.into_dart(),
                 indexer_slot.into_into_dart().into_dart(),
                 rpc_slot.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            zolana_mobile::WalletError::NotesAlreadySpent => [7.into_dart()].into_dart(),
+            zolana_mobile::WalletError::NotesAlreadySpent => [8.into_dart()].into_dart(),
             zolana_mobile::WalletError::NotesReserved { amount } => {
-                [8.into_dart(), amount.into_into_dart().into_dart()].into_dart()
+                [9.into_dart(), amount.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::RecipientNotRegistered { recipient } => {
-                [9.into_dart(), recipient.into_into_dart().into_dart()].into_dart()
+                [10.into_dart(), recipient.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::RecipientTokenAccountMissing { recipient, mint } => [
-                10.into_dart(),
+                11.into_dart(),
                 recipient.into_into_dart().into_dart(),
                 mint.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::WalletError::RegistrationConflict { owner } => {
-                [11.into_dart(), owner.into_into_dart().into_dart()].into_dart()
+                [12.into_dart(), owner.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::AssetNotSupported { mint } => {
-                [12.into_dart(), mint.into_into_dart().into_dart()].into_dart()
-            }
-            zolana_mobile::WalletError::MintNotConfigured { mint } => {
                 [13.into_dart(), mint.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::InvalidMint { mint } => {
+            zolana_mobile::WalletError::MintNotConfigured { mint } => {
                 [14.into_dart(), mint.into_into_dart().into_dart()].into_dart()
+            }
+            zolana_mobile::WalletError::InvalidMint { mint } => {
+                [15.into_dart(), mint.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::InvalidTokenProgram {
                 mint,
                 token_program,
             } => [
-                15.into_dart(),
+                16.into_dart(),
                 mint.into_into_dart().into_dart(),
                 token_program.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::WalletError::InvalidPubkey { value } => {
-                [16.into_dart(), value.into_into_dart().into_dart()].into_dart()
+                [17.into_dart(), value.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::InvalidMaxSpendInputs { max_inputs, limit } => [
-                17.into_dart(),
+                18.into_dart(),
                 max_inputs.into_into_dart().into_dart(),
                 limit.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            zolana_mobile::WalletError::InvalidDerivationSignature => [18.into_dart()].into_dart(),
-            zolana_mobile::WalletError::InvalidWalletKeys => [19.into_dart()].into_dart(),
+            zolana_mobile::WalletError::InvalidDerivationSignature => [19.into_dart()].into_dart(),
+            zolana_mobile::WalletError::InvalidWalletKeys => [20.into_dart()].into_dart(),
             zolana_mobile::WalletError::TransportFailed { message } => {
-                [20.into_dart(), message.into_into_dart().into_dart()].into_dart()
+                [21.into_dart(), message.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::SignatureInvalid => [21.into_dart()].into_dart(),
+            zolana_mobile::WalletError::SignatureInvalid => [22.into_dart()].into_dart(),
             zolana_mobile::WalletError::SignatureCountMismatch { expected, got } => [
-                22.into_dart(),
+                23.into_dart(),
                 expected.into_into_dart().into_dart(),
                 got.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::WalletError::TransactionNotConfirmed { signature } => {
-                [23.into_dart(), signature.into_into_dart().into_dart()].into_dart()
-            }
-            zolana_mobile::WalletError::TransactionExpired { signature } => {
                 [24.into_dart(), signature.into_into_dart().into_dart()].into_dart()
             }
+            zolana_mobile::WalletError::TransactionExpired { signature } => {
+                [25.into_dart(), signature.into_into_dart().into_dart()].into_dart()
+            }
             zolana_mobile::WalletError::TransactionOutcomeUnknown { signature, message } => [
-                25.into_dart(),
+                26.into_dart(),
                 signature.into_into_dart().into_dart(),
                 message.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            zolana_mobile::WalletError::RemoteProverMissing => [26.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProofMalformed => [27.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProofInvalid => [28.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProofFailed => [29.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProverBusy => [30.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProverClosed => [31.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProverUnavailable => [32.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProverInitFailed => [33.into_dart()].into_dart(),
-            zolana_mobile::WalletError::ProverLoadFailed => [34.into_dart()].into_dart(),
-            zolana_mobile::WalletError::UnsupportedCircuit => [35.into_dart()].into_dart(),
+            zolana_mobile::WalletError::RemoteProverMissing => [27.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProofMalformed => [28.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProofInvalid => [29.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProofFailed => [30.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProverBusy => [31.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProverClosed => [32.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProverUnavailable => [33.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProverInitFailed => [34.into_dart()].into_dart(),
+            zolana_mobile::WalletError::ProverLoadFailed => [35.into_dart()].into_dart(),
+            zolana_mobile::WalletError::UnsupportedCircuit => [36.into_dart()].into_dart(),
             zolana_mobile::WalletError::RpcUrlInsecure { url } => {
-                [36.into_dart(), url.into_into_dart().into_dart()].into_dart()
-            }
-            zolana_mobile::WalletError::IndexerUrlInsecure { url } => {
                 [37.into_dart(), url.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::ProvingKeyUrlInsecure { url } => {
+            zolana_mobile::WalletError::IndexerUrlInsecure { url } => {
                 [38.into_dart(), url.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::ProverUrlInsecure { url } => {
+            zolana_mobile::WalletError::ProvingKeyUrlInsecure { url } => {
                 [39.into_dart(), url.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::ProvingKeyUnknown { name } => {
-                [40.into_dart(), name.into_into_dart().into_dart()].into_dart()
+            zolana_mobile::WalletError::ProverUrlInsecure { url } => {
+                [40.into_dart(), url.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::ProvingKeyMismatch { name } => {
+            zolana_mobile::WalletError::ProvingKeyUnknown { name } => {
                 [41.into_dart(), name.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::ProvingKeyDownloadFailed { name } => {
+            zolana_mobile::WalletError::ProvingKeyMismatch { name } => {
                 [42.into_dart(), name.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::ProvingKeyCorrupt { name } => {
+            zolana_mobile::WalletError::ProvingKeyDownloadFailed { name } => {
                 [43.into_dart(), name.into_into_dart().into_dart()].into_dart()
             }
+            zolana_mobile::WalletError::ProvingKeyCorrupt { name } => {
+                [44.into_dart(), name.into_into_dart().into_dart()].into_dart()
+            }
             zolana_mobile::WalletError::ProvingKeyStoreFailed { path } => {
-                [44.into_dart(), path.into_into_dart().into_dart()].into_dart()
+                [45.into_dart(), path.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::PoseidonInputCountInvalid { count } => {
-                [45.into_dart(), count.into_into_dart().into_dart()].into_dart()
+                [46.into_dart(), count.into_into_dart().into_dart()].into_dart()
             }
             zolana_mobile::WalletError::PoseidonInputLengthInvalid { index, length } => [
-                46.into_dart(),
+                47.into_dart(),
                 index.into_into_dart().into_dart(),
                 length.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            zolana_mobile::WalletError::SignerMissing => [47.into_dart()].into_dart(),
+            zolana_mobile::WalletError::SignerMissing => [48.into_dart()].into_dart(),
             zolana_mobile::WalletError::SignerMismatch { wallet, signer } => [
-                48.into_dart(),
+                49.into_dart(),
                 wallet.into_into_dart().into_dart(),
                 signer.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::WalletError::UnexpectedSigners { signers } => {
-                [49.into_dart(), signers.into_into_dart().into_dart()].into_dart()
+                [50.into_dart(), signers.into_into_dart().into_dart()].into_dart()
             }
-            zolana_mobile::WalletError::WalletClosed => [50.into_dart()].into_dart(),
+            zolana_mobile::WalletError::WalletClosed => [51.into_dart()].into_dart(),
             zolana_mobile::WalletError::Client { message } => {
-                [51.into_dart(), message.into_into_dart().into_dart()].into_dart()
+                [52.into_dart(), message.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -4607,12 +4578,12 @@ impl SseEncode for Vec<zolana_mobile::MintConfig> {
     }
 }
 
-impl SseEncode for Vec<zolana_mobile::Payment> {
+impl SseEncode for Vec<zolana_mobile::Output> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
-            <zolana_mobile::Payment>::sse_encode(item, serializer);
+            <zolana_mobile::Output>::sse_encode(item, serializer);
         }
     }
 }
@@ -4657,6 +4628,16 @@ impl SseEncode for Vec<(String, String)> {
     }
 }
 
+impl SseEncode for Vec<zolana_mobile::SpendLimit> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <zolana_mobile::SpendLimit>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<zolana_mobile::TokenBalance> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4696,40 +4677,27 @@ impl SseEncode for zolana_mobile::Operation {
             zolana_mobile::Operation::Registration => {
                 <i32>::sse_encode(0, serializer);
             }
-            zolana_mobile::Operation::Deposit { mint, amount, fee } => {
+            zolana_mobile::Operation::Deposit { mint, amount } => {
                 <i32>::sse_encode(1, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
                 <u64>::sse_encode(amount, serializer);
-                <Option<zolana_mobile::Payment>>::sse_encode(fee, serializer);
             }
-            zolana_mobile::Operation::Transfer { mint, payments } => {
+            zolana_mobile::Operation::Spend { mint, outputs } => {
                 <i32>::sse_encode(2, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
-                <Vec<zolana_mobile::Payment>>::sse_encode(payments, serializer);
-            }
-            zolana_mobile::Operation::Withdrawal {
-                mint,
-                recipient,
-                amount,
-                fee,
-            } => {
-                <i32>::sse_encode(3, serializer);
-                <Option<String>>::sse_encode(mint, serializer);
-                <String>::sse_encode(recipient, serializer);
-                <u64>::sse_encode(amount, serializer);
-                <Option<zolana_mobile::Payment>>::sse_encode(fee, serializer);
+                <Vec<zolana_mobile::Output>>::sse_encode(outputs, serializer);
             }
             zolana_mobile::Operation::Merging { enabled } => {
-                <i32>::sse_encode(4, serializer);
+                <i32>::sse_encode(3, serializer);
                 <bool>::sse_encode(enabled, serializer);
             }
             zolana_mobile::Operation::Merge { mint, amount } => {
-                <i32>::sse_encode(5, serializer);
+                <i32>::sse_encode(4, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
                 <u64>::sse_encode(amount, serializer);
             }
             zolana_mobile::Operation::Custom { programs } => {
-                <i32>::sse_encode(6, serializer);
+                <i32>::sse_encode(5, serializer);
                 <Vec<String>>::sse_encode(programs, serializer);
             }
             _ => {
@@ -4755,16 +4723,6 @@ impl SseEncode for Option<PreparedTransaction> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <PreparedTransaction>::sse_encode(value, serializer);
-        }
-    }
-}
-
-impl SseEncode for Option<zolana_mobile::Payment> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.is_some(), serializer);
-        if let Some(value) = self {
-            <zolana_mobile::Payment>::sse_encode(value, serializer);
         }
     }
 }
@@ -4829,11 +4787,24 @@ impl SseEncode for Option<u64> {
     }
 }
 
-impl SseEncode for zolana_mobile::Payment {
+impl SseEncode for zolana_mobile::Output {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <String>::sse_encode(self.recipient, serializer);
-        <u64>::sse_encode(self.amount, serializer);
+        match self {
+            zolana_mobile::Output::Private { recipient, amount } => {
+                <i32>::sse_encode(0, serializer);
+                <String>::sse_encode(recipient, serializer);
+                <u64>::sse_encode(amount, serializer);
+            }
+            zolana_mobile::Output::Public { recipient, amount } => {
+                <i32>::sse_encode(1, serializer);
+                <String>::sse_encode(recipient, serializer);
+                <u64>::sse_encode(amount, serializer);
+            }
+            _ => {
+                unimplemented!("");
+            }
+        }
     }
 }
 
@@ -4915,12 +4886,22 @@ impl SseEncode for zolana_mobile::RegistrationStatus {
     }
 }
 
+impl SseEncode for zolana_mobile::SpendLimit {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.outputs, serializer);
+        <u64>::sse_encode(self.amount, serializer);
+    }
+}
+
 impl SseEncode for zolana_mobile::TokenBalance {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Option<String>>::sse_encode(self.mint, serializer);
         <u64>::sse_encode(self.amount, serializer);
         <u64>::sse_encode(self.notes, serializer);
+        <u64>::sse_encode(self.reserved, serializer);
+        <Vec<zolana_mobile::SpendLimit>>::sse_encode(self.limits, serializer);
     }
 }
 
@@ -5045,193 +5026,196 @@ impl SseEncode for zolana_mobile::WalletError {
             zolana_mobile::WalletError::AmountZero => {
                 <i32>::sse_encode(3, serializer);
             }
-            zolana_mobile::WalletError::NothingToMerge { mint } => {
+            zolana_mobile::WalletError::NoOutputs => {
                 <i32>::sse_encode(4, serializer);
+            }
+            zolana_mobile::WalletError::NothingToMerge { mint } => {
+                <i32>::sse_encode(5, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
             }
             zolana_mobile::WalletError::MergingDisabled => {
-                <i32>::sse_encode(5, serializer);
+                <i32>::sse_encode(6, serializer);
             }
             zolana_mobile::WalletError::IndexerBehind {
                 indexer_slot,
                 rpc_slot,
             } => {
-                <i32>::sse_encode(6, serializer);
+                <i32>::sse_encode(7, serializer);
                 <u64>::sse_encode(indexer_slot, serializer);
                 <u64>::sse_encode(rpc_slot, serializer);
             }
             zolana_mobile::WalletError::NotesAlreadySpent => {
-                <i32>::sse_encode(7, serializer);
+                <i32>::sse_encode(8, serializer);
             }
             zolana_mobile::WalletError::NotesReserved { amount } => {
-                <i32>::sse_encode(8, serializer);
+                <i32>::sse_encode(9, serializer);
                 <u64>::sse_encode(amount, serializer);
             }
             zolana_mobile::WalletError::RecipientNotRegistered { recipient } => {
-                <i32>::sse_encode(9, serializer);
+                <i32>::sse_encode(10, serializer);
                 <String>::sse_encode(recipient, serializer);
             }
             zolana_mobile::WalletError::RecipientTokenAccountMissing { recipient, mint } => {
-                <i32>::sse_encode(10, serializer);
+                <i32>::sse_encode(11, serializer);
                 <String>::sse_encode(recipient, serializer);
                 <String>::sse_encode(mint, serializer);
             }
             zolana_mobile::WalletError::RegistrationConflict { owner } => {
-                <i32>::sse_encode(11, serializer);
+                <i32>::sse_encode(12, serializer);
                 <String>::sse_encode(owner, serializer);
             }
             zolana_mobile::WalletError::AssetNotSupported { mint } => {
-                <i32>::sse_encode(12, serializer);
-                <String>::sse_encode(mint, serializer);
-            }
-            zolana_mobile::WalletError::MintNotConfigured { mint } => {
                 <i32>::sse_encode(13, serializer);
                 <String>::sse_encode(mint, serializer);
             }
-            zolana_mobile::WalletError::InvalidMint { mint } => {
+            zolana_mobile::WalletError::MintNotConfigured { mint } => {
                 <i32>::sse_encode(14, serializer);
+                <String>::sse_encode(mint, serializer);
+            }
+            zolana_mobile::WalletError::InvalidMint { mint } => {
+                <i32>::sse_encode(15, serializer);
                 <String>::sse_encode(mint, serializer);
             }
             zolana_mobile::WalletError::InvalidTokenProgram {
                 mint,
                 token_program,
             } => {
-                <i32>::sse_encode(15, serializer);
+                <i32>::sse_encode(16, serializer);
                 <String>::sse_encode(mint, serializer);
                 <String>::sse_encode(token_program, serializer);
             }
             zolana_mobile::WalletError::InvalidPubkey { value } => {
-                <i32>::sse_encode(16, serializer);
+                <i32>::sse_encode(17, serializer);
                 <String>::sse_encode(value, serializer);
             }
             zolana_mobile::WalletError::InvalidMaxSpendInputs { max_inputs, limit } => {
-                <i32>::sse_encode(17, serializer);
+                <i32>::sse_encode(18, serializer);
                 <u64>::sse_encode(max_inputs, serializer);
                 <u64>::sse_encode(limit, serializer);
             }
             zolana_mobile::WalletError::InvalidDerivationSignature => {
-                <i32>::sse_encode(18, serializer);
-            }
-            zolana_mobile::WalletError::InvalidWalletKeys => {
                 <i32>::sse_encode(19, serializer);
             }
-            zolana_mobile::WalletError::TransportFailed { message } => {
+            zolana_mobile::WalletError::InvalidWalletKeys => {
                 <i32>::sse_encode(20, serializer);
+            }
+            zolana_mobile::WalletError::TransportFailed { message } => {
+                <i32>::sse_encode(21, serializer);
                 <String>::sse_encode(message, serializer);
             }
             zolana_mobile::WalletError::SignatureInvalid => {
-                <i32>::sse_encode(21, serializer);
+                <i32>::sse_encode(22, serializer);
             }
             zolana_mobile::WalletError::SignatureCountMismatch { expected, got } => {
-                <i32>::sse_encode(22, serializer);
+                <i32>::sse_encode(23, serializer);
                 <u64>::sse_encode(expected, serializer);
                 <u64>::sse_encode(got, serializer);
             }
             zolana_mobile::WalletError::TransactionNotConfirmed { signature } => {
-                <i32>::sse_encode(23, serializer);
-                <String>::sse_encode(signature, serializer);
-            }
-            zolana_mobile::WalletError::TransactionExpired { signature } => {
                 <i32>::sse_encode(24, serializer);
                 <String>::sse_encode(signature, serializer);
             }
-            zolana_mobile::WalletError::TransactionOutcomeUnknown { signature, message } => {
+            zolana_mobile::WalletError::TransactionExpired { signature } => {
                 <i32>::sse_encode(25, serializer);
+                <String>::sse_encode(signature, serializer);
+            }
+            zolana_mobile::WalletError::TransactionOutcomeUnknown { signature, message } => {
+                <i32>::sse_encode(26, serializer);
                 <String>::sse_encode(signature, serializer);
                 <String>::sse_encode(message, serializer);
             }
             zolana_mobile::WalletError::RemoteProverMissing => {
-                <i32>::sse_encode(26, serializer);
-            }
-            zolana_mobile::WalletError::ProofMalformed => {
                 <i32>::sse_encode(27, serializer);
             }
-            zolana_mobile::WalletError::ProofInvalid => {
+            zolana_mobile::WalletError::ProofMalformed => {
                 <i32>::sse_encode(28, serializer);
             }
-            zolana_mobile::WalletError::ProofFailed => {
+            zolana_mobile::WalletError::ProofInvalid => {
                 <i32>::sse_encode(29, serializer);
             }
-            zolana_mobile::WalletError::ProverBusy => {
+            zolana_mobile::WalletError::ProofFailed => {
                 <i32>::sse_encode(30, serializer);
             }
-            zolana_mobile::WalletError::ProverClosed => {
+            zolana_mobile::WalletError::ProverBusy => {
                 <i32>::sse_encode(31, serializer);
             }
-            zolana_mobile::WalletError::ProverUnavailable => {
+            zolana_mobile::WalletError::ProverClosed => {
                 <i32>::sse_encode(32, serializer);
             }
-            zolana_mobile::WalletError::ProverInitFailed => {
+            zolana_mobile::WalletError::ProverUnavailable => {
                 <i32>::sse_encode(33, serializer);
             }
-            zolana_mobile::WalletError::ProverLoadFailed => {
+            zolana_mobile::WalletError::ProverInitFailed => {
                 <i32>::sse_encode(34, serializer);
             }
-            zolana_mobile::WalletError::UnsupportedCircuit => {
+            zolana_mobile::WalletError::ProverLoadFailed => {
                 <i32>::sse_encode(35, serializer);
             }
-            zolana_mobile::WalletError::RpcUrlInsecure { url } => {
+            zolana_mobile::WalletError::UnsupportedCircuit => {
                 <i32>::sse_encode(36, serializer);
-                <String>::sse_encode(url, serializer);
             }
-            zolana_mobile::WalletError::IndexerUrlInsecure { url } => {
+            zolana_mobile::WalletError::RpcUrlInsecure { url } => {
                 <i32>::sse_encode(37, serializer);
                 <String>::sse_encode(url, serializer);
             }
-            zolana_mobile::WalletError::ProvingKeyUrlInsecure { url } => {
+            zolana_mobile::WalletError::IndexerUrlInsecure { url } => {
                 <i32>::sse_encode(38, serializer);
                 <String>::sse_encode(url, serializer);
             }
-            zolana_mobile::WalletError::ProverUrlInsecure { url } => {
+            zolana_mobile::WalletError::ProvingKeyUrlInsecure { url } => {
                 <i32>::sse_encode(39, serializer);
                 <String>::sse_encode(url, serializer);
             }
-            zolana_mobile::WalletError::ProvingKeyUnknown { name } => {
+            zolana_mobile::WalletError::ProverUrlInsecure { url } => {
                 <i32>::sse_encode(40, serializer);
-                <String>::sse_encode(name, serializer);
+                <String>::sse_encode(url, serializer);
             }
-            zolana_mobile::WalletError::ProvingKeyMismatch { name } => {
+            zolana_mobile::WalletError::ProvingKeyUnknown { name } => {
                 <i32>::sse_encode(41, serializer);
                 <String>::sse_encode(name, serializer);
             }
-            zolana_mobile::WalletError::ProvingKeyDownloadFailed { name } => {
+            zolana_mobile::WalletError::ProvingKeyMismatch { name } => {
                 <i32>::sse_encode(42, serializer);
                 <String>::sse_encode(name, serializer);
             }
-            zolana_mobile::WalletError::ProvingKeyCorrupt { name } => {
+            zolana_mobile::WalletError::ProvingKeyDownloadFailed { name } => {
                 <i32>::sse_encode(43, serializer);
                 <String>::sse_encode(name, serializer);
             }
-            zolana_mobile::WalletError::ProvingKeyStoreFailed { path } => {
+            zolana_mobile::WalletError::ProvingKeyCorrupt { name } => {
                 <i32>::sse_encode(44, serializer);
+                <String>::sse_encode(name, serializer);
+            }
+            zolana_mobile::WalletError::ProvingKeyStoreFailed { path } => {
+                <i32>::sse_encode(45, serializer);
                 <String>::sse_encode(path, serializer);
             }
             zolana_mobile::WalletError::PoseidonInputCountInvalid { count } => {
-                <i32>::sse_encode(45, serializer);
+                <i32>::sse_encode(46, serializer);
                 <u64>::sse_encode(count, serializer);
             }
             zolana_mobile::WalletError::PoseidonInputLengthInvalid { index, length } => {
-                <i32>::sse_encode(46, serializer);
+                <i32>::sse_encode(47, serializer);
                 <u64>::sse_encode(index, serializer);
                 <u64>::sse_encode(length, serializer);
             }
             zolana_mobile::WalletError::SignerMissing => {
-                <i32>::sse_encode(47, serializer);
+                <i32>::sse_encode(48, serializer);
             }
             zolana_mobile::WalletError::SignerMismatch { wallet, signer } => {
-                <i32>::sse_encode(48, serializer);
+                <i32>::sse_encode(49, serializer);
                 <String>::sse_encode(wallet, serializer);
                 <String>::sse_encode(signer, serializer);
             }
             zolana_mobile::WalletError::UnexpectedSigners { signers } => {
-                <i32>::sse_encode(49, serializer);
+                <i32>::sse_encode(50, serializer);
                 <Vec<String>>::sse_encode(signers, serializer);
             }
             zolana_mobile::WalletError::WalletClosed => {
-                <i32>::sse_encode(50, serializer);
+                <i32>::sse_encode(51, serializer);
             }
             zolana_mobile::WalletError::Client { message } => {
-                <i32>::sse_encode(51, serializer);
+                <i32>::sse_encode(52, serializer);
                 <String>::sse_encode(message, serializer);
             }
             _ => {
