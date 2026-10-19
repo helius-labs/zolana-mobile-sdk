@@ -188,9 +188,17 @@ await wallet.spend(
   The wallet reads only the asset id the shielded pool registered for each.
   Then pass `mint` (base58) to a call; no `mint` is SOL. Amounts are in base
   units. A mint that is not in the config fails with
-  `WalletError.mintNotConfigured`, one the pool has not registered with
-  `WalletError.assetNotSupported`, and a token program that is neither SPL
+  `WalletError.mintNotConfigured`, and a token program that is neither SPL
   Token nor Token-2022 fails `open` with `WalletError.invalidTokenProgram`.
+  A listed mint the pool has not registered yet has no balance and no
+  history, and the other assets read as usual. Its first deposit registers
+  it: the transaction creates the mint's registry entry and vault before the
+  deposit, this account pays their rent, and `Operation.deposit` has
+  `createsSplInterface` set so the approval screen can say so. A pool that
+  lets only its authority register mints refuses that deposit with
+  `WalletError.assetNotSupported`, as it refuses a spend or merge of a mint
+  it has not registered. Two first deposits of one mint prepared at the same
+  time both register it, so the second to land fails.
   `balances()` lists the private balance of SOL and of each configured mint;
   notes in other mints are left out.
   A public token output goes to the recipient's associated token account and
@@ -263,7 +271,7 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
 | `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient of a public token output has no associated token account for the mint |
 | `registrationConflict` | `owner` | the registry holds other keys for this account |
-| `assetNotSupported` | `mint` | the shielded pool has not registered the mint |
+| `assetNotSupported` | `mint` | the shielded pool has not registered the mint, and this call cannot: a spend, a merge, or a deposit the pool lets only its authority register |
 | `mintNotConfigured` | `mint` | the mint is not in `WalletConfig.mints` |
 | `invalidMint` | `mint` | not a base58 key |
 | `invalidTokenProgram` | `mint`, `tokenProgram` | the configured token program is neither SPL Token nor Token-2022 |

@@ -11,7 +11,10 @@ Unreleased.
 * The wallet keeps no chain state: `balances()`, `privateBalance()`,
   `activity()` and every spend read the indexer when they run.
   `WalletConfig.mints` lists the SPL mints the wallet holds, each with its
-  token program; the wallet reads only their asset ids. A spend takes the
+  token program; the wallet reads only their asset ids. A listed mint the
+  pool has not registered yet reads as no balance and no history, and its
+  first deposit registers it in the same transaction:
+  `Operation.deposit.createsSplInterface` shows the extra rent. A spend takes the
   largest notes first, at most 40 from at most two trees, as the Zolana
   SDK selects them, and fails with `WalletError.mergeRequired` or
   `WalletError.tooManyInputTrees` beyond that and with

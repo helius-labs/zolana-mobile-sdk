@@ -204,7 +204,11 @@ class FakeWallet implements MobileWallet {
     required BigInt amount,
   }) async => FakePending(
     Uint8List.fromList([1, 2]),
-    operation: Operation.deposit(mint: mint, amount: amount),
+    operation: Operation.deposit(
+      mint: mint,
+      amount: amount,
+      createsSplInterface: false,
+    ),
   );
 
   @override
@@ -1007,7 +1011,7 @@ void main() {
     expect(await wallet.deposit(BigInt.one), 'signature');
     expect(
       signer.requests.single.$2?.operation,
-      Operation.deposit(amount: BigInt.one),
+      Operation.deposit(amount: BigInt.one, createsSplInterface: false),
     );
     await expectLater(
       ZolanaWallet.openWithKeys(

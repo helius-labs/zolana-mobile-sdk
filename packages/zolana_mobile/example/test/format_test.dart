@@ -59,8 +59,24 @@ void main() {
       'Send 2.5 TEST publicly to 8JEE…sS8E, 0.0125 TEST privately to CWhA…gCdt',
     );
     expect(
-      approvalText(Operation.deposit(amount: BigInt.from(1000000000))),
+      approvalText(
+        Operation.deposit(
+          amount: BigInt.from(1000000000),
+          createsSplInterface: false,
+        ),
+      ),
       'Shield 1 SOL',
+    );
+    expect(
+      approvalText(
+        Operation.deposit(
+          mint: demoToken.mint,
+          amount: BigInt.from(2500000),
+          createsSplInterface: true,
+        ),
+      ),
+      "Shield 2.5 TEST, and pay the rent of the token's first shielded-pool "
+      'accounts',
     );
     expect(
       approvalText(const Operation.merging(enabled: false)),

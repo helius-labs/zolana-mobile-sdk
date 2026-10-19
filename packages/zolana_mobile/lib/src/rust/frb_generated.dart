@@ -2284,6 +2284,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         return Operation_Deposit(
           mint: dco_decode_opt_String(raw[1]),
           amount: dco_decode_u_64(raw[2]),
+          createsSplInterface: dco_decode_bool(raw[3]),
         );
       case 2:
         return Operation_Spend(
@@ -3284,7 +3285,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 1:
         var var_mint = sse_decode_opt_String(deserializer);
         var var_amount = sse_decode_u_64(deserializer);
-        return Operation_Deposit(mint: var_mint, amount: var_amount);
+        var var_createsSplInterface = sse_decode_bool(deserializer);
+        return Operation_Deposit(
+          mint: var_mint,
+          amount: var_amount,
+          createsSplInterface: var_createsSplInterface,
+        );
       case 2:
         var var_mint = sse_decode_opt_String(deserializer);
         var var_outputs = sse_decode_list_output(deserializer);
@@ -4415,10 +4421,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     switch (self) {
       case Operation_Registration():
         sse_encode_i_32(0, serializer);
-      case Operation_Deposit(mint: final mint, amount: final amount):
+      case Operation_Deposit(
+        mint: final mint,
+        amount: final amount,
+        createsSplInterface: final createsSplInterface,
+      ):
         sse_encode_i_32(1, serializer);
         sse_encode_opt_String(mint, serializer);
         sse_encode_u_64(amount, serializer);
+        sse_encode_bool(createsSplInterface, serializer);
       case Operation_Spend(mint: final mint, outputs: final outputs):
         sse_encode_i_32(2, serializer);
         sse_encode_opt_String(mint, serializer);
@@ -5045,6 +5056,14 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
+  ///
+  /// The first deposit of a mint into the pool creates the mint's registry
+  /// entry and vault in the same transaction, signed and paid for by this
+  /// account; [`Operation::Deposit`] says so. A pool whose protocol config
+  /// lets only its authority create them refuses with
+  /// [`WalletError::AssetNotSupported`] before the blockhash is read. Two
+  /// first deposits of one mint prepared at the same time both create
+  /// them, so the second to land fails.
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
