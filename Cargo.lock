@@ -7030,8 +7030,11 @@ version = "0.1.0"
 dependencies = [
  "ark-bn254 0.5.0",
  "ark-ff",
+ "js-sys",
  "log",
  "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
  "zopro-core",
 ]
 

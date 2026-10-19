@@ -654,6 +654,13 @@ mod tests {
                 .prove(key.clone(), request)
                 .unwrap_or_else(|failure| panic!("{name} with {key}: {failure:?}"));
             assert!(!result.proof_json.is_empty() && result.key == key, "{name}");
+            // The client checks this against its pins.
+            let proof: serde_json::Value = serde_json::from_str(&result.proof_json).unwrap();
+            assert_eq!(
+                proof["provingKeySha256"].as_str(),
+                keys::key_sha256(&key),
+                "{name}"
+            );
             println!(
                 "{name}: download {} ms ({} bytes), load {} ms, witness {} ms, prove {} ms, verify {} ms",
                 result.download_ms, result.downloaded_bytes, result.load_ms,

@@ -155,15 +155,18 @@ await wallet.transfer(
   message, so a spend of the widest shape may not have room for it: the call
   then fails while building the message, and you can merge first.
 
-- **Proving keys** download from the Zolana key host into `provingKeyDir`
-  (through the transport, see [Networking](#networking)), and are used only
-  after they match the proving-key lockfile of the pinned Zolana revision.
-  The wallet picks the circuit shape, so the first spend of a new shape
-  downloads its key, 9 MB for one note and up to 380 MB for the widest spends
-  and merges, unless it is already on the device:
+- **Proving keys** are zopro keys, each built offline from the gnark proving
+  key of the pinned Zolana revision with the same name. They download from
+  the Zolana key host into `provingKeyDir` (through the transport, see
+  [Networking](#networking)), and are used only after they match
+  `zopro-keys.lock`, which pins each file's size and sha256 beside the gnark
+  key's sha256 that proofs report. The wallet picks the circuit shape, so the
+  first spend of a new shape downloads its key, 7 MB for one note and up to
+  315 MB for the widest spends and merges, unless it is already on the
+  device:
 
   ```dart
-  // On Wi-Fi after onboarding: spends of up to four notes, about 80 MB.
+  // On Wi-Fi after onboarding: spends of up to four notes, about 60 MB.
   wallet.prefetchProvingKeys(maxInputs: 4).listen(
     (update) => showProgress(update.downloaded, update.total),
   );
@@ -179,10 +182,9 @@ await wallet.transfer(
   the keys of one lockfile live in a directory of their own there, and the
   wallet removes the directories of other lockfiles when it opens. A key
   that was checked once is not hashed again unless its file changed. After
-  its first load, the key's proving key is kept beside it in the device's
-  memory layout (`<key>.image`, about twice the key's size): later loads map
-  that file instead of decompressing the key, and the system can page the
-  key out under memory pressure instead of ending the app.
+  its first load, the key's solver is kept beside it (`<key>.zopro.solver1`, a
+  fraction of the key's size): later loads read it instead of building the
+  solver from the key's program, and decompress only the key's points.
   `clearProvingKeys()` removes the images with the keys.
 - **Tokens**: list each SPL Token or Token-2022 mint the wallet holds in
   `WalletConfig.mints`, with the token program that owns it, as your Solana

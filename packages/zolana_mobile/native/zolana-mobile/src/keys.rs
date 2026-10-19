@@ -189,11 +189,9 @@ impl ProvingKeys {
         }
         let mut names: Vec<String> = names.into_iter().collect();
         for name in &names {
-            if !lockfile().keys.contains_key(name) {
-                return Err(WalletError::ProvingKeyUnknown { name: name.clone() });
-            }
+            entry(name)?;
         }
-        names.sort_by_key(|name| lockfile().keys[name].size);
+        names.sort_by_key(|name| artifacts().keys[name].size);
         Ok(names)
     }
 
@@ -559,6 +557,15 @@ impl KeyStore {
         fs::rename(&partial, path).map_err(|_| store_failed(path))?;
         Ok(true)
     }
+}
+
+/// The gnark key digest a proof with `name`'s zopro key reports.
+#[cfg(test)]
+pub(crate) fn key_sha256(name: &str) -> Option<&'static str> {
+    artifacts()
+        .keys
+        .get(name)
+        .map(|entry| entry.key_sha256.as_str())
 }
 
 /// The zopro key of gnark key `name`: unknown until one is built.
