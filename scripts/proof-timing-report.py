@@ -39,8 +39,10 @@ STAGES = ["load_ms", "witness_ms", "prove_ms"]
 # A change in time below this is not reported: a witness of 1 ms against
 # 3 ms is +200 % of nothing.
 LEAST_CHANGE_MS = 50
-# Two runs of one commit on a phone differ by up to about 4 %.
-FLAG = 10.0
+# Two runs of one commit differ by up to 5 % on the Galaxy A16 and A56 and
+# up to 15 % on the S25 and the iPhones, mostly every shape of a phone the
+# same way.
+FLAG = 20.0
 DEVICES = Path(__file__).with_name("devicefarm") / "devices.json"
 
 
@@ -299,8 +301,8 @@ def main():
             print(f"no ZOLANA_TIMING lines under {path}", file=sys.stderr)
             continue
         report = {"cells": cells(found), "stages": stages(found)}
-        if errors(found):
-            report["errors"] = errors(found)
+        if failed := errors(found):
+            report["errors"] = failed
         (path / "report.json").write_text(json.dumps(report, indent=2) + "\n")
         reports[path.name] = report
         if (path / "baseline.json").is_file():
