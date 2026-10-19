@@ -88,6 +88,9 @@ pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_zolana::Prover, W
         log::warn!("zopro: {}: {e}", path.display());
         WalletError::ProverLoadFailed
     };
+    // The GPU driver's compiled kernels, beside the keys: a phone compiles
+    // them once rather than at every launch.
+    zopro_zolana::zopro_core::set_gpu_pipeline_cache(&path.with_file_name("zopro-gpu.cache"));
     let bytes = std::fs::read(path).map_err(|e| failed(&e))?;
     let artifact =
         zopro_zolana::zopro_core::artifact::Artifact::parse(&bytes).map_err(|e| failed(&e))?;
