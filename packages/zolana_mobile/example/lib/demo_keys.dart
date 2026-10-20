@@ -34,7 +34,7 @@ const demoFeeCollector = DemoAccount(
   '53f28974691e1fd92a1739b32124c556fa700539ba87104af213230688f0fc9c',
 );
 
-/// The demo's Privacy Fee on a private send: 0.5%, rounded down. An
-/// application charges what it decides; the wallet only sees a second
-/// payment.
+/// The demo's Privacy Fee on a private send and an unshield: 0.5%,
+/// rounded down. An application charges what it decides; the wallet only
+/// sees one more private output.
 BigInt demoFee(BigInt amount) => amount * BigInt.from(5) ~/ BigInt.from(1000);

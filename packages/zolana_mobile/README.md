@@ -5,7 +5,7 @@ Groth16 prover in Rust for gnark's proving keys, on the GPU where there is
 one. Android and iOS are supported. The package contains its Rust sources; it
 does not require a sibling Zolana checkout.
 
-**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). On phones, in release builds, the same proofs take 0.34 s, 0.55 s, 0.99 s, 1.9 s, 3.6 s and 5.8 s on an iPhone 12, and 1.2 s, 2.0 s, 3.6 s, 7.1 s, 15 s and 25 s on a Samsung Galaxy A16; a key loads from its image in 12 ms to 0.25 s on the iPhone and 55 ms to 0.6 s on the A16. CI benches release builds on those two, a Samsung Galaxy A56 and S25 and an iPhone 15 and 17 Pro for every pull request, and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
+**Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). On phones, in release builds, one note proves in 0.18 s on a Samsung Galaxy S25, 0.21 s on an iPhone 17 Pro, 0.30 s to 0.35 s on an iPhone 15, an iPhone 12 and a Galaxy A56, and 1.2 s on a Galaxy A16; eight notes in 1.2 s to 2.0 s, 7.0 s on the A16; twenty-four in 3.6 s to 5.9 s, 25 s on the A16. A key loads from its image in under 0.3 s, up to 0.74 s on the A16. CI benches release builds on these six phones for every pull request and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Requirements
 
@@ -64,12 +64,12 @@ iOS builds read a new options file after `flutter clean`.
 
 ## Private wallet
 
-`ZolanaWallet` runs the whole flow: registration, deposit, private transfer and
-withdrawal. It builds every transaction with the Zolana Rust client and proves
-it on the device, or through the application's backend (see
-[Backend proving](#backend-proving)). The Solana secret key never enters the
-package; your `SolanaSigner` (a platform keystore, a wallet adapter, a custodian)
-signs two things:
+`ZolanaWallet` runs the whole flow: registration, deposit, and spends to
+private and public recipients. It builds every transaction with the Zolana
+Rust client and proves it on the device, or through the application's backend
+(see [Backend proving](#backend-proving)). The Solana secret key never enters
+the package; your `SolanaSigner` (a platform keystore, a wallet adapter, a
+custodian) signs two things:
 
 1. once, the Zolana derivation message. The signature is the seed of the
    wallet's nullifier and viewing keys, which stay in memory for this session.
@@ -102,58 +102,46 @@ final wallet = await ZolanaWallet.open(
 );
 await wallet.register();               // once, so others can pay this wallet
 await wallet.deposit(BigInt.from(500000000));
-await wallet.transfer(
-  payments: [Payment(recipient: registeredAccount, amount: BigInt.from(100000000))],
+await wallet.spend(
+  outputs: [Output.private(recipient: registeredAccount, amount: BigInt.from(100000000))],
 );
 ```
 
-- **Payments**: a transfer takes one or more payments, each to a registered
-  account, and proves them together. An application's own fee is a second
-  payment to its collector: the chain sees neither amount nor recipient.
+- **Outputs**: a spend takes one or more outputs of one asset and proves them
+  together, in one transaction. `Output.private` is a note for a registered
+  account; `Output.public` moves funds to a Solana account, tokens to its
+  associated token account. Your application's own fee is one more private
+  output, to its registered collector, on a private send and on a withdrawal
+  alike:
 
   ```dart
-  await wallet.transfer(payments: [
-    Payment(recipient: registeredAccount, amount: amount),
-    Payment(recipient: feeCollector, amount: fee),
+  await wallet.spend(outputs: [
+    Output.private(recipient: registeredAccount, amount: amount),
+    Output.private(recipient: feeCollector, amount: fee),
+  ]);
+  await wallet.spend(outputs: [
+    Output.public(recipient: destination, amount: amount),
+    Output.private(recipient: feeCollector, amount: fee),
   ]);
   ```
 
-  Two payments and the change prove with 4-output keys, so the notes that
-  pay them must number 24 or fewer instead of 40; past that the transfer
-  fails with `WalletError.mergeRequired`. The prepared transfer's
-  `Operation_Transfer` lists each payment.
-- **Public fee**: a deposit or a withdrawal is public, so its fee is a public
-  transfer of the same asset from the account to your collector. Pass it as
-  `publicFee` and the wallet adds it to the same transaction, after the
-  shielded-pool instruction. The deposit or withdrawal and the fee both land,
-  or neither does.
-
-  ```dart
-  await wallet.deposit(
-    amount,
-    publicFee: Payment(recipient: publicCollector, amount: fee),
-  );
-  await wallet.withdraw(
-    recipient: destination,
-    amount: amount,
-    publicFee: Payment(recipient: publicCollector, amount: fee),
-  );
-  ```
-
-  `prepareDeposit` and `prepareWithdrawal` take it too, and show it in
-  `Operation_Deposit.fee` and `Operation_Withdrawal.fee`, so the approval
-  screen can name it. The account pays the fee from its public balance and
-  signs it with the same signature. A withdrawal to the account itself has
-  delivered its funds before the fee runs, so the fee can come out of them.
-  Before anything is proved or sent, a zero fee fails with
-  `WalletError.amountZero`, a collector that is not a public key with
-  `WalletError.invalidPubkey`, and a token fee whose collector has no
-  associated token account with `WalletError.recipientTokenAccountMissing`,
-  which names the collector. A SOL fee to an account that does not exist yet
-  must cover its rent. Your application calculates the fee and holds the
-  collector address. The proof does not cover the fee. It adds accounts to the
-  message, so a spend of the widest shape may not have room for it: the call
-  then fails while building the message, and you can merge first.
+  A spend with `k` private outputs proves with `k + 1` outputs, its change
+  included, and public outputs take no proof slot: the keys take at most 40
+  notes for `k <= 1`, 24 for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`,
+  within `WalletConfig.maxSpendInputs`. Past that the spend fails with
+  `WalletError.mergeRequired`; `TokenBalance.limits` says what each width can
+  take now (see [Balances](#balances)). The prepared spend's
+  `Operation_Spend` lists each output in order. An empty list fails with
+  `WalletError.noOutputs`, a zero amount with `WalletError.amountZero`,
+  before anything is asked of the network.
+- **What is public**: a deposit shows this account, the asset and the amount.
+  A spend shows this account, the asset, each public output's recipient and
+  amount, and the Solana address each private output's note is tagged with
+  on chain, so anyone can see which accounts a spend paid privately; the
+  private amounts and the change are hidden. The indexer learns this wallet's
+  view tags, so `allowInsecureHttp` on `open`, which lets the default
+  transport use a plaintext URL off loopback, is only for a local test
+  cluster.
 
 - **Proving keys** are zopro keys, each built offline from the gnark proving
   key of the pinned Zolana revision with the same name. They download from
@@ -207,7 +195,7 @@ await wallet.transfer(
   Token nor Token-2022 fails `open` with `WalletError.invalidTokenProgram`.
   `balances()` lists the private balance of SOL and of each configured mint;
   notes in other mints are left out.
-  A token withdrawal goes to the recipient's associated token account and
+  A public token output goes to the recipient's associated token account and
   fails with `WalletError.recipientTokenAccountMissing`, before proving, when
   the account does not exist. Transaction fees are paid in SOL by this
   account.
@@ -218,23 +206,20 @@ await wallet.transfer(
   by another app, by a key rotation, or derived by a signer whose signatures
   change between calls. `register()` then fails with
   `WalletError.registrationConflict` and never replaces them. The wallet can
-  still spend and withdraw its own notes.
-- **Recipients** are Solana accounts that have registered. A transfer to an
-  unregistered account fails with `WalletError.recipientNotRegistered`; use
-  `withdraw` for a public payment.
-- **Privacy**: deposits and withdrawals are public. Private transfers reveal
-  neither amount nor recipient. The indexer learns this wallet's view tags, so
-  `allowInsecureHttp` on `open`, which lets the default transport use a
-  plaintext URL off loopback, is only for a local test cluster.
+  still spend its own notes.
+- **Recipients** of a private output are Solana accounts that have
+  registered. An unregistered one fails with
+  `WalletError.recipientNotRegistered`; a public output pays it publicly.
 - **History**: `activity()` lists the transactions that moved this wallet's
   notes, newest first, as `deposit`, `received`, `sent`, `withdrawal` or
   `selfTransfer` (merges and transfers to itself), one entry per asset. The
-  Zolana SDK reads and classifies them. The indexer does not mark withdrawals:
-  a spend whose outputs are all this wallet's own is a `withdrawal`, one with
-  another wallet's output `sent`.
+  Zolana SDK reads and classifies them. The indexer does not mark
+  withdrawals: a spend with a note for another wallet is `sent`, for its
+  whole total, fee and public outputs included; one with only public
+  outputs, whose notes are all this wallet's own, is a `withdrawal`.
 - **Freshness**: the wallet keeps no chain state. `balances()`,
   `privateBalance()`, `activity()` and every spend read the wallet's notes from
-  the indexer when they run, and `transfer`, `deposit` and `withdraw` return once the indexer
+  the indexer when they run, and `spend` and `deposit` return once the indexer
   has the transaction, so notes spent by another session or device are never
   picked. Each of those reads is a full read of the wallet's notes: a screen
   that shows balances and history calls `overview()`, which returns both from
@@ -271,13 +256,14 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `mergeRequired` | `amount`, `maxInputs` | the amount needs more notes than one spend takes |
 | `tooManyInputTrees` | `trees`, `maxTrees` | the notes that cover the amount are on more trees than one spend takes (2) |
 | `amountZero` | | the amount of a spend is zero |
+| `noOutputs` | | a spend has no outputs |
 | `nothingToMerge` | `mint` | fewer than two notes of the mint are free to merge on any one tree |
 | `mergingDisabled` | | the account's record does not enable merging |
 | `indexerBehind` | `indexerSlot`, `rpcSlot` | the indexer did not reach the RPC's confirmed slot within about ten seconds |
 | `notesAlreadySpent` | | the chain already spent a note the transaction spends: the indexer was behind when it was prepared |
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
-| `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient, or the collector of a token `publicFee`, has no associated token account for the mint |
+| `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient of a public token output has no associated token account for the mint |
 | `registrationConflict` | `owner` | the registry holds other keys for this account |
 | `assetNotSupported` | `mint` | the shielded pool has not registered the mint |
 | `mintNotConfigured` | `mint` | the mint is not in `WalletConfig.mints` |
@@ -316,7 +302,7 @@ on, to read the data:
 
 ```dart
 try {
-  await wallet.transfer(payments: [Payment(recipient: account, amount: amount)]);
+  await wallet.spend(outputs: [Output.private(recipient: account, amount: amount)]);
 } on WalletError catch (e) {
   final text = switch (e) {
     WalletError_InsufficientPrivateBalance(:final available) =>
@@ -355,9 +341,8 @@ final wallet = await ZolanaWallet.openWithKeys(
 `WalletError.invalidWalletKeys` otherwise; the error never contains key bytes.
 Keys of another account open under another shielded address, and
 `registrationStatus()` reports `conflict` for them. Without a `signer`,
-`register`, `deposit`, `transfer` and `withdraw` fail with
-`WalletError.signerMissing`; the `prepare` methods, `submit` and `confirm`
-work.
+`register`, `deposit` and `spend` fail with `WalletError.signerMissing`; the
+`prepare` methods, `submit` and `confirm` work.
 
 The keys cannot move funds: spending needs the Solana account's signature.
 They show the wallet's private balances and history and link its spends.
@@ -367,13 +352,13 @@ or the 64-byte derivation signature, which derives the same keys, not both.
 
 ### Signing and sending in the application
 
-`register`, `deposit`, `transfer` and `withdraw` prepare, sign with the
-`SolanaSigner` and submit. An application that approves, signs and sends
-transactions itself uses the `prepare` methods and reports back:
+`register`, `deposit` and `spend` prepare, sign with the `SolanaSigner` and
+submit. An application that approves, signs and sends transactions itself
+uses the `prepare` methods and reports back:
 
 ```dart
-final tx = await wallet.prepareTransfer(
-  payments: [Payment(recipient: account, amount: amount)],
+final tx = await wallet.prepareSpend(
+  outputs: [Output.private(recipient: account, amount: amount)],
 );
 // Show tx.operation and tx.feePayer, sign tx.message with each of
 // tx.signers, send it.
@@ -391,10 +376,10 @@ not prepare one yet.
 final text = switch (tx.operation) {
   Operation_Registration() => 'Register for private payments',
   Operation_Deposit(:final amount) => 'Shield $amount',
-  Operation_Transfer(:final payments) => 'Send privately '
-      '${payments.map((p) => '${p.amount} to ${p.recipient}').join(', ')}',
-  Operation_Withdrawal(:final recipient, :final amount) =>
-    'Unshield $amount to $recipient',
+  Operation_Spend(:final outputs) => 'Send ${outputs.map((o) => switch (o) {
+    Output_Private(:final recipient, :final amount) => '$amount privately to $recipient',
+    Output_Public(:final recipient, :final amount) => '$amount publicly to $recipient',
+  }).join(', ')}',
   Operation_Merging(:final enabled) => enabled ? 'Allow merges' : 'Stop merges',
   Operation_Merge(:final amount) => 'Combine notes holding $amount',
   Operation_Custom(:final programs) => 'Call ${programs.join(', ')}',
@@ -406,12 +391,11 @@ final text = switch (tx.operation) {
 transactions, until the indexer has it. `submit(tx, signatures)`
 sends through the wallet's RPC instead.
 
-- `prepareTransfer` and `prepareWithdrawal` take an optional `feePayer`, for
-  example the application's backend. It pays the network fee instead of
-  this account and signs first: `tx.signers` is `[feePayer, owner]`, and the
-  fee payer's signature is the transaction signature. The proof binds the fee
-  payer, so choose it at prepare. `transfer` and `withdraw` always use this
-  account.
+- `prepareSpend` takes an optional `feePayer`, for example the application's
+  backend. It pays the network fee instead of this account and signs first:
+  `tx.signers` is `[feePayer, owner]`, and the fee payer's signature is the
+  transaction signature. The proof binds the fee payer, so choose it at
+  prepare. `spend` always uses this account.
 - The message carries a recent blockhash: `tx.lastValidBlockHeight` is the
   last block height at which it can land, about 150 blocks (60–90 s) after it
   was prepared. For a slower approval, `wallet.refresh(tx)` returns it with a
@@ -419,12 +403,17 @@ sends through the wallet's RPC instead.
   valid while the trees still hold the roots it was built on (a state tree
   keeps its last 500); after that the program rejects it as stale, and the
   spend is prepared again.
-- A prepared spend reserves the notes it spends, in memory. The next spend
-  selects other notes until it is submitted or confirmed, released with
-  `wallet.release(tx)` (for example when the user declines it), or past its
-  `lastValidBlockHeight`. A spend that needs a reserved note fails with
-  `WalletError.notesReserved`. `register`, `deposit`, `transfer` and `withdraw`
-  release the notes themselves when signing fails.
+- A prepared spend reserves the notes it spends, in memory, in this open
+  wallet only. The next spend selects other notes until the spend's outcome
+  is known through `submit` or `confirm`, it is released with
+  `wallet.release(tx)` (for example when the user declines it), or it is
+  past its `lastValidBlockHeight`. A spend that needs a reserved note fails
+  with `WalletError.notesReserved`; `TokenBalance.reserved` says how much the
+  reserved notes hold. `register`, `deposit` and `spend` release the notes
+  themselves when signing fails. A send with a verdict releases them at
+  once: the chain refused it, it expired, or it spent a note the chain
+  already had. One whose outcome is unknown keeps them, since it may still
+  land.
 - After a restart the prepared transaction is gone, but its signature and
   its `lastValidBlockHeight`, saved before sending, are enough:
   `wallet.waitForTransaction(signature, lastValidBlockHeight: height)` ends
@@ -491,8 +480,8 @@ try {
 
 ### Backend proving
 
-A transfer or withdrawal can be proved by a remote prover instead of the
-device: the application's backend, or a Zolana prover. Set
+A spend can be proved by a remote prover instead of the device: the
+application's backend, or a Zolana prover. Set
 `WalletConfig.proverUrl` and ask for remote proving per call or in the config:
 
 ```dart
@@ -507,8 +496,8 @@ final wallet = await ZolanaWallet.open(
     mints: const [],
   ),
 );
-await wallet.transfer(
-  payments: [Payment(recipient: account, amount: amount)],
+await wallet.spend(
+  outputs: [Output.private(recipient: account, amount: amount)],
   proving: Proving.remote,
 );
 ```
@@ -540,9 +529,9 @@ await wallet.transfer(
   a `WalletError.client` holding the prover client's error, `prover server error: ...` (for example
   `status 401 Unauthorized: ...`), `api-key` values masked.
 - **Choice per call**: `WalletConfig.proving` is the default, `Proving.local`
-  when it is null. `prepareTransfer`, `prepareWithdrawal`, `transfer` and
-  `withdraw` take `proving` to override it. `Proving.remote` without a
-  `proverUrl` fails with `WalletError.remoteProverMissing`.
+  when it is null. `prepareSpend` and `spend` take `proving` to override it.
+  `Proving.remote` without a `proverUrl` fails with
+  `WalletError.remoteProverMissing`.
 - **Privacy**: the request carries the transaction's full witness: the notes
   it spends and creates, their amounts and owners, and the wallet's nullifier
   secret (the `nullifierPrivateKey` of `exportKeys()`). The backend and its
@@ -564,15 +553,40 @@ close a `LocalProver` before the wallet proves. A spend of zero fails with
 `WalletError.amountZero`. Proof time and memory grow with the notes a spend
 takes, so set the cap to what the phones you support prove in the time you
 accept, and merge before spends need more: `TokenBalance.notes` says how
-many notes each balance is in.
+many notes each balance is in, and `TokenBalance.limits` what one spend can
+take now.
+
+### Balances
+
+`balances()` returns one `TokenBalance` per asset held, and `overview()` the
+same from one read with the history:
+
+- `amount` is what the indexer has confirmed for this wallet, `reserved`
+  included. A payment or change on its way appears once its transaction is
+  confirmed and indexed.
+- `notes` is how many spendable notes the amount is in.
+- `reserved` is the part of `amount` in notes this wallet's prepared spends
+  hold. Reservations live in memory, in this open wallet only.
+- `limits` has one `SpendLimit` per proof width the pinned keys offer (2, 4,
+  8 and 16 outputs), ascending: the most one spend of up to that many outputs
+  can take now without a merge, from the unreserved notes, largest first,
+  within the width's note cap and `WalletConfig.maxSpendInputs`, from at
+  most two trees. A spend with `k` private outputs uses `k + 1` outputs, and
+  public outputs take no slot: a withdrawal, a withdrawal with one private
+  fee, or a send to one wallet reads the entry with `outputs: 2`, a send to
+  one wallet with a fee the entry with `outputs: 4`. The limits include any
+  application fee the spend pays. Every amount up to a limit selects; one
+  more fails with `WalletError.mergeRequired`,
+  `WalletError.tooManyInputTrees` or `WalletError.insufficientPrivateBalance`.
 
 ### Merges
 
 A merge combines up to 54 notes of one asset on one tree into one note of
 their sum. Merge when a spend fails with `WalletError.mergeRequired` or
 `WalletError.tooManyInputTrees`, then prepare the spend again; or before
-that, when `TokenBalance.notes` grows past what a spend should take, so
-that spends stay narrow and fast.
+that, when `TokenBalance.notes` grows past what a spend should take, or
+`TokenBalance.limits` falls short of what the user wants to send, so that
+spends stay narrow and fast.
 
 ```dart
 await wallet.setMerging(true); // once per account; this account signs
@@ -590,7 +604,7 @@ final signature = await wallet.merge(proving: Proving.remote);
   `WalletError.nothingToMerge`. It reserves its notes as a spend does.
 - **Who signs**: nobody but the fee payer. `feePayer` (this account when
   null) pays and signs alone, so the application's backend can pay for it.
-- **Proving**: `proving` works as for transfers. Through `proverUrl` the
+- **Proving**: `proving` works as for spends. Through `proverUrl` the
   backend proxies the same `/prove` routes; the merge keys are 56 MB (8
   notes), 173 MB (24) and 380 MB (54), so remote proving suits most phones.
 - **What the prover receives** (`Proving.remote`): for each note its amount,

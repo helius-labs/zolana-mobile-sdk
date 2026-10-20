@@ -93,14 +93,14 @@ class FakeWallet implements MobileWallet {
   /// What balances() fails with once it is let go, as a native read whose
   /// request failed does.
   WalletError? balancesError;
-  Completer<void>? holdTransfer;
+  Completer<void>? holdSpend;
   Completer<void>? holdRegistration;
-  Object? transferError;
+  Object? spendError;
   Object? shieldedAddressError;
   Object? disposeError;
   bool disposed = false;
-  List<String> transferSigners = const [owner];
-  String? transferFeePayer;
+  List<String> spendSigners = const [owner];
+  String? spendFeePayer;
   final proved = <Proving?>[];
 
   @override
@@ -202,50 +202,28 @@ class FakeWallet implements MobileWallet {
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
-    Payment? publicFee,
   }) async => FakePending(
     Uint8List.fromList([1, 2]),
-    operation: Operation.deposit(mint: mint, amount: amount, fee: publicFee),
+    operation: Operation.deposit(mint: mint, amount: amount),
   );
 
   @override
-  Future<PreparedTransaction> prepareTransfer({
-    required List<Payment> payments,
+  Future<PreparedTransaction> prepareSpend({
+    required List<Output> outputs,
     String? mint,
     String? feePayer,
     Proving? proving,
   }) async {
-    events.add('transfer ${mint ?? 'SOL'}');
-    transferFeePayer = feePayer;
+    events.add('spend ${mint ?? 'SOL'}');
+    spendFeePayer = feePayer;
     proved.add(proving);
-    await holdTransfer?.future;
-    final error = transferError;
+    await holdSpend?.future;
+    final error = spendError;
     if (error != null) throw error;
     return FakePending(
       Uint8List.fromList([7, 8]),
-      signers: transferSigners,
-      operation: Operation.transfer(mint: mint, payments: payments),
-    );
-  }
-
-  @override
-  Future<PreparedTransaction> prepareWithdrawal({
-    required String recipient,
-    String? mint,
-    required BigInt amount,
-    String? feePayer,
-    Proving? proving,
-    Payment? publicFee,
-  }) async {
-    proved.add(proving);
-    return FakePending(
-      Uint8List.fromList([9]),
-      operation: Operation.withdrawal(
-        mint: mint,
-        recipient: recipient,
-        amount: amount,
-        fee: publicFee,
-      ),
+      signers: spendSigners,
+      operation: Operation.spend(mint: mint, outputs: outputs),
     );
   }
 
@@ -1002,13 +980,13 @@ void main() {
     expect(wallet.shieldedAddress, 'shielded');
     expect(await wallet.exportKeys(), savedKeys);
     // Without a signer the application signs the prepared transactions.
-    final prepared = await wallet.prepareTransfer(
-      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+    final prepared = await wallet.prepareSpend(
+      outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
     );
     expect(prepared.signers, [owner]);
     await expectLater(
-      wallet.transfer(
-        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      wallet.spend(
+        outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
       ),
       throwsWalletError(const WalletError.signerMissing()),
     );
@@ -1054,16 +1032,16 @@ void main() {
     );
 
     await expectLater(
-      wallet.transfer(
-        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      wallet.spend(
+        outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
       ),
       throwsA(isA<StateError>()),
     );
     expect((native.released.single as FakePending).message, [7, 8]);
     expect(native.submitted, isEmpty);
 
-    final prepared = await wallet.prepareTransfer(
-      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+    final prepared = await wallet.prepareSpend(
+      outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
     );
     await wallet.release(prepared);
     expect(native.released, hasLength(2));
@@ -1080,8 +1058,8 @@ void main() {
 
   test('refreshes the blockhash of a prepared transaction', () async {
     final (wallet, native, _, _) = await openWallet();
-    final prepared = await wallet.prepareTransfer(
-      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+    final prepared = await wallet.prepareSpend(
+      outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
     );
     expect(prepared.lastValidBlockHeight, BigInt.from(100));
 
@@ -1109,16 +1087,18 @@ void main() {
   test('signs the proved message with its facts and submits it', () async {
     final (wallet, native, signer, _) = await openWallet();
 
-    final signature = await wallet.transfer(
-      payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
+    final signature = await wallet.spend(
+      outputs: [Output.private(recipient: 'Recipient', amount: BigInt.from(5))],
     );
 
     expect(signature, 'signature');
     expect(signer.requests.last.$1, [7, 8]);
     expect(
       signer.requests.last.$2?.operation,
-      Operation.transfer(
-        payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
+      Operation.spend(
+        outputs: [
+          Output.private(recipient: 'Recipient', amount: BigInt.from(5)),
+        ],
       ),
     );
     expect(native.submitted.single.$2.single, [8, 7]);
@@ -1127,19 +1107,21 @@ void main() {
   test('prepares for an application that signs and sends itself', () async {
     final (wallet, native, signer, _) = await openWallet();
 
-    final transaction = await wallet.prepareTransfer(
-      payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
+    final transaction = await wallet.prepareSpend(
+      outputs: [Output.private(recipient: 'Recipient', amount: BigInt.from(5))],
       mint: 'Mint',
     );
-    expect(native.events, ['transfer Mint']);
+    expect(native.events, ['spend Mint']);
     expect(transaction.message, [7, 8]);
     expect(transaction.signers, [owner]);
     expect(
       (transaction.operation, transaction.feePayer),
       (
-        Operation.transfer(
+        Operation.spend(
           mint: 'Mint',
-          payments: [Payment(recipient: 'Recipient', amount: BigInt.from(5))],
+          outputs: [
+            Output.private(recipient: 'Recipient', amount: BigInt.from(5)),
+          ],
         ),
         owner,
       ),
@@ -1157,13 +1139,13 @@ void main() {
 
   test('passes the fee payer to prepare, not to the signing path', () async {
     final (wallet, native, signer, _) = await openWallet();
-    native.transferSigners = const ['Backend', owner];
+    native.spendSigners = const ['Backend', owner];
 
-    final transaction = await wallet.prepareTransfer(
-      payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+    final transaction = await wallet.prepareSpend(
+      outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
       feePayer: 'Backend',
     );
-    expect(native.transferFeePayer, 'Backend');
+    expect(native.spendFeePayer, 'Backend');
     expect(transaction.signers, ['Backend', owner]);
 
     final signatures = [
@@ -1180,23 +1162,24 @@ void main() {
     () async {
       final (wallet, native, _, _) = await openWallet();
 
-      await wallet.prepareTransfer(
-        payments: [Payment(recipient: 'R', amount: BigInt.one)],
+      await wallet.prepareSpend(
+        outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
       );
-      await wallet.prepareTransfer(
-        payments: [Payment(recipient: 'R', amount: BigInt.one)],
+      await wallet.prepareSpend(
+        outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
         proving: Proving.remote,
       );
-      await wallet.prepareWithdrawal(
-        recipient: 'R',
-        amount: BigInt.one,
+      await wallet.prepareSpend(
+        outputs: [Output.public(recipient: 'R', amount: BigInt.one)],
         proving: Proving.local,
       );
-      await wallet.transfer(
-        payments: [Payment(recipient: 'R', amount: BigInt.one)],
+      await wallet.spend(
+        outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
         proving: Proving.remote,
       );
-      await wallet.withdraw(recipient: 'R', amount: BigInt.one);
+      await wallet.spend(
+        outputs: [Output.public(recipient: 'R', amount: BigInt.one)],
+      );
       expect(native.proved, [
         null,
         Proving.remote,
@@ -1207,53 +1190,27 @@ void main() {
     },
   );
 
-  test(
-    'a public fee rides with a deposit or withdrawal, in its operation',
-    () async {
-      final (wallet, _, _, _) = await openWallet();
-      final fee = Payment(recipient: 'Collector', amount: BigInt.two);
-
-      final deposit = await wallet.prepareDeposit(BigInt.one, publicFee: fee);
-      expect(
-        deposit.operation,
-        Operation.deposit(amount: BigInt.one, fee: fee),
-      );
-      final withdrawal = await wallet.prepareWithdrawal(
-        recipient: 'R',
-        amount: BigInt.one,
-        publicFee: fee,
-      );
-      expect(
-        withdrawal.operation,
-        Operation.withdrawal(recipient: 'R', amount: BigInt.one, fee: fee),
-      );
-      // Without a fee the operation has none.
-      expect(
-        (await wallet.prepareDeposit(BigInt.one)).operation,
-        Operation.deposit(amount: BigInt.one),
-      );
-    },
-  );
-
-  test('a signed deposit or withdrawal shows the signer its fee', () async {
+  test('a signed spend shows the signer every output in order', () async {
     final (wallet, _, signer, _) = await openWallet();
-    final fee = Payment(recipient: 'Collector', amount: BigInt.two);
+    final outputs = [
+      Output.public(recipient: 'R', amount: BigInt.one),
+      Output.private(recipient: 'Collector', amount: BigInt.two),
+    ];
 
-    await wallet.deposit(BigInt.one, publicFee: fee);
-    await wallet.withdraw(recipient: 'R', amount: BigInt.one, publicFee: fee);
-    expect(signer.requests.skip(1).map((request) => request.$2?.operation), [
-      Operation.deposit(amount: BigInt.one, fee: fee),
-      Operation.withdrawal(recipient: 'R', amount: BigInt.one, fee: fee),
-    ]);
+    await wallet.spend(outputs: outputs, mint: 'Mint');
+    expect(
+      signer.requests.last.$2?.operation,
+      Operation.spend(mint: 'Mint', outputs: outputs),
+    );
   });
 
   test('refuses a transaction another key must sign', () async {
     final (wallet, native, signer, _) = await openWallet();
-    native.transferSigners = const [owner, 'SomeoneElse'];
+    native.spendSigners = const [owner, 'SomeoneElse'];
 
     await expectLater(
-      wallet.transfer(
-        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      wallet.spend(
+        outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
       ),
       throwsWalletError(
         const WalletError.unexpectedSigners(signers: [owner, 'SomeoneElse']),
@@ -1268,11 +1225,11 @@ void main() {
     const unregistered = WalletError.recipientNotRegistered(
       recipient: 'Recipient',
     );
-    native.transferError = unregistered;
+    native.spendError = unregistered;
 
     await expectLater(
-      wallet.transfer(
-        payments: [Payment(recipient: 'Recipient', amount: BigInt.one)],
+      wallet.spend(
+        outputs: [Output.private(recipient: 'Recipient', amount: BigInt.one)],
       ),
       throwsWalletError(unregistered),
     );
@@ -1328,8 +1285,8 @@ void main() {
 
   test('a prepare that is proving when close is called fails', () async {
     final prepares = <Future<Object?> Function(ZolanaWallet, FakeWallet)>[
-      (wallet, native) => wallet.prepareTransfer(
-        payments: [Payment(recipient: 'R', amount: BigInt.one)],
+      (wallet, native) => wallet.prepareSpend(
+        outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
       ),
       (wallet, native) {
         native.status = RegistrationStatus.notRegistered;
@@ -1341,12 +1298,12 @@ void main() {
     for (final prepare in prepares) {
       final (wallet, native, _, _) = await openWallet();
       native
-        ..holdTransfer = Completer()
+        ..holdSpend = Completer()
         ..holdRegistration = Completer();
       final prepared = prepare(wallet, native);
       await Future<void>.delayed(Duration.zero);
       final closed = wallet.close();
-      native.holdTransfer!.complete();
+      native.holdSpend!.complete();
       native.holdRegistration!.complete();
 
       await expectLater(
@@ -1360,10 +1317,10 @@ void main() {
 
   test('close drains the running step and never signs after it', () async {
     final (wallet, native, signer, _) = await openWallet();
-    native.holdTransfer = Completer();
+    native.holdSpend = Completer();
 
-    final transfer = wallet.transfer(
-      payments: [Payment(recipient: 'R', amount: BigInt.one)],
+    final spend = wallet.spend(
+      outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
     );
     final queued = wallet.balances();
     await Future<void>.delayed(Duration.zero);
@@ -1372,9 +1329,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(native.disposed, isFalse, reason: 'the proof is still running');
 
-    native.holdTransfer!.complete();
+    native.holdSpend!.complete();
     await expectLater(
-      transfer,
+      spend,
       throwsWalletError(const WalletError.walletClosed()),
     );
     await expectLater(
@@ -1382,7 +1339,7 @@ void main() {
       throwsWalletError(const WalletError.walletClosed()),
     );
     await closed;
-    expect(native.events, ['transfer SOL', 'dispose']);
+    expect(native.events, ['spend SOL', 'dispose']);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
     expect(native.submitted, isEmpty);
 
@@ -1496,11 +1453,11 @@ void main() {
   test('runs operations one at a time and survives a failure', () async {
     final (wallet, native, _, _) = await openWallet();
     native.holdBalances = Completer();
-    native.transferError = const WalletError.proofFailed();
+    native.spendError = const WalletError.proofFailed();
 
     final balances = wallet.balances();
-    final transfer = wallet.transfer(
-      payments: [Payment(recipient: 'R', amount: BigInt.one)],
+    final spend = wallet.spend(
+      outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
     );
     final deposit = wallet.deposit(BigInt.one);
     await Future<void>.delayed(Duration.zero);
@@ -1508,9 +1465,9 @@ void main() {
 
     native.holdBalances!.complete();
     await balances;
-    await expectLater(transfer, throwsA(isA<WalletError>()));
+    await expectLater(spend, throwsA(isA<WalletError>()));
     expect(await deposit, 'signature');
-    expect(native.events, ['balances start', 'balances end', 'transfer SOL']);
+    expect(native.events, ['balances start', 'balances end', 'spend SOL']);
   });
 }
 

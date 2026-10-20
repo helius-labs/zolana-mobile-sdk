@@ -26,6 +26,8 @@ pub enum WalletError {
     TooManyInputTrees { trees: u64, max_trees: u64 },
     /// A spend of zero.
     AmountZero,
+    /// A spend with no outputs.
+    NoOutputs,
     /// Fewer than two notes of `mint` (`None` for SOL) are free to merge on
     /// any one tree.
     NothingToMerge { mint: Option<String> },
@@ -43,8 +45,8 @@ pub enum WalletError {
     /// Only notes a prepared spend reserves would cover `amount`. Submit,
     /// confirm or release that spend first.
     NotesReserved { amount: u64 },
-    /// `recipient` has not registered a shielded address. A withdrawal pays
-    /// it publicly.
+    /// `recipient` has not registered a shielded address. A public output
+    /// pays it publicly.
     RecipientNotRegistered { recipient: String },
     /// `recipient` has no associated token account for `mint`. The
     /// application's Solana client creates it.

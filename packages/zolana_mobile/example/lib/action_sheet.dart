@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'demo_assets.dart';
 import 'demo_keys.dart';
 import 'format.dart';
+import 'spend_limit.dart';
 
 enum WalletAction { send, shield, unshield }
 
@@ -16,6 +17,7 @@ class ActionSheet extends StatefulWidget {
     required this.asset,
     required this.available,
     required this.run,
+    this.limit,
     this.suggestedRecipient,
     this.fee,
   });
@@ -25,6 +27,10 @@ class ActionSheet extends StatefulWidget {
 
   /// Base units of [asset] the action can spend.
   final BigInt available;
+
+  /// The most one payment can take now without a merge, its fee included:
+  /// `TokenBalance.limits` for the payment's outputs. `null` for a shield.
+  final BigInt? limit;
 
   /// Performs the action and returns its transaction signature.
   final Future<String> Function(BigInt units, String? recipient) run;
@@ -62,7 +68,7 @@ class _ActionSheetState extends State<ActionSheet> {
     super.dispose();
   }
 
-  bool get _needsRecipient => widget.action == WalletAction.send;
+  bool get _needsRecipient => widget.action != WalletAction.shield;
 
   String get _title => switch (widget.action) {
     WalletAction.send => 'Send privately',
@@ -75,7 +81,7 @@ class _ActionSheetState extends State<ActionSheet> {
     return switch (widget.action) {
       WalletAction.send => 'Private balance → $recipient',
       WalletAction.shield => 'Public wallet → Private balance',
-      WalletAction.unshield => 'Private balance → Public wallet',
+      WalletAction.unshield => 'Private balance → $recipient, publicly',
     };
   }
 
@@ -90,9 +96,12 @@ class _ActionSheetState extends State<ActionSheet> {
 
   String get _privacy => switch (widget.action) {
     WalletAction.send =>
-      'Amount and recipient stay private. Proved on this device.',
+      'Amounts stay private; the chain shows the receiving accounts. '
+          'Proved on this device.',
     WalletAction.shield => 'Shielding is public: this account and the amount.',
-    WalletAction.unshield => 'Unshielding is public: this account and the amount. Proved on this device.',
+    WalletAction.unshield =>
+      'Unshielding is public: the recipient and the amount. The privacy fee '
+          'is a private note, its amount hidden. Proved on this device.',
   };
 
   String get _working => switch (widget.action) {
@@ -105,20 +114,24 @@ class _ActionSheetState extends State<ActionSheet> {
 
   BigInt _fee(BigInt units) => widget.fee?.call(units) ?? BigInt.zero;
 
-  /// The most that can be sent with its fee on top.
-  BigInt get _max {
-    var units = widget.available;
-    while (units > BigInt.zero && units + _fee(units) > widget.available) {
-      units -= BigInt.one + _fee(units) ~/ BigInt.two;
-    }
-    return units < BigInt.zero ? BigInt.zero : units;
+  /// What one payment can take: the limit, within what is available.
+  BigInt get _cap {
+    final limit = widget.limit;
+    return limit == null || limit > widget.available ? widget.available : limit;
   }
+
+  /// The most one payment can send with its fee on top, without a merge.
+  BigInt get _max => largestAmount(_cap, _fee);
 
   String? get _amountProblem {
     final units = _units;
     if (_amount.text.trim().isEmpty) return null;
     if (units == null || units <= BigInt.zero) return 'Enter an amount';
-    if (units + _fee(units) > widget.available) return 'More than available';
+    final total = units + _fee(units);
+    if (total > widget.available) return 'More than available';
+    // The notes would not fit in one proof; a wallet that merges its notes
+    // first can send it.
+    if (total > _cap) return 'More than one payment can take now';
     return null;
   }
 
@@ -240,7 +253,9 @@ class _ActionSheetState extends State<ActionSheet> {
         controller: _recipient,
         decoration: InputDecoration(
           labelText: 'To',
-          helperText: 'A Solana account with a private wallet',
+          helperText: widget.action == WalletAction.send
+              ? 'A Solana account with a private wallet'
+              : 'A Solana account; tokens go to its token account',
           errorText: _recipientProblem,
           border: const OutlineInputBorder(),
         ),
@@ -255,7 +270,10 @@ class _ActionSheetState extends State<ActionSheet> {
         labelText: 'Amount',
         suffixText: widget.asset.symbol,
         errorText: _amountProblem,
-        helperText: 'Available ${widget.asset.format(widget.available)}',
+        helperText: widget.limit == null
+            ? 'Available ${widget.asset.format(widget.available)}'
+            : 'Available ${widget.asset.format(widget.available)} · '
+                  'up to ${widget.asset.format(_max)} in one payment',
         border: const OutlineInputBorder(),
         suffixIcon: TextButton(
           onPressed: _max > BigInt.zero

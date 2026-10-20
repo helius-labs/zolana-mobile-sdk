@@ -11,10 +11,10 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
 /// device or simulator running the test, with the demo's fee paid to its
-/// collector in the same proof, with A reopened from its exported
-/// keys and the transfer signed by the test after a blockhash refresh, as an
-/// application that signs itself does; one proved remotely by the Helius
-/// prover, asked through the transport. In both, A sends every request
+/// collector as a second private output of the same proof, with A reopened
+/// from its exported keys and the spend signed by the test after a blockhash
+/// refresh, as an application that signs itself does; one proved remotely by
+/// the Helius prover, asked through the transport. In both, A sends every request
 /// through the application's own transport (`package:http`, logged), as an
 /// application with its own networking does; B uses the package's default
 /// transport. Then B merges its notes twice, proved remotely and on the
@@ -90,13 +90,13 @@ void main() {
     expect(senderBefore, greaterThanOrEqualTo(lamports + fee));
 
     final started = DateTime.now();
-    // The demo's fee is a second payment in the same proof.
-    final payments = [
-      Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
-      Payment(recipient: demoFeeCollector.publicKey, amount: fee),
+    // The demo's fee is a second private output in the same proof.
+    final outputs = [
+      Output.private(recipient: demoAccounts[1].publicKey, amount: lamports),
+      Output.private(recipient: demoFeeCollector.publicKey, amount: fee),
     ];
-    final prepared = await sender.prepareTransfer(payments: payments);
-    expect(prepared.operation, Operation.transfer(payments: payments));
+    final prepared = await sender.prepareSpend(outputs: outputs);
+    expect(prepared.operation, Operation.spend(outputs: outputs));
     // A slow approval: the same proof under a new blockhash.
     final transaction = await sender.refresh(prepared);
     expect(
@@ -138,9 +138,12 @@ void main() {
     final local = await sender();
     addTearDown(local.close);
     await expectLater(
-      local.prepareTransfer(
-        payments: [
-          Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
+      local.prepareSpend(
+        outputs: [
+          Output.private(
+            recipient: demoAccounts[1].publicKey,
+            amount: lamports,
+          ),
         ],
         proving: Proving.remote,
       ),
@@ -158,9 +161,9 @@ void main() {
     final recipientBefore = await recipient.privateBalance();
 
     final started = DateTime.now();
-    final signature = await remote.transfer(
-      payments: [
-        Payment(recipient: demoAccounts[1].publicKey, amount: lamports),
+    final signature = await remote.spend(
+      outputs: [
+        Output.private(recipient: demoAccounts[1].publicKey, amount: lamports),
       ],
       proving: Proving.remote,
     );
@@ -209,8 +212,10 @@ void main() {
     await sender.deposit(shield, mint: mint);
     expect(await sender.privateBalance(mint: mint), senderBefore + shield);
 
-    final sent = await sender.transfer(
-      payments: [Payment(recipient: demoAccounts[1].publicKey, amount: send)],
+    final sent = await sender.spend(
+      outputs: [
+        Output.private(recipient: demoAccounts[1].publicKey, amount: send),
+      ],
       mint: mint,
     );
     expect(
@@ -228,9 +233,10 @@ void main() {
       demoAccounts[1].publicKey,
       mint,
     );
-    await recipient.withdraw(
-      recipient: demoAccounts[1].publicKey,
-      amount: unshield,
+    await recipient.spend(
+      outputs: [
+        Output.public(recipient: demoAccounts[1].publicKey, amount: unshield),
+      ],
       mint: mint,
     );
     expect(

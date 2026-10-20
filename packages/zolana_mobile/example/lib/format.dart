@@ -25,26 +25,20 @@ String approvalText(Operation operation) {
     final asset? => asset.format(units),
     null => '$units units of ${shortAddress(mint!)}',
   };
-  String pay(Payment payment, String? mint) =>
-      '${format(payment.amount, mint)} to ${shortAddress(payment.recipient)}';
-  // The application's public fee, paid from this account in the same
-  // transaction.
-  String withFee(Payment? fee, String? mint) =>
-      fee == null ? '' : ', plus a public fee of ${pay(fee, mint)}';
+  // Each output says whether its recipient receives it privately, as a note,
+  // or publicly, to its Solana account.
+  String pay(Output output, String? mint) => switch (output) {
+    Output_Private(:final recipient, :final amount) =>
+      '${format(amount, mint)} privately to ${shortAddress(recipient)}',
+    Output_Public(:final recipient, :final amount) =>
+      '${format(amount, mint)} publicly to ${shortAddress(recipient)}',
+  };
   return switch (operation) {
     Operation_Registration() => 'Register for private payments',
-    Operation_Deposit(:final mint, :final amount, :final fee) =>
-      'Shield ${format(amount, mint)}${withFee(fee, mint)}',
-    Operation_Transfer(:final mint, :final payments) =>
-      'Send privately ${payments.map((p) => pay(p, mint)).join(', ')}',
-    Operation_Withdrawal(
-      :final mint,
-      :final recipient,
-      :final amount,
-      :final fee,
-    ) =>
-      'Unshield ${format(amount, mint)} to ${shortAddress(recipient)}'
-          '${withFee(fee, mint)}',
+    Operation_Deposit(:final mint, :final amount) =>
+      'Shield ${format(amount, mint)}',
+    Operation_Spend(:final mint, :final outputs) =>
+      'Send ${outputs.map((output) => pay(output, mint)).join(', ')}',
     Operation_Merging(:final enabled) =>
       enabled ? 'Allow merges of your notes' : 'Stop merges of your notes',
     Operation_Merge(:final mint, :final amount) =>

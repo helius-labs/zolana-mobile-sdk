@@ -11,6 +11,7 @@ import 'demo_keys.dart';
 import 'demo_signer.dart';
 import 'format.dart';
 import 'main.dart' show DemoScreen;
+import 'spend_limit.dart';
 import 'test_cluster_rpc.dart';
 
 const _apiKey = String.fromEnvironment('ZOLANA_API_KEY');
@@ -202,15 +203,20 @@ class _WalletScreenState extends State<WalletScreen> {
         : rpc.tokenBalance(wallet.solanaPublicKey, mint);
   }
 
-  /// The selected asset's private balance; `null` until the first refresh.
-  BigInt? get _private {
+  /// The selected asset's balance; `null` until the first refresh. An asset
+  /// without notes has none.
+  TokenBalance? get _balance {
     final balances = _balances;
     if (balances == null) return null;
     for (final balance in balances) {
-      if (balance.mint == _asset.mint) return balance.amount;
+      if (balance.mint == _asset.mint) return balance;
     }
-    return BigInt.zero;
+    return null;
   }
+
+  /// The selected asset's private balance; `null` until the first refresh.
+  BigInt? get _private =>
+      _balances == null ? null : _balance?.amount ?? BigInt.zero;
 
   BigInt? get _public => _publics[_asset.mint];
 
@@ -247,12 +253,28 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Future<void> _act(WalletAction action) async {
     final wallet = _wallet!;
-    final available = switch (action) {
-      WalletAction.shield => _maxShield(),
-      _ => _private ?? BigInt.zero,
+    final balance = _balance;
+    // Notes an unfinished payment holds are not free for this one.
+    final free = balance == null
+        ? BigInt.zero
+        : balance.amount - balance.reserved;
+    final (available, limit) = switch (action) {
+      WalletAction.shield => (_maxShield(), null),
+      // The recipient and the fee are private outputs.
+      WalletAction.send => (free, spendLimit(balance, 2)),
+      // The fee is the one private output: the withdrawal takes no slot.
+      WalletAction.unshield => (free, spendLimit(balance, 1)),
     };
     final other = demoAccounts.firstWhere((account) => account != _account);
     final mint = _asset.mint;
+    // The application's fee is one more private output, to its collector, in
+    // the same proof: the payment and the fee land together or not at all.
+    Output? fee(BigInt units) => demoFee(units) > BigInt.zero
+        ? Output.private(
+            recipient: demoFeeCollector.publicKey,
+            amount: demoFee(units),
+          )
+        : null;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -261,28 +283,29 @@ class _WalletScreenState extends State<WalletScreen> {
         action: action,
         asset: _asset,
         available: available,
-        suggestedRecipient: action == WalletAction.send ? other : null,
-        fee: action == WalletAction.send ? demoFee : null,
+        limit: limit,
+        suggestedRecipient: switch (action) {
+          WalletAction.send => other,
+          WalletAction.shield => null,
+          WalletAction.unshield => _account,
+        },
+        fee: action == WalletAction.shield ? null : demoFee,
         run: (units, recipient) => switch (action) {
-          // The fee is a second payment in the same proof: the chain sees
-          // neither amount nor who received what.
-          WalletAction.send => wallet.transfer(
-            payments: [
-              Payment(recipient: recipient!, amount: units),
-              if (demoFee(units) > BigInt.zero)
-                Payment(
-                  recipient: demoFeeCollector.publicKey,
-                  amount: demoFee(units),
-                ),
+          WalletAction.send => wallet.spend(
+            outputs: [
+              Output.private(recipient: recipient!, amount: units),
+              ?fee(units),
             ],
             mint: mint,
           ),
           WalletAction.shield => wallet.deposit(units, mint: mint),
-          // A token goes to this account's own token account, which holds
-          // the demo token already.
-          WalletAction.unshield => wallet.withdraw(
-            recipient: wallet.solanaPublicKey,
-            amount: units,
+          // A token goes to the recipient's token account, which must exist:
+          // this account's holds the demo token already.
+          WalletAction.unshield => wallet.spend(
+            outputs: [
+              Output.public(recipient: recipient!, amount: units),
+              ?fee(units),
+            ],
             mint: mint,
           ),
         },
@@ -468,6 +491,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 asset: _asset,
                 private: _private,
                 public: _public,
+                balance: _balance,
                 refreshing: _refreshing,
               ),
               const SizedBox(height: 32),
@@ -540,12 +564,17 @@ class _Balances extends StatelessWidget {
     required this.asset,
     required this.private,
     required this.public,
+    required this.balance,
     required this.refreshing,
   });
 
   final DemoAsset asset;
   final BigInt? private;
   final BigInt? public;
+
+  /// The asset's notes, with what unfinished payments hold of them; `null`
+  /// without notes.
+  final TokenBalance? balance;
   final bool refreshing;
 
   @override
@@ -570,6 +599,14 @@ class _Balances extends StatelessWidget {
               : 'Public ${public == null ? '—' : asset.format(public!)}',
           style: muted,
         ),
+        if (balance case final balance?) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Reserved ${asset.format(balance.reserved)} · '
+            'Free ${asset.format(balance.amount - balance.reserved)}',
+            style: muted,
+          ),
+        ],
       ],
     );
   }
@@ -629,7 +666,14 @@ class _ActivityRow extends StatelessWidget {
         'Private → Public',
         '−',
       ),
-      ActivityKind.sent => (Icons.north_east, 'Sent', 'Private transfer', '−'),
+      // A send, or an unshield that paid a private fee: the chain does not
+      // tell them apart.
+      ActivityKind.sent => (
+        Icons.north_east,
+        'Sent',
+        'From private balance',
+        '−',
+      ),
       ActivityKind.received => (
         Icons.south_west,
         'Received',

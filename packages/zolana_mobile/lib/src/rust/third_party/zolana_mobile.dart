@@ -56,13 +56,19 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<List<ActivityEntry>> activity();
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the configured mints.
+  /// held in SOL and the configured mints, each with what prepared spends
+  /// reserve of it and the most one spend can take per proof width.
   Future<List<TokenBalance>> balances();
 
-  /// Wait for a transaction the application sent itself: until Solana
+  /// Wait for a transaction the application sent itself, as
+  /// [`Self::submit`] waits for a send whose response was lost: until Solana
   /// confirms it and, for shielded-pool transactions, the indexer has it,
   /// so the next balance or spend reads the notes it created and not the
-  /// ones it spent.
+  /// ones it spent; the chain's error when the chain refused it;
+  /// [`WalletError::TransactionExpired`] when it did not land before
+  /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
+  /// when that cannot be told. A spend's notes are released with every
+  /// outcome but the unknown one.
   ///
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
@@ -115,15 +121,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
-  ///
-  /// `public_fee` is the application's fee: a public transfer of the same
-  /// asset from this account to the collector, in the same transaction, so
-  /// the deposit and the fee both land or neither does. See
-  /// [`Self::prepare_withdrawal`] for what is checked.
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
-    Payment? publicFee,
   });
 
   /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -136,7 +136,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   ///
   /// The merge needs no signature of this account: `fee_payer` pays and
   /// signs alone, this account when `None`. `proving` works as in
-  /// [`Self::prepare_transfer`]; a merge is proved with this wallet's
+  /// [`Self::prepare_spend`]; a merge is proved with this wallet's
   /// nullifier secret, which a remote prover receives. The proof expires
   /// after ten minutes, so a merge cannot be sent later by whoever holds it;
   /// [`Self::refresh`] does not extend it.
@@ -159,15 +159,29 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// this wallet never replaces them.
   Future<PreparedTransaction?> prepareRegistration();
 
-  /// Build and prove a private transfer of `mint` (SOL for `None`) to one
-  /// or more registered wallets, each receiving its payment as a private
-  /// output: a second payment can be the application's own fee. The proof
-  /// hides every amount and recipient. A transfer with two payments proves
-  /// with 4-output keys, which take at most 24 notes; past that it fails
-  /// with [`WalletError::MergeRequired`].
+  /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in
+  /// one transaction. A private output is a note for a registered wallet,
+  /// its amount hidden and the note tagged with the recipient's Solana
+  /// address on chain; a public output moves funds to a Solana account,
+  /// tokens to its associated token account, recipient and amount public.
+  /// An application's own fee is one more private output, to its
+  /// registered collector.
   ///
-  /// Refuses an unregistered recipient instead of paying it publicly:
-  /// [`Self::prepare_withdrawal`] makes a public payment explicit.
+  /// Before the network: no outputs fail with [`WalletError::NoOutputs`],
+  /// a zero amount with [`WalletError::AmountZero`]. Then, beside the note
+  /// selection, an unregistered private recipient fails with
+  /// [`WalletError::RecipientNotRegistered`] instead of being paid
+  /// publicly, and a public token recipient without an associated token
+  /// account with [`WalletError::RecipientTokenAccountMissing`]; the
+  /// application creates the account with its own Solana client.
+  ///
+  /// The private outputs and the change take the proof's output slots,
+  /// public outputs none: a spend with `k` private outputs proves with
+  /// `k + 1` outputs, whose keys take at most 40 notes for `k <= 1`, 24
+  /// for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`, within
+  /// [`WalletConfig::max_spend_inputs`]; past that it fails with
+  /// [`WalletError::MergeRequired`]. [`TokenBalance::limits`] says what
+  /// each width can take now.
   ///
   /// `fee_payer` pays the network fee, this account when `None`. The proof
   /// binds it, so it cannot change after this call. Another fee payer signs
@@ -180,40 +194,11 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// itself before the message is built: a response that is not a proof of
   /// the pinned key fails with [`WalletError::ProofMalformed`], a proof that
   /// does not verify with [`WalletError::ProofInvalid`].
-  Future<PreparedTransaction> prepareTransfer({
-    required List<Payment> payments,
+  Future<PreparedTransaction> prepareSpend({
+    required List<Output> outputs,
     String? mint,
     String? feePayer,
     Proving? proving,
-  });
-
-  /// Build and prove a withdrawal of private funds to the public account
-  /// `recipient`. Tokens go to its associated token account. Without one
-  /// the withdrawal could not settle, so it fails with
-  /// `recipient_token_account_missing` before proving; the application
-  /// creates the account with its own Solana client.
-  ///
-  /// `fee_payer` and `proving` work as in [`Self::prepare_transfer`].
-  ///
-  /// `public_fee` is the application's fee: a public transfer of the same
-  /// asset from this account to the collector, after the withdrawal in the
-  /// same transaction, so both land or neither does. The account signs it
-  /// with the withdrawal, and pays it from its public balance, which a
-  /// withdrawal to itself has just filled. Before proving, a zero amount
-  /// fails with [`WalletError::AmountZero`], and a token fee whose
-  /// collector has no associated token account with
-  /// [`WalletError::RecipientTokenAccountMissing`] naming the collector. A
-  /// SOL fee to a collector that does not exist must cover its rent. The
-  /// proof does not bind the fee, so it adds nothing to the proof; it adds
-  /// accounts to the message, which a very wide spend may not have room
-  /// for.
-  Future<PreparedTransaction> prepareWithdrawal({
-    required String recipient,
-    String? mint,
-    required BigInt amount,
-    String? feePayer,
-    Proving? proving,
-    Payment? publicFee,
   });
 
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -243,7 +228,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Release the notes `pending` reserves, so the next spend can select
   /// them: for a prepared spend that will not be sent, such as one the user
-  /// declined. Submitting or confirming it does this too.
+  /// declined. [`Self::submit`] and [`Self::confirm`] do this once the
+  /// outcome is known.
   Future<void> release({required PreparedTransaction pending});
 
   Future<String> shieldedAddress();
@@ -252,7 +238,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// Returns the signature.
   ///
   /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
-  /// before anything is sent.
+  /// before anything is sent. A spend's notes are released once the send
+  /// has an outcome: spent when it landed, free again when the chain
+  /// refused it, it expired or it spent a note the chain already had. They
+  /// stay reserved while the outcome is unknown, since it may still land.
   Future<String> submit({
     required PreparedTransaction pending,
     required List<Uint8List> signatures,
@@ -483,30 +472,16 @@ sealed class Operation with _$Operation {
   const factory Operation.registration() = Operation_Registration;
 
   /// Moves public funds into the private balance. Public: sender, asset,
-  /// amount. `fee` is the application's public fee, paid from the same
-  /// account in the same transaction.
-  const factory Operation.deposit({
-    String? mint,
-    required BigInt amount,
-    Payment? fee,
-  }) = Operation_Deposit;
+  /// amount.
+  const factory Operation.deposit({String? mint, required BigInt amount}) =
+      Operation_Deposit;
 
-  /// Private transfer of one asset to registered wallets, in the order
-  /// given. Reveals neither amounts nor recipients.
-  const factory Operation.transfer({
-    String? mint,
-    required List<Payment> payments,
-  }) = Operation_Transfer;
-
-  /// Moves private funds to a public account. Public: recipient, asset,
-  /// amount. `fee` is the application's public fee, paid from this wallet's
-  /// account in the same transaction.
-  const factory Operation.withdrawal({
-    String? mint,
-    required String recipient,
-    required BigInt amount,
-    Payment? fee,
-  }) = Operation_Withdrawal;
+  /// Spends private funds of one asset to `outputs`, in the order given.
+  /// Public: this account, the asset, each public output's recipient and
+  /// amount, and the Solana address each private output's note is tagged
+  /// with. Hidden: the private amounts and the change.
+  const factory Operation.spend({String? mint, required List<Output> outputs}) =
+      Operation_Spend;
 
   /// Turns merges of this account's notes on or off. Public: the account
   /// and the setting.
@@ -525,23 +500,23 @@ sealed class Operation with _$Operation {
       Operation_Custom;
 }
 
-/// One recipient of a private transfer and the amount it receives.
-class Payment {
-  final String recipient;
-  final BigInt amount;
+@freezed
+sealed class Output with _$Output {
+  const Output._();
 
-  const Payment({required this.recipient, required this.amount});
+  /// A private note for a registered wallet. The amount is hidden; the
+  /// note is tagged with the recipient's Solana address on chain.
+  const factory Output.private({
+    required String recipient,
+    required BigInt amount,
+  }) = Output_Private;
 
-  @override
-  int get hashCode => recipient.hashCode ^ amount.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Payment &&
-          runtimeType == other.runtimeType &&
-          recipient == other.recipient &&
-          amount == other.amount;
+  /// Public funds to a Solana account, tokens to its associated token
+  /// account. Recipient and amount are public.
+  const factory Output.public({
+    required String recipient,
+    required BigInt amount,
+  }) = Output_Public;
 }
 
 /// A proof of a `/prove` request through the wallet's key store, by
@@ -713,7 +688,33 @@ enum RegistrationStatus {
   conflict,
 }
 
+/// The most one spend of up to `outputs` outputs, change included, can take
+/// now without a merge: from the unreserved notes, largest first, within the
+/// note cap of that width and two trees.
+class SpendLimit {
+  final BigInt outputs;
+  final BigInt amount;
+
+  const SpendLimit({required this.outputs, required this.amount});
+
+  @override
+  int get hashCode => outputs.hashCode ^ amount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SpendLimit &&
+          runtimeType == other.runtimeType &&
+          outputs == other.outputs &&
+          amount == other.amount;
+}
+
 /// A spendable private balance. `mint` is `None` for SOL.
+///
+/// `amount` is what the indexer has confirmed for this wallet, `reserved`
+/// included: a payment or change on its way appears once its transaction is
+/// confirmed and indexed. Reservations live in this open wallet's memory
+/// only.
 class TokenBalance {
   final String? mint;
   final BigInt amount;
@@ -722,10 +723,33 @@ class TokenBalance {
   /// takes, and what a merge reduces.
   final BigInt notes;
 
-  const TokenBalance({this.mint, required this.amount, required this.notes});
+  /// The part of `amount` in notes this wallet's prepared spends hold.
+  final BigInt reserved;
+
+  /// One entry per proof width the pinned shapes offer (2, 4, 8 and 16
+  /// outputs), ascending. A spend with `k` private outputs proves with
+  /// `k + 1` outputs, its change included, and public outputs take no
+  /// slot: a withdrawal, a withdrawal with one private fee, or a send to
+  /// one wallet reads the entry with `outputs: 2`, a send to one wallet
+  /// with a fee the entry with `outputs: 4`. The limits include any
+  /// application fee the spend pays.
+  final List<SpendLimit> limits;
+
+  const TokenBalance({
+    this.mint,
+    required this.amount,
+    required this.notes,
+    required this.reserved,
+    required this.limits,
+  });
 
   @override
-  int get hashCode => mint.hashCode ^ amount.hashCode ^ notes.hashCode;
+  int get hashCode =>
+      mint.hashCode ^
+      amount.hashCode ^
+      notes.hashCode ^
+      reserved.hashCode ^
+      limits.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -734,7 +758,9 @@ class TokenBalance {
           runtimeType == other.runtimeType &&
           mint == other.mint &&
           amount == other.amount &&
-          notes == other.notes;
+          notes == other.notes &&
+          reserved == other.reserved &&
+          limits == other.limits;
 }
 
 /// Why the application's transport has no response.
@@ -987,6 +1013,9 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// A spend of zero.
   const factory WalletError.amountZero() = WalletError_AmountZero;
 
+  /// A spend with no outputs.
+  const factory WalletError.noOutputs() = WalletError_NoOutputs;
+
   /// Fewer than two notes of `mint` (`None` for SOL) are free to merge on
   /// any one tree.
   const factory WalletError.nothingToMerge({String? mint}) =
@@ -1014,8 +1043,8 @@ sealed class WalletError with _$WalletError implements FrbException {
   const factory WalletError.notesReserved({required BigInt amount}) =
       WalletError_NotesReserved;
 
-  /// `recipient` has not registered a shielded address. A withdrawal pays
-  /// it publicly.
+  /// `recipient` has not registered a shielded address. A public output
+  /// pays it publicly.
   const factory WalletError.recipientNotRegistered({
     required String recipient,
   }) = WalletError_RecipientNotRegistered;

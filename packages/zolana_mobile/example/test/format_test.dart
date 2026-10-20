@@ -37,44 +37,30 @@ void main() {
     const collector = 'CWhA2o6Sh95Qjy3iYX1rQdMjEcZ2QX1qz3wWMcUdgCdt';
     expect(
       approvalText(
-        Operation.transfer(
-          payments: [
-            Payment(recipient: b, amount: BigInt.from(1000000000)),
-            Payment(recipient: collector, amount: BigInt.from(5000000)),
+        Operation.spend(
+          outputs: [
+            Output.private(recipient: b, amount: BigInt.from(1000000000)),
+            Output.private(recipient: collector, amount: BigInt.from(5000000)),
           ],
         ),
       ),
-      'Send privately 1 SOL to 8JEE…sS8E, 0.005 SOL to CWhA…gCdt',
+      'Send 1 SOL privately to 8JEE…sS8E, 0.005 SOL privately to CWhA…gCdt',
     );
     expect(
       approvalText(
-        Operation.withdrawal(
+        Operation.spend(
           mint: demoToken.mint,
-          recipient: b,
-          amount: BigInt.from(2500000),
+          outputs: [
+            Output.public(recipient: b, amount: BigInt.from(2500000)),
+            Output.private(recipient: collector, amount: BigInt.from(12500)),
+          ],
         ),
       ),
-      'Unshield 2.5 TEST to 8JEE…sS8E',
+      'Send 2.5 TEST publicly to 8JEE…sS8E, 0.0125 TEST privately to CWhA…gCdt',
     );
     expect(
-      approvalText(
-        Operation.withdrawal(
-          mint: demoToken.mint,
-          recipient: b,
-          amount: BigInt.from(2500000),
-          fee: Payment(recipient: collector, amount: BigInt.from(12500)),
-        ),
-      ),
-      'Unshield 2.5 TEST to 8JEE…sS8E, plus a public fee of 0.0125 TEST to CWhA…gCdt',
-    );
-    expect(
-      approvalText(
-        Operation.deposit(
-          amount: BigInt.from(1000000000),
-          fee: Payment(recipient: collector, amount: BigInt.from(5000000)),
-        ),
-      ),
-      'Shield 1 SOL, plus a public fee of 0.005 SOL to CWhA…gCdt',
+      approvalText(Operation.deposit(amount: BigInt.from(1000000000))),
+      'Shield 1 SOL',
     );
     expect(
       approvalText(const Operation.merging(enabled: false)),

@@ -1,12 +1,13 @@
 //! The whole wallet flow against a live cluster and indexer, proving on this
 //! machine with the pinned keys: register, deposit, private transfer sent with
-//! a refreshed blockhash, the recipient's balance, a withdrawal from a session
-//! opened before the transfer from the sender's saved keys, with its fee paid
-//! by another account, two transfers prepared before either is sent, and a
-//! transfer proved by a remote prover. Each step is the newest entry of its
-//! wallets' history. Another test merges notes, and another deposits,
-//! transfers and withdraws an SPL token: `ZOLANA_E2E_MINT`, a mint the
-//! sender is the mint authority of, or a new mint the test registers with
+//! a refreshed blockhash, the recipient's balance, a spend that pays the
+//! sender's public account and the recipient's wallet in one proof from a
+//! session opened before the transfer from the sender's saved keys, with its
+//! network fee paid by another account, two transfers prepared before either
+//! is sent, and a transfer proved by a remote prover. Each step is the newest
+//! entry of its wallets' history. Another test merges notes, and another
+//! deposits, transfers and withdraws an SPL token: `ZOLANA_E2E_MINT`, a mint
+//! the sender is the mint authority of, or a new mint the test registers with
 //! the shielded pool, on a cluster that allows that without the protocol
 //! authority, as devnet does.
 //!
@@ -43,7 +44,7 @@ use zolana_interface::{
     SPL_TOKEN_MINT_TO_DISCRIMINATOR, SPL_TOKEN_PROGRAM_ID,
 };
 use zolana_mobile::{
-    derivation_message, ActivityKind, MintConfig, MobileWallet, Operation, Payment,
+    derivation_message, ActivityKind, MintConfig, MobileWallet, Operation, Output,
     PreparedTransaction, Proving, RegistrationStatus, Transport, TransportFailure,
     TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
 };
@@ -53,6 +54,9 @@ const FUNDING: u64 = 1_000_000_000;
 const DEPOSIT: u64 = 50_000_000;
 const TRANSFER: u64 = 20_000_000;
 const WITHDRAWAL: u64 = 10_000_000;
+/// The application's fee on the withdrawal: a private output to the
+/// recipient, as to a registered collector.
+const WITHDRAWAL_FEE: u64 = 500_000;
 /// Each of two transfers prepared together, and the deposit that makes sure
 /// the sender has a second note for them.
 const SPLIT: u64 = 1_000_000;
@@ -236,15 +240,29 @@ fn newest_of(
     );
 }
 
-fn payment(recipient: &Keypair, amount: u64) -> Payment {
-    Payment {
+fn private(recipient: &Keypair, amount: u64) -> Output {
+    Output::Private {
         recipient: recipient.pubkey().to_string(),
         amount,
     }
 }
 
-fn pay(recipient: &Keypair, amount: u64) -> Vec<Payment> {
-    vec![payment(recipient, amount)]
+fn public(recipient: &Keypair, amount: u64) -> Output {
+    Output::Public {
+        recipient: recipient.pubkey().to_string(),
+        amount,
+    }
+}
+
+/// A private transfer of `amount` to `recipient`, proved on this machine.
+fn private_transfer(
+    wallet: &mut MobileWallet,
+    recipient: &Keypair,
+    amount: u64,
+) -> PreparedTransaction {
+    wallet
+        .prepare_spend(vec![private(recipient, amount)], None, None, None)
+        .expect("prove transfer")
 }
 
 fn register(wallet: &mut MobileWallet, signer: &Keypair) {
@@ -279,7 +297,7 @@ fn register_deposit_transfer_and_receive() {
     let sender_before = private_sol(&mut sender_wallet);
     let recipient_before = private_sol(&mut recipient_wallet);
 
-    let pending = sender_wallet.prepare_deposit(None, DEPOSIT, None).unwrap();
+    let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
     let deposit = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(private_sol(&mut sender_wallet), sender_before + DEPOSIT);
     newest(&mut sender_wallet, &deposit, ActivityKind::Deposit, DEPOSIT);
@@ -297,9 +315,7 @@ fn register_deposit_transfer_and_receive() {
     assert_eq!(stale.shielded_address(), sender_wallet.shielded_address());
 
     let started = std::time::Instant::now();
-    let pending = sender_wallet
-        .prepare_transfer(pay(&recipient, TRANSFER), None, None, None)
-        .expect("prove transfer");
+    let pending = private_transfer(&mut sender_wallet, &recipient, TRANSFER);
     println!("built and proved on device in {:?}", started.elapsed());
     // A slow approval: the same proof under a new blockhash.
     let refreshed = (0..40)
@@ -336,46 +352,59 @@ fn register_deposit_transfer_and_receive() {
     );
 
     // The other session must not pick a note the transfer already spent.
-    // The recipient pays the fee, so the sender receives the full amount.
+    // A withdrawal to the sender's public account and the application's fee
+    // to the recipient's wallet, in one proof. The recipient pays the
+    // network fee, so the sender receives the full amount.
     let public_before = rpc.get_balance(sender.pubkey()).unwrap();
+    let recipient_before = private_sol(&mut recipient_wallet);
+    let outputs = vec![
+        public(&sender, WITHDRAWAL),
+        private(&recipient, WITHDRAWAL_FEE),
+    ];
     let pending = stale
-        .prepare_withdrawal(
-            sender.pubkey().to_string(),
+        .prepare_spend(
+            outputs.clone(),
             None,
-            WITHDRAWAL,
             Some(recipient.pubkey().to_string()),
-            None,
             None,
         )
         .expect("another session still builds a spendable withdrawal");
+    assert_eq!(
+        pending.operation(),
+        Operation::Spend {
+            mint: None,
+            outputs
+        }
+    );
     let withdrawal = submit(&stale, &[&recipient, &sender], pending);
     assert_eq!(
         rpc.get_balance(sender.pubkey()).unwrap(),
         public_before + WITHDRAWAL
     );
+    assert_eq!(
+        private_sol(&mut recipient_wallet),
+        recipient_before + WITHDRAWAL_FEE
+    );
+    // A spend with a note for another wallet reads as sent, for the whole
+    // total.
     newest(
         &mut stale,
         &withdrawal,
-        ActivityKind::Withdrawal,
-        WITHDRAWAL,
+        ActivityKind::Sent,
+        WITHDRAWAL + WITHDRAWAL_FEE,
     );
     assert_eq!(
         stale.private_balance(None).unwrap(),
-        sender_before + DEPOSIT - TRANSFER - WITHDRAWAL
+        sender_before + DEPOSIT - TRANSFER - WITHDRAWAL - WITHDRAWAL_FEE
     );
 
     // Two transfers prepared before either is sent take different notes, so
     // both land: the first reserves the notes it spends.
-    let pending = sender_wallet.prepare_deposit(None, SPLIT, None).unwrap();
+    let pending = sender_wallet.prepare_deposit(None, SPLIT).unwrap();
     submit(&sender_wallet, &[&sender], pending);
     let recipient_before = private_sol(&mut recipient_wallet);
-    let prepare = |wallet: &mut MobileWallet| {
-        wallet
-            .prepare_transfer(pay(&recipient, SPLIT), None, None, None)
-            .expect("prove transfer")
-    };
-    let first = prepare(&mut sender_wallet);
-    let second = prepare(&mut sender_wallet);
+    let first = private_transfer(&mut sender_wallet, &recipient, SPLIT);
+    let second = private_transfer(&mut sender_wallet, &recipient, SPLIT);
     submit(&sender_wallet, &[&sender], first);
     submit(&sender_wallet, &[&sender], second);
     assert_eq!(
@@ -384,7 +413,7 @@ fn register_deposit_transfer_and_receive() {
     );
     assert_eq!(
         private_sol(&mut sender_wallet),
-        sender_before + DEPOSIT - TRANSFER - WITHDRAWAL - SPLIT
+        sender_before + DEPOSIT - TRANSFER - WITHDRAWAL - WITHDRAWAL_FEE - SPLIT
     );
 
     // A remote proof the pinned verifying key rejects fails the spend before
@@ -397,13 +426,23 @@ fn register_deposit_transfer_and_receive() {
     };
     let error = MobileWallet::open(replaying, pubkey, signature.as_ref().to_vec(), transport())
         .expect("open wallet")
-        .prepare_transfer(pay(&recipient, SPLIT), None, None, Some(Proving::Remote))
+        .prepare_spend(
+            vec![private(&recipient, SPLIT)],
+            None,
+            None,
+            Some(Proving::Remote),
+        )
         .err();
     assert_eq!(error, Some(WalletError::ProofInvalid));
     // A transfer the remote prover proves lands like one proved on the device.
     let started = std::time::Instant::now();
     let pending = sender_wallet
-        .prepare_transfer(pay(&recipient, SPLIT), None, None, Some(Proving::Remote))
+        .prepare_spend(
+            vec![private(&recipient, SPLIT)],
+            None,
+            None,
+            Some(Proving::Remote),
+        )
         .expect("prove transfer remotely");
     println!("built and proved remotely in {:?}", started.elapsed());
     let transfer = submit(&sender_wallet, &[&sender], pending);
@@ -419,10 +458,9 @@ fn register_deposit_transfer_and_receive() {
 const TOKEN_DEPOSIT: u64 = 5_000_000;
 const TOKEN_TRANSFER: u64 = 2_000_000;
 const TOKEN_WITHDRAWAL: u64 = 1_000_000;
-/// The application's public fee on a token deposit and on a token withdrawal.
+/// The application's fee on the token withdrawal: a private output to the
+/// sender's wallet, as to a registered collector.
 const TOKEN_FEE: u64 = 100_000;
-/// A public SOL fee: above the rent a new collector account needs.
-const SOL_FEE: u64 = 1_000_000;
 
 fn send_instructions(
     rpc: &SolanaRpc,
@@ -551,16 +589,8 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     }
     let mint = test_mint(&rpc, &sender);
     let sender_tokens = token_account(&rpc, &sender, sender.pubkey(), mint);
-    mint_to(
-        &rpc,
-        &sender,
-        mint,
-        sender_tokens,
-        TOKEN_DEPOSIT + TOKEN_FEE,
-    );
+    mint_to(&rpc, &sender, mint, sender_tokens, TOKEN_DEPOSIT);
     let recipient_tokens = token_account(&rpc, &sender, recipient.pubkey(), mint);
-    let collector = Keypair::new();
-    let collector_tokens = token_account(&rpc, &sender, collector.pubkey(), mint);
 
     let with_mint = || WalletConfig {
         mints: vec![MintConfig {
@@ -574,26 +604,26 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     register(&mut sender_wallet, &sender);
     register(&mut recipient_wallet, &recipient);
     let name = mint.to_string();
-    let private = |wallet: &mut MobileWallet| wallet.private_balance(Some(name.clone())).unwrap();
-    let sender_before = private(&mut sender_wallet);
-    let recipient_before = private(&mut recipient_wallet);
+    let private_tokens =
+        |wallet: &mut MobileWallet| wallet.private_balance(Some(name.clone())).unwrap();
+    let sender_before = private_tokens(&mut sender_wallet);
+    let recipient_before = private_tokens(&mut recipient_wallet);
 
-    // The deposit and the application's public fee are one transaction.
-    let fee = payment(&collector, TOKEN_FEE);
     let pending = sender_wallet
-        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT, Some(fee.clone()))
+        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT)
         .unwrap();
     assert_eq!(
         pending.operation(),
         Operation::Deposit {
             mint: Some(name.clone()),
             amount: TOKEN_DEPOSIT,
-            fee: Some(fee.clone())
         }
     );
     let deposit = submit(&sender_wallet, &[&sender], pending);
-    assert_eq!(private(&mut sender_wallet), sender_before + TOKEN_DEPOSIT);
-    assert_eq!(public_tokens(&rpc, collector_tokens), TOKEN_FEE);
+    assert_eq!(
+        private_tokens(&mut sender_wallet),
+        sender_before + TOKEN_DEPOSIT
+    );
     newest_of(
         &mut sender_wallet,
         &deposit,
@@ -603,8 +633,8 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     );
 
     let pending = sender_wallet
-        .prepare_transfer(
-            pay(&recipient, TOKEN_TRANSFER),
+        .prepare_spend(
+            vec![private(&recipient, TOKEN_TRANSFER)],
             Some(name.clone()),
             None,
             None,
@@ -612,11 +642,11 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         .expect("prove a token transfer");
     let transfer = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(
-        private(&mut sender_wallet),
+        private_tokens(&mut sender_wallet),
         sender_before + TOKEN_DEPOSIT - TOKEN_TRANSFER
     );
     assert_eq!(
-        private(&mut recipient_wallet),
+        private_tokens(&mut recipient_wallet),
         recipient_before + TOKEN_TRANSFER
     );
     newest_of(
@@ -627,34 +657,39 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         TOKEN_TRANSFER,
     );
 
+    // Tokens to the recipient's own token account and the application's fee
+    // to the sender's wallet, in one proof.
     let public_before = public_tokens(&rpc, recipient_tokens);
     let pending = recipient_wallet
-        .prepare_withdrawal(
-            recipient.pubkey().to_string(),
+        .prepare_spend(
+            vec![
+                public(&recipient, TOKEN_WITHDRAWAL),
+                private(&sender, TOKEN_FEE),
+            ],
             Some(name.clone()),
-            TOKEN_WITHDRAWAL,
             None,
             None,
-            Some(fee.clone()),
         )
         .expect("prove a token withdrawal");
     let withdrawal = submit(&recipient_wallet, &[&recipient], pending);
-    // The fee is paid from the tokens the withdrawal has just delivered.
     assert_eq!(
         public_tokens(&rpc, recipient_tokens),
-        public_before + TOKEN_WITHDRAWAL - TOKEN_FEE
+        public_before + TOKEN_WITHDRAWAL
     );
-    assert_eq!(public_tokens(&rpc, collector_tokens), 2 * TOKEN_FEE);
     assert_eq!(
-        private(&mut recipient_wallet),
-        recipient_before + TOKEN_TRANSFER - TOKEN_WITHDRAWAL
+        private_tokens(&mut recipient_wallet),
+        recipient_before + TOKEN_TRANSFER - TOKEN_WITHDRAWAL - TOKEN_FEE
+    );
+    assert_eq!(
+        private_tokens(&mut sender_wallet),
+        sender_before + TOKEN_DEPOSIT - TOKEN_TRANSFER + TOKEN_FEE
     );
     newest_of(
         &mut recipient_wallet,
         &withdrawal,
-        ActivityKind::Withdrawal,
+        ActivityKind::Sent,
         Some(&name),
-        TOKEN_WITHDRAWAL,
+        TOKEN_WITHDRAWAL + TOKEN_FEE,
     );
     // The SOL balance is not touched by token flows.
     assert!(sender_wallet
@@ -664,69 +699,8 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         .any(|balance| balance.mint.as_deref() == Some(name.as_str())));
 }
 
-/// The application's public fee rides in the deposit's or the withdrawal's
-/// transaction: both land, or neither does.
-#[test]
-#[ignore = "needs a Zolana cluster and indexer"]
-fn a_public_fee_lands_with_its_deposit_and_withdrawal_or_not_at_all() {
-    let sender = account("ZOLANA_E2E_SENDER_SEED");
-    let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
-    if rpc.get_balance(sender.pubkey()).expect("balance") < 2 * DEPOSIT {
-        rpc.airdrop(&sender.pubkey(), FUNDING).expect("airdrop");
-    }
-    let mut wallet = open(&sender);
-    register(&mut wallet, &sender);
-    let collector = Keypair::new();
-    let collected = |rpc: &SolanaRpc| {
-        rpc.get_balance(collector.pubkey())
-            .expect("collector balance")
-    };
-    let fee = payment(&collector, SOL_FEE);
-    let before = private_sol(&mut wallet);
-
-    let pending = wallet
-        .prepare_deposit(None, SPLIT * 5, Some(fee.clone()))
-        .unwrap();
-    submit(&wallet, &[&sender], pending);
-    assert_eq!(private_sol(&mut wallet), before + SPLIT * 5);
-    assert_eq!(collected(&rpc), SOL_FEE);
-
-    // A withdrawal to the account itself pays the fee after the pool
-    // instruction, from the lamports it delivered.
-    let pending = wallet
-        .prepare_withdrawal(
-            sender.pubkey().to_string(),
-            None,
-            SPLIT * 2,
-            None,
-            None,
-            Some(fee.clone()),
-        )
-        .expect("prove a withdrawal with a fee");
-    assert_eq!(
-        pending.operation(),
-        Operation::Withdrawal {
-            mint: None,
-            recipient: sender.pubkey().to_string(),
-            amount: SPLIT * 2,
-            fee: Some(fee)
-        }
-    );
-    submit(&wallet, &[&sender], pending);
-    assert_eq!(private_sol(&mut wallet), before + SPLIT * 3);
-    assert_eq!(collected(&rpc), 2 * SOL_FEE);
-
-    // A fee the account cannot pay fails the whole deposit.
-    let too_much = payment(&collector, u64::MAX);
-    let pending = wallet.prepare_deposit(None, SPLIT, Some(too_much)).unwrap();
-    let signature = sender.sign_message(&pending.message()).as_ref().to_vec();
-    assert!(wallet.submit(&pending, vec![signature]).is_err());
-    assert_eq!(private_sol(&mut wallet), before + SPLIT * 3);
-    assert_eq!(collected(&rpc), 2 * SOL_FEE);
-}
-
-/// Two payments in one proof, as an application pays a recipient and its own
-/// fee collector: here both go to the recipient, which is registered.
+/// Two private outputs in one proof, as an application pays a recipient and
+/// its own fee collector: here both go to the recipient, which is registered.
 #[test]
 #[ignore = "needs a Zolana cluster and indexer"]
 fn pays_two_recipients_in_one_transfer() {
@@ -737,21 +711,21 @@ fn pays_two_recipients_in_one_transfer() {
     register(&mut sender_wallet, &sender);
     register(&mut recipient_wallet, &recipient);
     if private_sol(&mut sender_wallet) < SPLIT * 3 {
-        let pending = sender_wallet.prepare_deposit(None, DEPOSIT, None).unwrap();
+        let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
         submit(&sender_wallet, &[&sender], pending);
     }
     let sender_before = private_sol(&mut sender_wallet);
     let recipient_before = private_sol(&mut recipient_wallet);
 
-    let payments = vec![payment(&recipient, SPLIT), payment(&recipient, SPLIT / 4)];
+    let outputs = vec![private(&recipient, SPLIT), private(&recipient, SPLIT / 4)];
     let pending = sender_wallet
-        .prepare_transfer(payments.clone(), None, None, None)
+        .prepare_spend(outputs.clone(), None, None, None)
         .expect("prove a transfer with two outputs");
     assert_eq!(
         pending.operation(),
-        Operation::Transfer {
+        Operation::Spend {
             mint: None,
-            payments
+            outputs
         }
     );
     let transfer = submit(&sender_wallet, &[&sender], pending);
@@ -795,7 +769,7 @@ fn merges_notes_proved_remotely_and_on_the_device() {
     );
     // Notes to merge on a fresh account too.
     for _ in 0..2 {
-        let pending = wallet.prepare_deposit(None, SPLIT, None).unwrap();
+        let pending = wallet.prepare_deposit(None, SPLIT).unwrap();
         submit(&wallet, &[&owner], pending);
     }
 
