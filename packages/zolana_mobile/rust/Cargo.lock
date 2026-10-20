@@ -194,15 +194,6 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 [[package]]
 name = "ark-bn254"
 version = "0.5.0"
-dependencies = [
- "ark-ec",
- "ark-ff",
- "ark-std",
-]
-
-[[package]]
-name = "ark-bn254"
-version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d69eab57e8d2663efa5c63135b2af4f396d66424f88954c21104125ab6b3e6bc"
 dependencies = [
@@ -229,7 +220,6 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
- "rayon",
  "zeroize",
 ]
 
@@ -250,7 +240,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "paste",
- "rayon",
  "zeroize",
 ]
 
@@ -290,7 +279,6 @@ dependencies = [
  "educe",
  "fnv",
  "hashbrown 0.15.5",
- "rayon",
 ]
 
 [[package]]
@@ -304,7 +292,6 @@ dependencies = [
  "arrayvec",
  "digest 0.10.7",
  "num-bigint",
- "rayon",
 ]
 
 [[package]]
@@ -326,7 +313,6 @@ checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
  "rand 0.8.8",
- "rayon",
 ]
 
 [[package]]
@@ -2005,7 +1991,7 @@ name = "groth16-solana"
 version = "0.2.0"
 source = "git+https://github.com/Lightprotocol/groth16-solana?rev=70a93803e5f55b8425301d506c625169ef557c9d#70a93803e5f55b8425301d506c625169ef557c9d"
 dependencies = [
- "ark-bn254 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-bn254",
  "ark-ff",
  "ark-serialize",
  "pinocchio",
@@ -2590,7 +2576,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47a1ccadd0bb5a32c196da536fd72c59183de24a055f6bf0513bf845fefab862"
 dependencies = [
- "ark-bn254 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-bn254",
  "ark-ff",
  "num-bigint",
  "thiserror 1.0.69",
@@ -4296,7 +4282,7 @@ version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62ff13a8867fcc7b0f1114764e1bf6191b4551dcaf93729ddc676cd4ec6abc9f"
 dependencies = [
- "ark-bn254 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-bn254",
  "ark-ec",
  "ark-ff",
  "ark-serialize",
@@ -6839,7 +6825,7 @@ name = "zolana-hasher"
 version = "5.0.0"
 source = "git+https://github.com/helius-labs/zolana?rev=82dc62d32e40ff8539db62a185f22c948e12c4c2#82dc62d32e40ff8539db62a185f22c948e12c4c2"
 dependencies = [
- "ark-bn254 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ark-bn254",
  "ark-ff",
  "light-poseidon",
  "num-bigint",
@@ -6939,7 +6925,7 @@ dependencies = [
  "zolana-keypair",
  "zolana-program",
  "zolana-transaction",
- "zopro-prover",
+ "zopro-zolana",
 ]
 
 [[package]]
@@ -7002,25 +6988,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "zopro-bn254"
+version = "0.1.0"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+
+[[package]]
 name = "zopro-core"
 version = "0.1.0"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ec",
- "ark-ff",
- "ark-poly",
+ "futures-channel",
  "getrandom 0.2.17",
  "js-sys",
  "libc",
  "log",
  "miniz_oxide 0.8.9",
- "rand 0.8.8",
  "rayon",
- "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-rayon",
  "web-time",
+ "zopro-bn254",
  "zopro-metal",
  "zopro-wgpu",
 ]
@@ -7028,39 +7016,52 @@ dependencies = [
 [[package]]
 name = "zopro-metal"
 version = "0.1.0"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ec",
- "ark-ff",
+ "log",
  "metal",
  "objc",
  "rayon",
+ "zopro-bn254",
 ]
 
 [[package]]
 name = "zopro-prover"
 version = "0.1.0"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ff",
+ "js-sys",
  "log",
- "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "zopro-bn254",
  "zopro-core",
 ]
 
 [[package]]
 name = "zopro-wgpu"
 version = "0.1.0"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ec",
- "ark-ff",
  "futures-channel",
  "log",
  "pollster",
  "rayon",
  "web-time",
  "wgpu",
+ "zopro-bn254",
+]
+
+[[package]]
+name = "zopro-zolana"
+version = "0.1.0"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+dependencies = [
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "zopro-bn254",
+ "zopro-prover",
 ]
 
 [[package]]
