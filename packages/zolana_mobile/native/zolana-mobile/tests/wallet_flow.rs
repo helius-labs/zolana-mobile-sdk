@@ -96,7 +96,7 @@ fn config() -> WalletConfig {
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
         max_spend_inputs: None,
         reuse_notes_ms: None,
-        mints: Vec::new(),
+        mints: None,
     }
 }
 
@@ -590,10 +590,10 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     let recipient_tokens = token_account(&rpc, &sender, recipient.pubkey(), mint);
 
     let with_mint = || WalletConfig {
-        mints: vec![MintConfig {
+        mints: Some(vec![MintConfig {
             mint: mint.to_string(),
             token_program: Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID).to_string(),
-        }],
+        }]),
         ..config()
     };
     let mut sender_wallet = open_with(&sender, with_mint());
@@ -654,6 +654,14 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         Some(&name),
         TOKEN_TRANSFER,
     );
+    // A wallet given no mints learns the token from the notes it reads.
+    let discovered = open_with(&recipient, config())
+        .balances()
+        .unwrap()
+        .into_iter()
+        .find(|balance| balance.mint.as_deref() == Some(name.as_str()))
+        .expect("the received token is discovered");
+    assert_eq!(discovered.amount, recipient_before + TOKEN_TRANSFER);
 
     // Tokens to the recipient's own token account and the application's fee
     // to the sender's wallet, in one proof.

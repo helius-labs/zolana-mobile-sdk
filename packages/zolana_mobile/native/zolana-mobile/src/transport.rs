@@ -351,7 +351,7 @@ pub(crate) mod tests {
             prover_url: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
-            mints: Vec::new(),
+            mints: None,
         };
         let pubkey = signer.pubkey().to_string();
         let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());

@@ -2364,6 +2364,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<MintConfig>? dco_decode_opt_list_mint_config(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_mint_config(raw);
+  }
+
+  @protected
   Output dco_decode_output(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
@@ -2585,7 +2591,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       proverUrl: dco_decode_opt_String(arr[5]),
       maxSpendInputs: dco_decode_opt_box_autoadd_u_32(arr[6]),
       reuseNotesMs: dco_decode_opt_box_autoadd_u_64(arr[7]),
-      mints: dco_decode_list_mint_config(arr[8]),
+      mints: dco_decode_opt_list_mint_config(arr[8]),
     );
   }
 
@@ -3409,6 +3415,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<MintConfig>? sse_decode_opt_list_mint_config(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_mint_config(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   Output sse_decode_output(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3641,7 +3660,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_proverUrl = sse_decode_opt_String(deserializer);
     var var_maxSpendInputs = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_reuseNotesMs = sse_decode_opt_box_autoadd_u_64(deserializer);
-    var var_mints = sse_decode_list_mint_config(deserializer);
+    var var_mints = sse_decode_opt_list_mint_config(deserializer);
     return WalletConfig(
       rpcUrl: var_rpcUrl,
       indexerUrl: var_indexerUrl,
@@ -4543,6 +4562,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_list_mint_config(
+    List<MintConfig>? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_mint_config(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_output(Output self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
@@ -4731,7 +4763,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_String(self.proverUrl, serializer);
     sse_encode_opt_box_autoadd_u_32(self.maxSpendInputs, serializer);
     sse_encode_opt_box_autoadd_u_64(self.reuseNotesMs, serializer);
-    sse_encode_list_mint_config(self.mints, serializer);
+    sse_encode_opt_list_mint_config(self.mints, serializer);
   }
 
   @protected
@@ -5006,8 +5038,8 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
       RustLib.instance.api.zolanaMobileMobileWalletActivity(that: this);
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the configured mints, each with what prepared spends
-  /// reserve of it and the most one spend can take per proof width.
+  /// held in SOL and the mints the wallet knows, each with what prepared
+  /// spends reserve of it and the most one spend can take per proof width.
   Future<List<TokenBalance>> balances() =>
       RustLib.instance.api.zolanaMobileMobileWalletBalances(that: this);
 

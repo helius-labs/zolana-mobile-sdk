@@ -2178,7 +2178,7 @@ const _: fn() = || {
         let _: Option<String> = WalletConfig.prover_url;
         let _: Option<u32> = WalletConfig.max_spend_inputs;
         let _: Option<u64> = WalletConfig.reuse_notes_ms;
-        let _: Vec<zolana_mobile::MintConfig> = WalletConfig.mints;
+        let _: Option<Vec<zolana_mobile::MintConfig>> = WalletConfig.mints;
     }
     match None::<zolana_mobile::WalletError>.unwrap() {
         zolana_mobile::WalletError::InsufficientPrivateBalance {
@@ -2924,6 +2924,17 @@ impl SseDecode for Option<u64> {
     }
 }
 
+impl SseDecode for Option<Vec<zolana_mobile::MintConfig>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<Vec<zolana_mobile::MintConfig>>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for zolana_mobile::Output {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3189,7 +3200,7 @@ impl SseDecode for zolana_mobile::WalletConfig {
         let mut var_proverUrl = <Option<String>>::sse_decode(deserializer);
         let mut var_maxSpendInputs = <Option<u32>>::sse_decode(deserializer);
         let mut var_reuseNotesMs = <Option<u64>>::sse_decode(deserializer);
-        let mut var_mints = <Vec<zolana_mobile::MintConfig>>::sse_decode(deserializer);
+        let mut var_mints = <Option<Vec<zolana_mobile::MintConfig>>>::sse_decode(deserializer);
         return zolana_mobile::WalletConfig {
             rpc_url: var_rpcUrl,
             indexer_url: var_indexerUrl,
@@ -4803,6 +4814,16 @@ impl SseEncode for Option<u64> {
     }
 }
 
+impl SseEncode for Option<Vec<zolana_mobile::MintConfig>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <Vec<zolana_mobile::MintConfig>>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for zolana_mobile::Output {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5013,7 +5034,7 @@ impl SseEncode for zolana_mobile::WalletConfig {
         <Option<String>>::sse_encode(self.prover_url, serializer);
         <Option<u32>>::sse_encode(self.max_spend_inputs, serializer);
         <Option<u64>>::sse_encode(self.reuse_notes_ms, serializer);
-        <Vec<zolana_mobile::MintConfig>>::sse_encode(self.mints, serializer);
+        <Option<Vec<zolana_mobile::MintConfig>>>::sse_encode(self.mints, serializer);
     }
 }
 
