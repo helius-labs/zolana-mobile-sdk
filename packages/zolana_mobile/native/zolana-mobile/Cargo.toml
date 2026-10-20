@@ -27,7 +27,7 @@ reqwest = { version = "0.12", default-features = false }
 reqwest-middleware = "0.4"
 # The prover: the request to a witness, the arithmetic (on the GPU where
 # there is one), the verified proof in gnark's formats.
-zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "8664091d83aade63eff200acbaf06ec353e404e6" }
+zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "30db5ee1505391262d41e7732da6a8949848b7a6" }
 log = "0.4"
 # The key's image, mapped (prover::load_key).
 memmap2 = "0.9"
@@ -57,14 +57,14 @@ solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
 zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "8664091d83aade63eff200acbaf06ec353e404e6", features = ["metal"] }
+zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "30db5ee1505391262d41e7732da6a8949848b7a6", features = ["metal"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 oslog = "0.2"
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15"
-zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "8664091d83aade63eff200acbaf06ec353e404e6", features = ["wgpu"] }
+zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "30db5ee1505391262d41e7732da6a8949848b7a6", features = ["wgpu"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }

@@ -10,6 +10,12 @@ use zeroize::Zeroizing;
 
 use zolana_hasher::{Hasher, Poseidon};
 
+// On Apple's systems a freed large block stays charged to the app with the
+// system allocator; zopro's gives it back (a key's first load left 200 MB
+// charged on an iPad). Elsewhere it is the system allocator.
+#[global_allocator]
+static ALLOCATOR: zopro_zolana::zopro_core::alloc::Allocator = zopro_zolana::zopro_core::alloc::Allocator;
+
 mod activity;
 mod asset;
 mod error;
