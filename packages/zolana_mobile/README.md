@@ -201,12 +201,13 @@ await wallet.spend(
   time both register it, so the second to land fails.
   `balances()` lists the private balance of SOL and of each configured mint;
   notes in other mints are left out.
-  A public token output goes to the recipient's associated token account and
-  fails with `WalletError.recipientTokenAccountMissing`, before proving, when
-  the account does not exist. Transaction fees are paid in SOL by this
-  account.
-- **Public accounts**: read public SOL and token balances, and create
-  associated token accounts, with your application's own Solana client.
+  A public token output goes to the recipient's associated token account.
+  When the recipient has none for the mint, the transaction creates it ahead
+  of the spend and the fee payer pays its rent (about 0.002 SOL);
+  `Operation.spend`'s `createdTokenAccounts` names those recipients, for the
+  approval text. Transaction fees are paid in SOL by this account.
+- **Public accounts**: read public SOL and token balances with your
+  application's own Solana client.
 - **Registration**: `registrationStatus()` is `notRegistered`, `registered` or
   `conflict`. A conflict means the account's user record holds other keys: set
   by another app, by a key rotation, or derived by a signer whose signatures
@@ -269,7 +270,6 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `notesAlreadySpent` | | the chain already spent a note the transaction spends: the indexer was behind when it was prepared |
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
-| `recipientTokenAccountMissing` | `recipient`, `mint` | the recipient of a public token output has no associated token account for the mint |
 | `registrationConflict` | `owner` | the registry holds other keys for this account |
 | `assetNotSupported` | `mint` | the shielded pool has not registered the mint, and this call cannot: a spend, a merge, or a deposit the pool lets only its authority register |
 | `mintNotConfigured` | `mint` | the mint is not in `WalletConfig.mints` |

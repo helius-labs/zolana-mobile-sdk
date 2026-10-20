@@ -43,9 +43,11 @@ Unreleased.
   one transaction: `Output.private`, a note for a registered wallet with its
   amount hidden and the note tagged with the recipient's Solana address on
   chain, and `Output.public`, funds to a Solana account with recipient and
-  amount public. The application's fee is one more private output to its
-  registered collector. `Operation_Spend` lists the outputs in order. An
-  empty list fails with `WalletError.noOutputs`.
+  amount public, tokens to its associated token account, which the spend
+  creates when it does not exist, the fee payer paying its rent. The
+  application's fee is one more private output to its registered collector.
+  `Operation_Spend` lists the outputs in order and the recipients whose
+  token account it creates. An empty list fails with `WalletError.noOutputs`.
 * `prepareRegistration`, `prepareDeposit`, `prepareSpend`, `submit` and
   `confirm` for applications that sign and send transactions themselves.
   `feePayer` lets another account pay the network fee of a spend.
@@ -100,7 +102,8 @@ Unreleased.
   proof, for slow approvals. Every prepared transaction carries its
   `operation`, `feePayer`, `signers`, `message` and `lastValidBlockHeight`.
   `operation` has one variant per kind, each with its own fields
-  (`Operation_Spend` its `mint` and `outputs`, `Operation_Merging` whether it
+  (`Operation_Spend` its `mint`, `outputs` and `createdTokenAccounts`,
+  `Operation_Merging` whether it
   turns merges on,
   `Operation_Custom` the top-level programs of a transaction the application
   composes, which the wallet does not prepare yet); the application builds

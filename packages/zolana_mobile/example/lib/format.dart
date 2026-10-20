@@ -42,8 +42,9 @@ String approvalText(Operation operation) {
           ? 'Shield ${format(amount, mint)}, and pay the rent of the '
                 "token's first shielded-pool accounts"
           : 'Shield ${format(amount, mint)}',
-    Operation_Spend(:final mint, :final outputs) =>
-      'Send ${outputs.map((output) => pay(output, mint)).join(', ')}',
+    Operation_Spend(:final mint, :final outputs, :final createdTokenAccounts) =>
+      'Send ${outputs.map((output) => pay(output, mint)).join(', ')}'
+          '${createdTokenAccounts.isEmpty ? '' : ', creating a token account for ${createdTokenAccounts.map(shortAddress).join(', ')} (you pay its rent)'}',
     Operation_Merging(:final enabled) =>
       enabled ? 'Allow merges of your notes' : 'Stop merges of your notes',
     Operation_Merge(:final mint, :final amount) =>

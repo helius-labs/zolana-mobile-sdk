@@ -227,7 +227,11 @@ class FakeWallet implements MobileWallet {
     return FakePending(
       Uint8List.fromList([7, 8]),
       signers: spendSigners,
-      operation: Operation.spend(mint: mint, outputs: outputs),
+      operation: Operation.spend(
+        mint: mint,
+        outputs: outputs,
+        createdTokenAccounts: const [],
+      ),
     );
   }
 
@@ -1103,6 +1107,7 @@ void main() {
         outputs: [
           Output.private(recipient: 'Recipient', amount: BigInt.from(5)),
         ],
+        createdTokenAccounts: const [],
       ),
     );
     expect(native.submitted.single.$2.single, [8, 7]);
@@ -1126,6 +1131,7 @@ void main() {
           outputs: [
             Output.private(recipient: 'Recipient', amount: BigInt.from(5)),
           ],
+          createdTokenAccounts: const [],
         ),
         owner,
       ),
@@ -1204,7 +1210,11 @@ void main() {
     await wallet.spend(outputs: outputs, mint: 'Mint');
     expect(
       signer.requests.last.$2?.operation,
-      Operation.spend(mint: 'Mint', outputs: outputs),
+      Operation.spend(
+        mint: 'Mint',
+        outputs: outputs,
+        createdTokenAccounts: const [],
+      ),
     );
   });
 

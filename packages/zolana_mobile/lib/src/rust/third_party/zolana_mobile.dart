@@ -187,9 +187,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// a zero amount with [`WalletError::AmountZero`]. Then, beside the note
   /// selection, an unregistered private recipient fails with
   /// [`WalletError::RecipientNotRegistered`] instead of being paid
-  /// publicly, and a public token recipient without an associated token
-  /// account with [`WalletError::RecipientTokenAccountMissing`]; the
-  /// application creates the account with its own Solana client.
+  /// publicly. A public token recipient without an associated token
+  /// account for the mint gets one: the transaction creates it ahead of
+  /// the spend, the fee payer pays its rent, and
+  /// [`Operation::Spend`]'s `created_token_accounts` names the recipient.
   ///
   /// The private outputs and the change take the proof's output slots,
   /// public outputs none: a spend with `k` private outputs proves with
@@ -498,8 +499,15 @@ sealed class Operation with _$Operation {
   /// Public: this account, the asset, each public output's recipient and
   /// amount, and the Solana address each private output's note is tagged
   /// with. Hidden: the private amounts and the change.
-  const factory Operation.spend({String? mint, required List<Output> outputs}) =
-      Operation_Spend;
+  ///
+  /// `created_token_accounts` are the public token recipients that had no
+  /// associated token account for the mint: the transaction creates each,
+  /// and the fee payer pays its rent.
+  const factory Operation.spend({
+    String? mint,
+    required List<Output> outputs,
+    required List<String> createdTokenAccounts,
+  }) = Operation_Spend;
 
   /// Turns merges of this account's notes on or off. Public: the account
   /// and the setting.
@@ -530,7 +538,8 @@ sealed class Output with _$Output {
   }) = Output_Private;
 
   /// Public funds to a Solana account, tokens to its associated token
-  /// account. Recipient and amount are public.
+  /// account, which the transaction creates when it does not exist.
+  /// Recipient and amount are public.
   const factory Output.public({
     required String recipient,
     required BigInt amount,
@@ -1066,13 +1075,6 @@ sealed class WalletError with _$WalletError implements FrbException {
   const factory WalletError.recipientNotRegistered({
     required String recipient,
   }) = WalletError_RecipientNotRegistered;
-
-  /// `recipient` has no associated token account for `mint`. The
-  /// application's Solana client creates it.
-  const factory WalletError.recipientTokenAccountMissing({
-    required String recipient,
-    required String mint,
-  }) = WalletError_RecipientTokenAccountMissing;
 
   /// The user registry holds other keys for `owner`. The wallet never
   /// replaces them.

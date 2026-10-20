@@ -40,7 +40,7 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use zolana_client::{ComputeBudgetConfig, Rpc, SolanaRpc};
 use zolana_interface::{
-    SPL_TOKEN_INITIALIZE_MINT2_DISCRIMINATOR, SPL_TOKEN_MINT_ACCOUNT_LEN,
+    pda, SPL_TOKEN_INITIALIZE_MINT2_DISCRIMINATOR, SPL_TOKEN_MINT_ACCOUNT_LEN,
     SPL_TOKEN_MINT_TO_DISCRIMINATOR, SPL_TOKEN_PROGRAM_ID,
 };
 use zolana_mobile::{
@@ -373,7 +373,8 @@ fn register_deposit_transfer_and_receive() {
         pending.operation(),
         Operation::Spend {
             mint: None,
-            outputs
+            outputs,
+            created_token_accounts: Vec::new(),
         }
     );
     let withdrawal = submit(&stale, &[&recipient, &sender], pending);
@@ -461,6 +462,12 @@ const TOKEN_WITHDRAWAL: u64 = 1_000_000;
 /// The application's fee on the token withdrawal: a private output to the
 /// sender's wallet, as to a registered collector.
 const TOKEN_FEE: u64 = 100_000;
+/// Tokens sent publicly to an account without a token account, which the
+/// spend creates.
+const TOKEN_PUBLIC_SEND: u64 = 500_000;
+/// The rent of an SPL Token account, which the fee payer of a spend that
+/// creates one pays.
+const TOKEN_ACCOUNT_RENT: u64 = 2_039_280;
 
 fn send_instructions(
     rpc: &SolanaRpc,
@@ -570,7 +577,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     let sender = account("ZOLANA_E2E_SENDER_SEED");
     let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
     let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
-    for (signer, needed) in [(&sender, FEES), (&recipient, FEES)] {
+    for (signer, needed) in [(&sender, FEES + TOKEN_ACCOUNT_RENT), (&recipient, FEES)] {
         if rpc.get_balance(signer.pubkey()).expect("balance") < needed {
             rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
         }
@@ -682,6 +689,33 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         Some(&name),
         TOKEN_WITHDRAWAL + TOKEN_FEE,
     );
+    // Tokens to an account that has never held this mint: the spend creates
+    // its token account, the sender paying the rent.
+    let stranger = Keypair::new();
+    let outputs = vec![public(&stranger, TOKEN_PUBLIC_SEND)];
+    let pending = sender_wallet
+        .prepare_spend(outputs.clone(), Some(name.clone()), None, None)
+        .expect("prove a public token send to an account without a token account");
+    assert_eq!(
+        pending.operation(),
+        Operation::Spend {
+            mint: Some(name.clone()),
+            outputs,
+            created_token_accounts: vec![stranger.pubkey().to_string()],
+        }
+    );
+    submit(&sender_wallet, &[&sender], pending);
+    let stranger_tokens = pda::associated_token_address_with_program(
+        &stranger.pubkey(),
+        &mint,
+        &Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID),
+    );
+    assert_eq!(public_tokens(&rpc, stranger_tokens), TOKEN_PUBLIC_SEND);
+    assert_eq!(
+        private_tokens(&mut sender_wallet),
+        sender_before + TOKEN_DEPOSIT - TOKEN_TRANSFER + TOKEN_FEE - TOKEN_PUBLIC_SEND
+    );
+
     // The SOL balance is not touched by token flows.
     assert!(sender_wallet
         .balances()
@@ -716,7 +750,8 @@ fn pays_two_recipients_in_one_transfer() {
         pending.operation(),
         Operation::Spend {
             mint: None,
-            outputs
+            outputs,
+            created_token_accounts: Vec::new(),
         }
     );
     let transfer = submit(&sender_wallet, &[&sender], pending);
