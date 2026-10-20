@@ -53,7 +53,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
       - uses: subosito/flutter-action@v2
@@ -102,7 +101,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
       - uses: nttld/setup-ndk@v1
@@ -163,7 +161,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
       - uses: nttld/setup-ndk@v1
@@ -283,7 +280,6 @@ jobs:
       SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
         with:

@@ -25,7 +25,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: subosito/flutter-action@v2
         with:
@@ -60,7 +59,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: subosito/flutter-action@v2
         with:

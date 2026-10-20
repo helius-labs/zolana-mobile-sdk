@@ -36,7 +36,6 @@ jobs:
       DEVICEFARM_RUN_FILE: ${{ github.workspace }}/devicefarm-run
     steps:
       - uses: actions/checkout@v6
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
       - uses: nttld/setup-ndk@v1
