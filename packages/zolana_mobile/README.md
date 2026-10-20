@@ -169,10 +169,13 @@ await wallet.spend(
   `WalletError.provingKeyDownloadFailed`. Keep the directory across launches:
   the keys of one lockfile live in a directory of their own there, and the
   wallet removes the directories of other lockfiles when it opens. A key
-  that was checked once is not hashed again unless its file changed. After
-  its first load, the key's solver is kept beside it (`<key>.zopro.solver1`, a
-  fraction of the key's size): later loads read it instead of building the
-  solver from the key's program, and decompress only the key's points.
+  that was checked once is not hashed again unless its file changed. A
+  key's first load writes its image beside it (`<key>.zopro.zopro-raw-3.solver2`,
+  about three times the key's size): its points as the prover reads them and
+  its solver. Later loads map the image instead of decompressing the key and
+  building its solver, and the system may drop and read again its pages under
+  memory pressure rather than counting them against the app. A device that
+  cannot write the image proves from the key file.
   `clearProvingKeys()` removes the images with the keys.
 - **Tokens**: list each SPL Token or Token-2022 mint the wallet holds in
   `WalletConfig.mints`, with the token program that owns it, as your Solana

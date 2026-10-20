@@ -447,9 +447,9 @@ impl KeyStore {
             return Ok(self.verified(name, path));
         }
         if !matches_entry(name, &path, entry)? {
-            // A key that is replaced takes its solver image with it.
+            // A key that is replaced takes its image with it.
             let _ = fs::remove_file(&path);
-            let _ = fs::remove_file(crate::prover::solver_image_path(&path));
+            let _ = fs::remove_file(crate::prover::image_path(&path));
             self.create_dir()?;
             if !self.download(name, entry, &path, progress)? {
                 return Ok(None);
@@ -1071,8 +1071,8 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// A key replaced by a download takes its solver image with it; the
-    /// image of a key that only lost its record stays, as the key does.
+    /// A key replaced by a download takes its image with it; the image of
+    /// a key that only lost its record stays, as the key does.
     #[test]
     fn a_replaced_key_takes_its_image_with_it() {
         let root = scratch("image");
@@ -1082,11 +1082,12 @@ mod tests {
             .fetch("k.key", &entry, &mut |_| true)
             .unwrap()
             .unwrap();
-        let image = crate::prover::solver_image_path(&path);
+        let image = crate::prover::image_path(&path);
         assert_eq!(
             image,
             root.join(key_set()).join(format!(
-                "k.key.solver{}",
+                "k.key.{}.solver{}",
+                zopro_zolana::zopro_prover::raw::FORMAT,
                 zopro_zolana::zopro_core::solver_image_version()
             ))
         );

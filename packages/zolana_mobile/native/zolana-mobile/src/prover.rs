@@ -64,24 +64,30 @@ fn device_log() {
     });
 }
 
-/// Where the kernel's solver image for a key file is kept: parsing the
-/// solver program is most of a key load (seconds on a phone), the image
-/// loads in milliseconds. The name carries the image format's version.
-pub(crate) fn solver_image_path(key: &std::path::Path) -> std::path::PathBuf {
+/// Where a key file's image is kept (`zopro_prover::raw`): the key's
+/// points as the kernel reads them in place and its solver's image, written
+/// at the key's first load and mapped at every load, so the system may drop
+/// and read again the points' pages under memory pressure instead of the
+/// app holding them, and a load decompresses nothing (16 -> 2 on a phone:
+/// 0.4 s rather than 8.6, ~140 MB of the app's own memory rather than
+/// ~360). The name carries both layouts' versions: a kernel that reads
+/// another writes its own.
+pub(crate) fn image_path(key: &std::path::Path) -> std::path::PathBuf {
     let mut name = key
         .file_name()
         .map(|n| n.to_os_string())
         .unwrap_or_default();
     name.push(format!(
-        ".solver{}",
+        ".{}.solver{}",
+        zopro_zolana::zopro_prover::raw::FORMAT,
         zopro_zolana::zopro_core::solver_image_version()
     ));
     key.with_file_name(name)
 }
 
-/// A key file loaded: the prover, with its solver from the cached image
-/// beside `path` when there is one, cached there after a build from the
-/// program.
+/// A key file loaded through its image: mapped, written from the key file
+/// first when there is none or it does not load. A device that cannot
+/// write it (a full disk) proves from the key file in memory.
 pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_zolana::Prover, WalletError> {
     device_log();
     let failed = |e: &dyn std::fmt::Display| {
@@ -91,24 +97,53 @@ pub(crate) fn load_key(path: &std::path::Path) -> Result<zopro_zolana::Prover, W
     // The GPU driver's compiled kernels, beside the keys: a phone compiles
     // them once rather than at every launch.
     zopro_zolana::zopro_core::set_gpu_pipeline_cache(&path.with_file_name("zopro-gpu.cache"));
-    let bytes = std::fs::read(path).map_err(|e| failed(&e))?;
-    let artifact =
-        zopro_zolana::zopro_core::artifact::Artifact::parse(&bytes).map_err(|e| failed(&e))?;
-    let vectors = artifact.vectors().map_err(|e| failed(&e))?;
-    let cache = solver_image_path(path);
-    let cached = std::fs::read(&cache).ok();
-    let prover = zopro_zolana::Prover::from_artifact(&artifact, &vectors, cached.as_deref())
-        .map_err(|e| failed(&e))?;
-    if cached.is_none() {
-        if let Some(image) = prover.solver_image() {
-            // Whole or absent: written beside, then renamed.
-            let partial = cache.with_extension("partial");
-            if std::fs::write(&partial, &image).is_ok() {
-                let _ = std::fs::rename(&partial, &cache);
-            }
+    let image = image_path(path);
+    if image.is_file() {
+        match load_image(&image) {
+            Ok(prover) => return Ok(prover),
+            Err(e) => log::warn!("zopro: {}: {e}; written again", image.display()),
         }
     }
-    Ok(prover)
+    match write_image(path, &image).and_then(|()| load_image(&image)) {
+        Ok(prover) => Ok(prover),
+        Err(e) => {
+            log::warn!("zopro: {}: {e}; proving from the key file", image.display());
+            let _ = std::fs::remove_file(&image);
+            let key = map(path).map_err(|e| failed(&e))?;
+            zopro_zolana::Prover::load(&key).map_err(|e| failed(&e))
+        }
+    }
+}
+
+/// `path` mapped read-only. The store writes keys and images beside and
+/// renames them into place, so a mapped file is never written.
+fn map(path: &std::path::Path) -> Result<memmap2::Mmap, String> {
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    // SAFETY: nothing writes or truncates the file in place (see above).
+    unsafe { memmap2::Mmap::map(&file) }.map_err(|e| e.to_string())
+}
+
+fn load_image(image: &std::path::Path) -> Result<zopro_zolana::Prover, String> {
+    let prover = zopro_zolana::zopro_prover::Prover::load_image(std::sync::Arc::new(map(image)?))?;
+    zopro_zolana::Prover::new(prover)
+}
+
+/// The key's image, whole or absent: written beside, then renamed.
+fn write_image(key: &std::path::Path, image: &std::path::Path) -> Result<(), String> {
+    let key = map(key)?;
+    let partial = image.with_extension("partial");
+    let written = (|| -> Result<(), String> {
+        let file = std::fs::File::create(&partial).map_err(|e| e.to_string())?;
+        let mut out = std::io::BufWriter::new(file);
+        zopro_zolana::zopro_prover::Prover::write_image(&key, &mut out)?;
+        let file = out.into_inner().map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        std::fs::rename(&partial, image).map_err(|e| e.to_string())
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    written
 }
 
 /// Why a proof on the device failed, carried through the client as
@@ -608,7 +643,7 @@ mod tests {
             "the eddsa rail has no BSB22 commitment"
         );
         // The key's image is beside it for the next session.
-        let image = solver_image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap().0);
+        let image = image_path(&prover.0.keys.ensure(&transfer_2_2_key()).unwrap().0);
         assert!(image.is_file(), "{}", image.display());
         // The same key serves the next proof without reloading.
         prover.prove(&Captured(transfer_2_2_key())).unwrap();
