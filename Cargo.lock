@@ -6977,12 +6977,12 @@ dependencies = [
 [[package]]
 name = "zopro-bn254"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=ec19572a61b198090ab4b2140de326dcfc4afb37#ec19572a61b198090ab4b2140de326dcfc4afb37"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 
 [[package]]
 name = "zopro-core"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=ec19572a61b198090ab4b2140de326dcfc4afb37#ec19572a61b198090ab4b2140de326dcfc4afb37"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
  "futures-channel",
  "getrandom 0.2.17",
@@ -7003,7 +7003,7 @@ dependencies = [
 [[package]]
 name = "zopro-metal"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=ec19572a61b198090ab4b2140de326dcfc4afb37#ec19572a61b198090ab4b2140de326dcfc4afb37"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
  "log",
  "metal",
@@ -7015,7 +7015,7 @@ dependencies = [
 [[package]]
 name = "zopro-prover"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=ec19572a61b198090ab4b2140de326dcfc4afb37#ec19572a61b198090ab4b2140de326dcfc4afb37"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
  "js-sys",
  "log",
@@ -7028,7 +7028,7 @@ dependencies = [
 [[package]]
 name = "zopro-wgpu"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=ec19572a61b198090ab4b2140de326dcfc4afb37#ec19572a61b198090ab4b2140de326dcfc4afb37"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
  "futures-channel",
  "log",
@@ -7042,7 +7042,7 @@ dependencies = [
 [[package]]
 name = "zopro-zolana"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=ec19572a61b198090ab4b2140de326dcfc4afb37#ec19572a61b198090ab4b2140de326dcfc4afb37"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
 dependencies = [
  "js-sys",
  "serde_json",
