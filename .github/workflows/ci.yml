@@ -212,7 +212,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
         with:
