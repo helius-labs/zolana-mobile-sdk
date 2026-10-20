@@ -7,9 +7,9 @@
 //! is sent, and a transfer proved by a remote prover. Each step is the newest
 //! entry of its wallets' history. Another test merges notes, and another
 //! deposits, transfers and withdraws an SPL token: `ZOLANA_E2E_MINT`, a mint
-//! the sender is the mint authority of, or a new mint the test registers with
-//! the shielded pool, on a cluster that allows that without the protocol
-//! authority, as devnet does.
+//! the sender is the mint authority of, or a new mint whose first deposit
+//! registers it with the shielded pool, on a cluster that allows that without
+//! the protocol authority, as devnet does.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon, the prover and the programs), or any cluster that runs the
@@ -48,7 +48,7 @@ use zolana_mobile::{
     PreparedTransaction, Proving, RegistrationStatus, Transport, TransportFailure,
     TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
 };
-use zolana_program::instruction::{CreateAssociatedTokenAccount, CreateSplInterface};
+use zolana_program::instruction::CreateAssociatedTokenAccount;
 
 const FUNDING: u64 = 1_000_000_000;
 const DEPOSIT: u64 = 50_000_000;
@@ -478,8 +478,7 @@ fn send_instructions(
 }
 
 /// `ZOLANA_E2E_MINT`, an SPL Token mint `authority` mints, or a new one the
-/// shielded pool registers. The cluster must allow permissionless SPL
-/// registration, as devnet does.
+/// shielded pool has not registered yet: its first deposit registers it.
 fn test_mint(rpc: &SolanaRpc, authority: &Keypair) -> Pubkey {
     if let Ok(mint) = env::var("ZOLANA_E2E_MINT") {
         return mint.parse().expect("ZOLANA_E2E_MINT is a base58 key");
@@ -517,17 +516,6 @@ fn test_mint(rpc: &SolanaRpc, authority: &Keypair) -> Pubkey {
                 data: initialize,
             },
         ],
-    );
-    send_instructions(
-        rpc,
-        authority,
-        &[authority],
-        &[CreateSplInterface {
-            authority: authority.pubkey(),
-            mint: mint.pubkey(),
-            token_program,
-        }
-        .instruction()],
     );
     println!("test mint {}, reuse it with ZOLANA_E2E_MINT", mint.pubkey());
     mint.pubkey()
@@ -587,6 +575,8 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
             rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
         }
     }
+    // A new mint is not registered yet, and its first deposit registers it.
+    let new_mint = env::var("ZOLANA_E2E_MINT").is_err();
     let mint = test_mint(&rpc, &sender);
     let sender_tokens = token_account(&rpc, &sender, sender.pubkey(), mint);
     mint_to(&rpc, &sender, mint, sender_tokens, TOKEN_DEPOSIT);
@@ -617,6 +607,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         Operation::Deposit {
             mint: Some(name.clone()),
             amount: TOKEN_DEPOSIT,
+            creates_spl_interface: new_mint,
         }
     );
     let deposit = submit(&sender_wallet, &[&sender], pending);

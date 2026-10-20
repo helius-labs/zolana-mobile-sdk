@@ -2062,9 +2062,14 @@ const _: fn() = || {
     }
     match None::<zolana_mobile::Operation>.unwrap() {
         zolana_mobile::Operation::Registration => {}
-        zolana_mobile::Operation::Deposit { mint, amount } => {
+        zolana_mobile::Operation::Deposit {
+            mint,
+            amount,
+            creates_spl_interface,
+        } => {
             let _: Option<String> = mint;
             let _: u64 = amount;
+            let _: bool = creates_spl_interface;
         }
         zolana_mobile::Operation::Spend { mint, outputs } => {
             let _: Option<String> = mint;
@@ -2786,9 +2791,11 @@ impl SseDecode for zolana_mobile::Operation {
             1 => {
                 let mut var_mint = <Option<String>>::sse_decode(deserializer);
                 let mut var_amount = <u64>::sse_decode(deserializer);
+                let mut var_createsSplInterface = <bool>::sse_decode(deserializer);
                 return zolana_mobile::Operation::Deposit {
                     mint: var_mint,
                     amount: var_amount,
+                    creates_spl_interface: var_createsSplInterface,
                 };
             }
             2 => {
@@ -3781,10 +3788,15 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::Operation> {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self.0 {
             zolana_mobile::Operation::Registration => [0.into_dart()].into_dart(),
-            zolana_mobile::Operation::Deposit { mint, amount } => [
+            zolana_mobile::Operation::Deposit {
+                mint,
+                amount,
+                creates_spl_interface,
+            } => [
                 1.into_dart(),
                 mint.into_into_dart().into_dart(),
                 amount.into_into_dart().into_dart(),
+                creates_spl_interface.into_into_dart().into_dart(),
             ]
             .into_dart(),
             zolana_mobile::Operation::Spend { mint, outputs } => [
@@ -4677,10 +4689,15 @@ impl SseEncode for zolana_mobile::Operation {
             zolana_mobile::Operation::Registration => {
                 <i32>::sse_encode(0, serializer);
             }
-            zolana_mobile::Operation::Deposit { mint, amount } => {
+            zolana_mobile::Operation::Deposit {
+                mint,
+                amount,
+                creates_spl_interface,
+            } => {
                 <i32>::sse_encode(1, serializer);
                 <Option<String>>::sse_encode(mint, serializer);
                 <u64>::sse_encode(amount, serializer);
+                <bool>::sse_encode(creates_spl_interface, serializer);
             }
             zolana_mobile::Operation::Spend { mint, outputs } => {
                 <i32>::sse_encode(2, serializer);

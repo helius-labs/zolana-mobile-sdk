@@ -78,9 +78,11 @@ abstract interface class WalletBackend {
 ///
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit for
 /// a token. `mint` is the base58 mint address, or `null` for SOL. A token
-/// works when `WalletConfig.mints` lists its mint, with its token program, and
-/// the shielded pool has registered it; otherwise calls fail with
-/// [WalletError.mintNotConfigured] or [WalletError.assetNotSupported].
+/// works when `WalletConfig.mints` lists its mint, with its token program;
+/// otherwise calls fail with [WalletError.mintNotConfigured]. A listed mint
+/// the shielded pool has not registered yet has no balance and no history,
+/// and its first deposit registers it; spends and merges of it fail with
+/// [WalletError.assetNotSupported].
 ///
 /// Every failure throws a [WalletError], one variant per failure with its
 /// data: the amounts of a short balance, the account a conflict is about. It
@@ -254,7 +256,8 @@ class ZolanaWallet {
   /// `outputs: 4`. The limits include any application fee the spend pays.
   Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
 
-  /// Spendable private balance of [mint], read from the indexer now.
+  /// Spendable private balance of [mint], read from the indexer now: zero
+  /// for a mint the pool has not registered.
   Future<BigInt> privateBalance({String? mint}) =>
       _serial(() => _wallet.privateBalance(mint: mint));
 
@@ -318,6 +321,14 @@ class ZolanaWallet {
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
+  ///
+  /// The first deposit of a mint into the pool also creates the mint's
+  /// registry entry and vault, in the same transaction, and this account pays
+  /// their rent: `Operation.deposit` then has `createsSplInterface` set, for
+  /// the approval screen. A pool whose protocol config lets only its
+  /// authority do that fails with [WalletError.assetNotSupported] before
+  /// anything is built. Two first deposits of one mint prepared at the same
+  /// time both create them, so the second to land fails.
   Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
       _serial(
         () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),

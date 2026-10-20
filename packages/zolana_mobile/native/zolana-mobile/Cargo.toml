@@ -50,6 +50,8 @@ solana-secp256r1-program = { version = "3", features = ["openssl-vendored"] }
 zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "82dc62d32e40ff8539db62a185f22c948e12c4c2" }
 
 [dev-dependencies]
+base64 = "0.22"
+bytemuck = "1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 solana-account = "4.3"
 solana-keypair = "3"

@@ -35,8 +35,13 @@ String approvalText(Operation operation) {
   };
   return switch (operation) {
     Operation_Registration() => 'Register for private payments',
-    Operation_Deposit(:final mint, :final amount) =>
-      'Shield ${format(amount, mint)}',
+    // A mint's first deposit also creates its pool accounts, whose rent
+    // this account pays.
+    Operation_Deposit(:final mint, :final amount, :final createsSplInterface) =>
+      createsSplInterface
+          ? 'Shield ${format(amount, mint)}, and pay the rent of the '
+                "token's first shielded-pool accounts"
+          : 'Shield ${format(amount, mint)}',
     Operation_Spend(:final mint, :final outputs) =>
       'Send ${outputs.map((output) => pay(output, mint)).join(', ')}',
     Operation_Merging(:final enabled) =>

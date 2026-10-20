@@ -54,7 +54,10 @@ pub enum WalletError {
     /// The user registry holds other keys for `owner`. The wallet never
     /// replaces them.
     RegistrationConflict { owner: String },
-    /// The shielded pool has not registered `mint`.
+    /// The shielded pool has not registered `mint`, so it has no notes to
+    /// spend or merge, or its registry entry does not decode. A deposit
+    /// registers it, unless the pool's protocol config lets only its
+    /// authority do so.
     AssetNotSupported { mint: String },
     /// `mint` is not in [`WalletConfig::mints`](crate::WalletConfig::mints),
     /// so the wallet does not know its token program.

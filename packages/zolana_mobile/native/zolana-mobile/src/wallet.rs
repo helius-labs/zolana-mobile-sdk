@@ -51,10 +51,11 @@ use zolana_client::{
     ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, Submission, UnsignedMessage, UtxoScan,
     UtxoScanResult, ZolanaClient,
 };
-use zolana_interface::{pda, MAX_INPUT_TREES};
+use zolana_interface::{pda, state::ProtocolConfig, MAX_INPUT_TREES, PROGRAM_ID_PUBKEY};
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
 use zolana_program::instruction::{
-    AssetDeposit, Deposit, DepositAsset, DepositSplAccounts, TransactInterfaceTransferAccounts,
+    AssetDeposit, CreateSplInterface, Deposit, DepositAsset, DepositSplAccounts,
+    TransactInterfaceTransferAccounts,
 };
 use zolana_transaction::{
     instructions::{
@@ -140,8 +141,14 @@ pub enum Operation {
     /// Publishes the wallet's shielded address so others can pay it.
     Registration,
     /// Moves public funds into the private balance. Public: sender, asset,
-    /// amount.
-    Deposit { mint: Option<String>, amount: u64 },
+    /// amount. `creates_spl_interface` when it is the mint's first deposit
+    /// into the pool: the transaction first creates the mint's registry
+    /// entry and vault, and this account pays their rent.
+    Deposit {
+        mint: Option<String>,
+        amount: u64,
+        creates_spl_interface: bool,
+    },
     /// Spends private funds of one asset to `outputs`, in the order given.
     /// Public: this account, the asset, each public output's recipient and
     /// amount, and the Solana address each private output's note is tagged
@@ -685,12 +692,34 @@ impl MobileWallet {
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
     /// its own private balance. Deposits carry no proof.
+    ///
+    /// The first deposit of a mint into the pool creates the mint's registry
+    /// entry and vault in the same transaction, signed and paid for by this
+    /// account; [`Operation::Deposit`] says so. A pool whose protocol config
+    /// lets only its authority create them refuses with
+    /// [`WalletError::AssetNotSupported`] before the blockhash is read. Two
+    /// first deposits of one mint prepared at the same time both create
+    /// them, so the second to land fails.
     pub fn prepare_deposit(
         &mut self,
         mint: Option<String>,
         amount: u64,
     ) -> Result<PreparedTransaction, WalletError> {
-        let asset = self.asset(mint)?;
+        let (asset, registered) = self
+            .assets()
+            .resolve_for_deposit(&self.client, mint.as_deref())?;
+        let mut instructions = Vec::with_capacity(2);
+        if let (false, Some(token_program)) = (registered, asset.token_program) {
+            self.check_spl_interface_creation(asset.mint)?;
+            instructions.push(
+                CreateSplInterface {
+                    authority: self.owner,
+                    mint: asset.mint,
+                    token_program,
+                }
+                .instruction(),
+            );
+        }
         let deposit_asset = match asset.token_program {
             None => DepositAsset::Sol,
             Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
@@ -717,13 +746,37 @@ impl MobileWallet {
             }],
         }
         .instruction()?;
+        instructions.push(deposit);
         self.pending(
             Operation::Deposit {
                 mint: mint_name(&asset.mint),
                 amount,
+                creates_spl_interface: !registered,
             },
-            self.message(&[deposit])?,
+            self.message(&instructions)?,
         )
+    }
+
+    /// Whether this account may create `mint`'s registry entry and vault, as
+    /// the pool's `create_spl_interface` decides: anyone when the protocol
+    /// config allows it, else only the protocol authority.
+    fn check_spl_interface_creation(&self, mint: Pubkey) -> Result<(), WalletError> {
+        let address = pda::protocol_config();
+        let account = self
+            .client
+            .get_account(address)?
+            .filter(|account| account.owner == PROGRAM_ID_PUBKEY)
+            .ok_or(ClientError::ProtocolConfigNotFound(address))?;
+        let config = ProtocolConfig::from_account_bytes(&account.data)
+            .map_err(|failure| ClientError::InvalidProtocolConfig(format!("{failure:?}")))?;
+        if config.allows_permissionless_spl_interface_creation()
+            || config.check_protocol_authority(&self.owner).is_ok()
+        {
+            return Ok(());
+        }
+        Err(WalletError::AssetNotSupported {
+            mint: mint.to_string(),
+        })
     }
 
     /// Spendable private balances, read from the indexer now: one per asset
@@ -762,7 +815,9 @@ impl MobileWallet {
     /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
     /// the indexer now.
     pub fn private_balance(&mut self, mint: Option<String>) -> Result<u64, WalletError> {
-        let asset = self.asset(mint)?;
+        // A mint the pool has not registered holds nothing: zero, not a
+        // failure.
+        let asset = self.assets().configured(mint.as_deref())?;
         Ok(self
             .spendable()?
             .balances
@@ -1688,12 +1743,21 @@ mod tests {
         config: WalletConfig,
         answer: impl Fn(&str) -> serde_json::Value + Send + Sync + 'static,
     ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        rpc_wallet_asked(signer, config, move |method, _| answer(method))
+    }
+
+    /// [`rpc_wallet_with`], answering each method by its params too.
+    fn rpc_wallet_asked(
+        signer: &Keypair,
+        config: WalletConfig,
+        answer: impl Fn(&str, &serde_json::Value) -> serde_json::Value + Send + Sync + 'static,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&asked);
         let (transport, _) = crate::transport::tests::fake(move |request| {
             let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
             let method = body["method"].as_str().unwrap_or_default().to_string();
-            let mut reply = answer(&method);
+            let mut reply = answer(&method, &body["params"]);
             reply["jsonrpc"] = "2.0".into();
             reply["id"] = body["id"].clone();
             log.lock().unwrap().push(method);
@@ -2567,12 +2631,162 @@ mod tests {
             pending.operation(),
             Operation::Deposit {
                 mint: None,
-                amount: 100
+                amount: 100,
+                creates_spl_interface: false,
             }
         );
         assert_eq!(pending.message.instructions().len(), 1);
         assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
         assert_eq!(pending.last_valid_block_height(), 9);
+    }
+
+    const MINT: Pubkey = Pubkey::new_from_array([7; 32]);
+
+    /// An account for `getAccountInfo`, its data in base64.
+    fn account(owner: Pubkey, data: &[u8]) -> serde_json::Value {
+        use base64::Engine;
+        serde_json::json!({
+            "lamports": 1_000_000,
+            "data": [base64::engine::general_purpose::STANDARD.encode(data), "base64"],
+            "owner": owner.to_string(),
+            "executable": false,
+            "rentEpoch": 0,
+            "space": data.len(),
+        })
+    }
+
+    /// The pool's protocol config: `permissionless` mint registration, and
+    /// `authority` its protocol authority.
+    fn protocol_config(permissionless: bool, authority: Pubkey) -> serde_json::Value {
+        let config = ProtocolConfig {
+            discriminator: zolana_interface::state::discriminator::PROTOCOL_CONFIG,
+            protocol_authority: authority,
+            tree_creation_authority: authority,
+            forester_authority: authority,
+            ring_creation_authority: authority,
+            fee_authority: authority,
+            tree_creation_is_permissionless: 0,
+            ring_activation_is_permissionless: 0,
+            spl_interface_creation_is_permissionless: u8::from(permissionless),
+            next_tree_id: 1,
+        };
+        account(PROGRAM_ID_PUBKEY, bytemuck::bytes_of(&config))
+    }
+
+    /// A wallet holding [`MINT`], its registry entry `registry` (`null` for
+    /// none), and the pool's `config`; the methods it was asked.
+    fn token_wallet(
+        signer: &Keypair,
+        registry: serde_json::Value,
+        pool_config: serde_json::Value,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        let wallet_config = WalletConfig {
+            mints: vec![MintConfig {
+                mint: MINT.to_string(),
+                token_program: pda::spl_token_program_id().to_string(),
+            }],
+            ..config()
+        };
+        let registry_address = pda::spl_asset_registry(&MINT).to_string();
+        let config_address = pda::protocol_config().to_string();
+        let answers = (registry, pool_config);
+        rpc_wallet_asked(signer, wallet_config, move |method, params| {
+            let value = match (method, params[0].as_str()) {
+                ("getAccountInfo", Some(address)) if address == registry_address => {
+                    answers.0.clone()
+                }
+                ("getAccountInfo", Some(address)) if address == config_address => answers.1.clone(),
+                ("getLatestBlockhash", _) => serde_json::json!({
+                    "blockhash": "11111111111111111111111111111111",
+                    "lastValidBlockHeight": 9
+                }),
+                _ => return serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
+            };
+            serde_json::json!({"result": {"context": {"slot": 1}, "value": value}})
+        })
+    }
+
+    /// The first deposit of a mint the pool has not registered creates its
+    /// registry entry and vault first, in the same transaction this account
+    /// signs; once registered, a deposit is one instruction again.
+    #[test]
+    fn a_first_token_deposit_creates_the_mints_registry_entry_and_vault() {
+        let signer = Keypair::new();
+        let other = Keypair::new().pubkey();
+        let deposit = |registry, config| {
+            let (mut wallet, _) = token_wallet(&signer, registry, config);
+            wallet.prepare_deposit(Some(MINT.to_string()), 100)
+        };
+        let registered = account(
+            PROGRAM_ID_PUBKEY,
+            &zolana_interface::state::SplAssetRegistry::account_bytes(MINT, 2),
+        );
+        // Lamports sent to the registry address make no registry entry.
+        let lamports_only = account(Pubkey::default(), &[]);
+        for (registry, config, creates) in [
+            (serde_json::Value::Null, protocol_config(true, other), true),
+            (lamports_only, protocol_config(true, other), true),
+            (
+                serde_json::Value::Null,
+                protocol_config(false, signer.pubkey()),
+                true,
+            ),
+            (registered, serde_json::Value::Null, false),
+        ] {
+            let pending = deposit(registry, config).unwrap();
+            assert_eq!(
+                pending.operation(),
+                Operation::Deposit {
+                    mint: Some(MINT.to_string()),
+                    amount: 100,
+                    creates_spl_interface: creates,
+                }
+            );
+            let instructions = pending.message.instructions();
+            assert_eq!(instructions.len(), if creates { 2 } else { 1 });
+            let keys = pending.message.static_account_keys();
+            if creates {
+                let create = &instructions[0];
+                assert_eq!(
+                    keys[usize::from(create.program_id_index)],
+                    PROGRAM_ID_PUBKEY
+                );
+                assert_eq!(
+                    create.data,
+                    [zolana_interface::instruction::tag::CREATE_SPL_INTERFACE]
+                );
+            }
+            assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
+        }
+    }
+
+    /// A pool that lets only its authority register mints refuses another
+    /// account's first deposit before the blockhash is read.
+    #[test]
+    fn a_first_token_deposit_the_pool_restricts_is_refused_before_the_blockhash() {
+        let signer = Keypair::new();
+        let (mut wallet, asked) = token_wallet(
+            &signer,
+            serde_json::Value::Null,
+            protocol_config(false, Keypair::new().pubkey()),
+        );
+        assert_eq!(
+            wallet.prepare_deposit(Some(MINT.to_string()), 100).err(),
+            Some(WalletError::AssetNotSupported {
+                mint: MINT.to_string()
+            })
+        );
+        assert!(!asked
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|method| method == "getLatestBlockhash"));
+        let (mut wallet, _) =
+            token_wallet(&signer, serde_json::Value::Null, serde_json::Value::Null);
+        assert!(matches!(
+            wallet.prepare_deposit(Some(MINT.to_string()), 100),
+            Err(WalletError::Client { message }) if message.contains("protocol config")
+        ));
     }
 
     /// The outputs are checked before anything is asked of the network: no

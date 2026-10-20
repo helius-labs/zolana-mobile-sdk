@@ -65,8 +65,34 @@ impl Assets {
     }
 
     /// SOL for `None`, otherwise a configured mint, its asset id read the
-    /// first time it is used.
+    /// first time it is used. A mint the pool has not registered fails with
+    /// [`WalletError::AssetNotSupported`].
     pub fn resolve(&mut self, rpc: &impl Rpc, mint: Option<&str>) -> Result<Asset, WalletError> {
+        let asset = self.configured(mint)?;
+        if asset.token_program.is_some() && !self.registered(rpc, asset.mint)? {
+            return Err(WalletError::AssetNotSupported {
+                mint: asset.mint.to_string(),
+            });
+        }
+        Ok(asset)
+    }
+
+    /// SOL for `None`, otherwise a configured mint, with whether the pool has
+    /// registered it: a deposit of a mint it has not registered creates the
+    /// mint's registry entry and vault first.
+    pub fn resolve_for_deposit(
+        &mut self,
+        rpc: &impl Rpc,
+        mint: Option<&str>,
+    ) -> Result<(Asset, bool), WalletError> {
+        let asset = self.configured(mint)?;
+        let registered = asset.token_program.is_none() || self.registered(rpc, asset.mint)?;
+        Ok((asset, registered))
+    }
+
+    /// SOL for `None`, otherwise a configured mint and its token program,
+    /// without a request.
+    pub fn configured(&self, mint: Option<&str>) -> Result<Asset, WalletError> {
         let Some(name) = mint else {
             return Ok(Asset {
                 mint: SOL_MINT,
@@ -78,34 +104,48 @@ impl Assets {
             .token_programs
             .get(&mint)
             .ok_or_else(|| WalletError::MintNotConfigured { mint: name.into() })?;
-        self.register(rpc, mint)?;
         Ok(Asset {
             mint,
             token_program: Some(token_program),
         })
     }
 
-    /// SOL and every configured mint, each asset id read once.
+    /// SOL and the configured mints the pool has registered, each asset id
+    /// read once. A mint without a usable registry entry has no notes, so it
+    /// is left out rather than failing the read, and asked again next time,
+    /// since a deposit may register it.
     pub fn registry(&mut self, rpc: &impl Rpc) -> Result<&AssetRegistry, WalletError> {
         let mints: Vec<Pubkey> = self.token_programs.keys().copied().collect();
         for mint in mints {
-            self.register(rpc, mint)?;
+            match self.registered(rpc, mint) {
+                Ok(_) | Err(WalletError::AssetNotSupported { .. }) => {}
+                Err(failure) => return Err(failure),
+            }
         }
         Ok(&self.registry)
     }
 
-    fn register(&mut self, rpc: &impl Rpc, mint: Pubkey) -> Result<(), WalletError> {
+    /// Whether the pool has registered `mint`, reading its asset id the
+    /// first time. `false` when there is no registry entry, including an
+    /// account at the registry address that only holds lamports, which the
+    /// pool's create path accepts. An entry the pool owns but that does not
+    /// decode as this mint's fails with [`WalletError::AssetNotSupported`].
+    fn registered(&mut self, rpc: &impl Rpc, mint: Pubkey) -> Result<bool, WalletError> {
         if self.registry.asset_id(&mint).is_ok() {
-            return Ok(());
+            return Ok(true);
         }
-        let asset_id = fetch_asset_id(rpc, mint).map_err(|failure| match failure {
-            ClientError::SplAssetNotRegistered { .. }
-            | ClientError::InvalidSplAssetRegistry { .. } => WalletError::AssetNotSupported {
-                mint: mint.to_string(),
-            },
-            failure => failure.into(),
-        })?;
-        Ok(self.registry.insert(asset_id, mint)?)
+        let asset_id = match fetch_asset_id(rpc, mint) {
+            Ok(asset_id) => asset_id,
+            Err(ClientError::SplAssetNotRegistered { .. }) => return Ok(false),
+            Err(ClientError::InvalidSplAssetRegistry { .. }) => {
+                return Err(WalletError::AssetNotSupported {
+                    mint: mint.to_string(),
+                })
+            }
+            Err(failure) => return Err(failure.into()),
+        };
+        self.registry.insert(asset_id, mint)?;
+        Ok(true)
     }
 }
 
@@ -216,6 +256,49 @@ mod tests {
                 token_program: system.clone(),
             })
         );
+    }
+
+    /// A configured mint without a usable registry entry has no notes: the
+    /// registry leaves it out instead of failing, and asks again next time.
+    /// A deposit learns whether it must register the mint first.
+    #[test]
+    fn leaves_out_a_mint_the_pool_has_not_registered() {
+        let mint = MINT.to_string();
+        let lamports_only = Accounts::default().with(
+            pda::spl_asset_registry(&MINT),
+            Pubkey::default(),
+            Vec::new(),
+        );
+        let invalid = Accounts::default().with(
+            pda::spl_asset_registry(&MINT),
+            pda::shielded_pool_program_id(),
+            vec![1, 2, 3],
+        );
+        for (rpc, registers) in [
+            (Accounts::default(), Some(false)),
+            (lamports_only, Some(false)),
+            (invalid, None),
+        ] {
+            let mut assets = configured(pda::spl_token_program_id());
+            assert!(assets.registry(&rpc).unwrap().asset_id(&MINT).is_err());
+            assets.registry(&rpc).unwrap();
+            assert_eq!(rpc.reads.get(), 2, "asked again on the next read");
+            let deposit = assets.resolve_for_deposit(&rpc, Some(&mint));
+            match registers {
+                Some(registered) => assert_eq!(deposit.unwrap().1, registered),
+                None => assert_eq!(
+                    deposit.unwrap_err(),
+                    WalletError::AssetNotSupported { mint: mint.clone() }
+                ),
+            }
+        }
+        let mut assets = configured(pda::spl_token_program_id());
+        let rpc = registered(2);
+        assert!(assets.resolve_for_deposit(&rpc, Some(&mint)).unwrap().1);
+        assert_eq!(assets.registry(&rpc).unwrap().asset_id(&MINT).unwrap(), 2);
+        assert_eq!(rpc.reads.get(), 1);
+        let (sol, registered) = assets.resolve_for_deposit(&rpc, None).unwrap();
+        assert!(sol.token_program.is_none() && registered);
     }
 
     #[test]

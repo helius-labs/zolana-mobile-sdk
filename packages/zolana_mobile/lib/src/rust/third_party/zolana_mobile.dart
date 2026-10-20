@@ -129,6 +129,14 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
+  ///
+  /// The first deposit of a mint into the pool creates the mint's registry
+  /// entry and vault in the same transaction, signed and paid for by this
+  /// account; [`Operation::Deposit`] says so. A pool whose protocol config
+  /// lets only its authority create them refuses with
+  /// [`WalletError::AssetNotSupported`] before the blockhash is read. Two
+  /// first deposits of one mint prepared at the same time both create
+  /// them, so the second to land fails.
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
@@ -477,9 +485,14 @@ sealed class Operation with _$Operation {
   const factory Operation.registration() = Operation_Registration;
 
   /// Moves public funds into the private balance. Public: sender, asset,
-  /// amount.
-  const factory Operation.deposit({String? mint, required BigInt amount}) =
-      Operation_Deposit;
+  /// amount. `creates_spl_interface` when it is the mint's first deposit
+  /// into the pool: the transaction first creates the mint's registry
+  /// entry and vault, and this account pays their rent.
+  const factory Operation.deposit({
+    String? mint,
+    required BigInt amount,
+    required bool createsSplInterface,
+  }) = Operation_Deposit;
 
   /// Spends private funds of one asset to `outputs`, in the order given.
   /// Public: this account, the asset, each public output's recipient and
@@ -1066,7 +1079,10 @@ sealed class WalletError with _$WalletError implements FrbException {
   const factory WalletError.registrationConflict({required String owner}) =
       WalletError_RegistrationConflict;
 
-  /// The shielded pool has not registered `mint`.
+  /// The shielded pool has not registered `mint`, so it has no notes to
+  /// spend or merge, or its registry entry does not decode. A deposit
+  /// registers it, unless the pool's protocol config lets only its
+  /// authority do so.
   const factory WalletError.assetNotSupported({required String mint}) =
       WalletError_AssetNotSupported;
 

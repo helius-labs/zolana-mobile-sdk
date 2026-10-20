@@ -132,11 +132,11 @@ return custom(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount)?  deposit,TResult Function( String? mint,  List<Output> outputs)?  spend,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,TResult Function( List<String> programs)?  custom,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  registration,TResult Function( String? mint,  BigInt amount,  bool createsSplInterface)?  deposit,TResult Function( String? mint,  List<Output> outputs)?  spend,TResult Function( bool enabled)?  merging,TResult Function( String? mint,  BigInt amount)?  merge,TResult Function( List<String> programs)?  custom,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
 return registration();case Operation_Deposit() when deposit != null:
-return deposit(_that.mint,_that.amount);case Operation_Spend() when spend != null:
+return deposit(_that.mint,_that.amount,_that.createsSplInterface);case Operation_Spend() when spend != null:
 return spend(_that.mint,_that.outputs);case Operation_Merging() when merging != null:
 return merging(_that.enabled);case Operation_Merge() when merge != null:
 return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
@@ -158,11 +158,11 @@ return custom(_that.programs);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount)  deposit,required TResult Function( String? mint,  List<Output> outputs)  spend,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,required TResult Function( List<String> programs)  custom,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  registration,required TResult Function( String? mint,  BigInt amount,  bool createsSplInterface)  deposit,required TResult Function( String? mint,  List<Output> outputs)  spend,required TResult Function( bool enabled)  merging,required TResult Function( String? mint,  BigInt amount)  merge,required TResult Function( List<String> programs)  custom,}) {final _that = this;
 switch (_that) {
 case Operation_Registration():
 return registration();case Operation_Deposit():
-return deposit(_that.mint,_that.amount);case Operation_Spend():
+return deposit(_that.mint,_that.amount,_that.createsSplInterface);case Operation_Spend():
 return spend(_that.mint,_that.outputs);case Operation_Merging():
 return merging(_that.enabled);case Operation_Merge():
 return merge(_that.mint,_that.amount);case Operation_Custom():
@@ -180,11 +180,11 @@ return custom(_that.programs);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount)?  deposit,TResult? Function( String? mint,  List<Output> outputs)?  spend,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,TResult? Function( List<String> programs)?  custom,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  registration,TResult? Function( String? mint,  BigInt amount,  bool createsSplInterface)?  deposit,TResult? Function( String? mint,  List<Output> outputs)?  spend,TResult? Function( bool enabled)?  merging,TResult? Function( String? mint,  BigInt amount)?  merge,TResult? Function( List<String> programs)?  custom,}) {final _that = this;
 switch (_that) {
 case Operation_Registration() when registration != null:
 return registration();case Operation_Deposit() when deposit != null:
-return deposit(_that.mint,_that.amount);case Operation_Spend() when spend != null:
+return deposit(_that.mint,_that.amount,_that.createsSplInterface);case Operation_Spend() when spend != null:
 return spend(_that.mint,_that.outputs);case Operation_Merging() when merging != null:
 return merging(_that.enabled);case Operation_Merge() when merge != null:
 return merge(_that.mint,_that.amount);case Operation_Custom() when custom != null:
@@ -232,11 +232,12 @@ String toString() {
 
 
 class Operation_Deposit extends Operation {
-  const Operation_Deposit({this.mint, required this.amount}): super._();
+  const Operation_Deposit({this.mint, required this.amount, required this.createsSplInterface}): super._();
   
 
  final  String? mint;
  final  BigInt amount;
+ final  bool createsSplInterface;
 
 /// Create a copy of Operation
 /// with the given fields replaced by the non-null parameter values.
@@ -248,18 +249,18 @@ $Operation_DepositCopyWith<Operation_Deposit> get copyWith => _$Operation_Deposi
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Deposit&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.amount, amount) || other.amount == amount));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is Operation_Deposit&&(identical(other.mint, mint) || other.mint == mint)&&(identical(other.amount, amount) || other.amount == amount)&&(identical(other.createsSplInterface, createsSplInterface) || other.createsSplInterface == createsSplInterface));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,mint,amount);
+    return Object.hash(runtimeType,mint,amount,createsSplInterface);
 }
 
 @override
 String toString() {
-    return 'Operation.deposit(mint: $mint, amount: $amount)';
+    return 'Operation.deposit(mint: $mint, amount: $amount, createsSplInterface: $createsSplInterface)';
 }
 
 
@@ -270,7 +271,7 @@ abstract mixin class $Operation_DepositCopyWith<$Res> implements $OperationCopyW
   factory $Operation_DepositCopyWith(Operation_Deposit value, $Res Function(Operation_Deposit) _then) = _$Operation_DepositCopyWithImpl;
 @useResult
 $Res call({
- String? mint, BigInt amount
+ String? mint, BigInt amount, bool createsSplInterface
 });
 
 
@@ -287,11 +288,12 @@ class _$Operation_DepositCopyWithImpl<$Res>
 
 /// Create a copy of Operation
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? amount = null,}) {
+@pragma('vm:prefer-inline') $Res call({Object? mint = freezed,Object? amount = null,Object? createsSplInterface = null,}) {
   return _then(Operation_Deposit(
 mint: freezed == mint ? _self.mint : mint // ignore: cast_nullable_to_non_nullable
 as String?,amount: null == amount ? _self.amount : amount // ignore: cast_nullable_to_non_nullable
-as BigInt,
+as BigInt,createsSplInterface: null == createsSplInterface ? _self.createsSplInterface : createsSplInterface // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
