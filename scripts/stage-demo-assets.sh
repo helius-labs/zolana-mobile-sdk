@@ -12,7 +12,7 @@ key_name="transfer_confidential_2_2.zopro"
 # wallet lays out its key directory.
 key_prefix="proving-keys/3a1c88f90f609eb1/"
 key="$repo_root/.cache/proving/$(basename "$key_prefix")/$key_name"
-key_checksum="690c97517e756baf65a734633a77b463b45fc52d2849c406f25cd682298fd559"
+key_checksum="767f1ad5a935e2fcba0094053922ae8e71020e1ea97051f84386440c18b3fa0a"
 request_checksum="d67272212c4b3d110f40d6a6daef0529e361312862822a895d9d8710d639b90d"
 
 sha256() {
