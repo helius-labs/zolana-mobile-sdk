@@ -15,7 +15,6 @@ const config = WalletConfig(
   rpcUrl: 'https://rpc.example',
   indexerUrl: 'https://indexer.example',
   provingKeyDir: '/keys',
-  mints: [],
 );
 
 final savedKeys = WalletKeys(
@@ -554,7 +553,6 @@ void main() {
       provingKeyDir: config.provingKeyDir,
       provingKeyUrl: keys,
       proverUrl: prover,
-      mints: const [],
     );
     const plaintext = 'http://10.0.2.2:8899/?api-key=secret';
     // The error names the URL without its key.
@@ -620,7 +618,6 @@ void main() {
         provingKeyDir: '/keys',
         proving: Proving.remote,
         proverUrl: 'https://backend.example/zolana?api-key=secret',
-        mints: [],
       );
       final opened = FakeBackend(FakeWallet());
       await ZolanaWallet.open(

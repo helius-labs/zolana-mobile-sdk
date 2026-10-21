@@ -77,11 +77,12 @@ abstract interface class WalletBackend {
 /// A private wallet for SOL and SPL tokens that proves on the device.
 ///
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit for
-/// a token. `mint` is the base58 mint address, or `null` for SOL. A token
-/// works when `WalletConfig.mints` lists its mint, with its token program;
-/// otherwise calls fail with [WalletError.mintNotConfigured]. A listed mint
-/// the shielded pool has not registered yet has no balance and no history,
-/// and its first deposit registers it; spends and merges of it fail with
+/// a token. `mint` is the base58 mint address, or `null` for SOL. The wallet
+/// looks up each mint it meets; when `WalletConfig.mints` lists mints, it
+/// holds those only and other mints fail with
+/// [WalletError.mintNotConfigured]. A mint the shielded pool has not
+/// registered yet has no balance and no history, and its first deposit
+/// registers it; spends and merges of it fail with
 /// [WalletError.assetNotSupported].
 ///
 /// Every failure throws a [WalletError], one variant per failure with its
@@ -241,7 +242,8 @@ class ZolanaWallet {
       _serial(_wallet.registrationStatus);
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the mints of `WalletConfig.mints`.
+  /// held in SOL and the mints the wallet knows: those of
+  /// `WalletConfig.mints`, or, without the list, the ones it has met.
   ///
   /// Each [native.TokenBalance.amount] is what the indexer has confirmed,
   /// [native.TokenBalance.reserved] included: the notes this wallet's

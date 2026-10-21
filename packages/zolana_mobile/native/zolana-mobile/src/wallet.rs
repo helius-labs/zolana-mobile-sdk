@@ -68,7 +68,7 @@ use zolana_transaction::{
 
 use crate::{
     activity::{self, ActivityEntry},
-    asset::{mint_name, Asset, Assets, MintConfig},
+    asset::{mint_name, registrations, Asset, Assets, MintConfig},
     error::{client_message, settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
@@ -107,11 +107,12 @@ pub struct WalletConfig {
     /// read would.
     pub reuse_notes_ms: Option<u64>,
     /// The SPL mints the wallet holds, each with its token program. A call
-    /// that names another mint fails with [`WalletError::MintNotConfigured`].
-    /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
-    /// are left out, as the Zolana SDK leaves out assets its registry does
-    /// not hold.
-    pub mints: Vec<MintConfig>,
+    /// that names another mint fails with [`WalletError::MintNotConfigured`],
+    /// and [`MobileWallet::balances`] reports SOL and these only; notes in
+    /// other mints are left out. `None` holds every mint the shielded pool
+    /// registered: the wallet looks up a mint a call names, and the mints of
+    /// notes a read meets.
+    pub mints: Option<Vec<MintConfig>>,
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -424,7 +425,7 @@ pub struct MobileWallet {
     /// Completes the spent inputs' nullifiers when proving.
     nullifier_key: NullifierKey,
     viewing_key: ViewingKey,
-    /// SOL and the configured mints.
+    /// SOL and the mints the wallet knows.
     assets: Mutex<Assets>,
     reservations: Mutex<Reservations>,
     /// [`WalletConfig::max_spend_inputs`].
@@ -789,8 +790,8 @@ impl MobileWallet {
     }
 
     /// Spendable private balances, read from the indexer now: one per asset
-    /// held in SOL and the configured mints, each with what prepared spends
-    /// reserve of it and the most one spend can take per proof width.
+    /// held in SOL and the mints the wallet knows, each with what prepared
+    /// spends reserve of it and the most one spend can take per proof width.
     pub fn balances(&mut self) -> Result<Vec<TokenBalance>, WalletError> {
         let spendable = self.spendable()?;
         self.token_balances(&spendable)
@@ -826,7 +827,7 @@ impl MobileWallet {
     pub fn private_balance(&mut self, mint: Option<String>) -> Result<u64, WalletError> {
         // A mint the pool has not registered holds nothing: zero, not a
         // failure.
-        let asset = self.assets().configured(mint.as_deref())?;
+        let asset = self.assets().asset(&self.client, mint.as_deref())?;
         Ok(self
             .spendable()?
             .balances
@@ -1159,7 +1160,7 @@ impl MobileWallet {
         })
     }
 
-    /// SOL for `None`, otherwise a configured mint.
+    /// SOL for `None`, otherwise a configured or discovered mint.
     fn asset(&self, mint: Option<String>) -> Result<Asset, WalletError> {
         self.assets().resolve(&self.client, mint.as_deref())
     }
@@ -1170,23 +1171,42 @@ impl MobileWallet {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The wallet's spendable notes, in SOL and every configured mint, once
+    /// The wallet's spendable notes, in SOL and every mint it knows, once
     /// the indexer has caught up with the RPC.
     fn spendable(&self) -> Result<SpendableDecryptionResult, WalletError> {
         Ok(self.scan()?.spendable)
     }
 
-    /// The wallet's notes and history, in SOL and every configured mint, once
+    /// The wallet's notes and history, in SOL and every mint it knows, once
     /// the indexer has caught up with the RPC. Kept for the spends
-    /// [`WalletConfig::reuse_notes_ms`] lets take their notes from it.
+    /// [`WalletConfig::reuse_notes_ms`] lets take their notes from it. A
+    /// discovering wallet that meets notes in mints it does not know learns
+    /// the registered ones and reads once more.
     fn scan(&self) -> Result<UtxoScanResult, WalletError> {
         let indexed = self.indexed()?;
         let scan = {
             let mut assets = self.assets();
-            let registry = assets.registry(&self.client)?;
-            UtxoScan::new(&self.keys, registry)
-                .with_indexer_config(indexed)
-                .fetch(&self.client)?
+            let read = |assets: &mut Assets| -> Result<UtxoScanResult, WalletError> {
+                let registry = assets.registry(&self.client)?;
+                Ok(UtxoScan::new(&self.keys, registry)
+                    .with_indexer_config(indexed)
+                    .fetch(&self.client)?)
+            };
+            let scan = read(&mut assets)?;
+            let unknown = &scan.history;
+            if assets.discovers()
+                && !(unknown.unknown_asset_ids.is_empty() && unknown.unknown_mints.is_empty())
+                && assets.learn(
+                    &self.client,
+                    &registrations(self.client.rpc())?,
+                    &unknown.unknown_asset_ids,
+                    &unknown.unknown_mints,
+                )?
+            {
+                read(&mut assets)?
+            } else {
+                scan
+            }
         };
         if !self.reuse_notes.is_zero() {
             *self.recent() = Some(RecentRead {
@@ -1754,7 +1774,7 @@ mod tests {
             prover_url: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
-            mints: Vec::new(),
+            mints: None,
         }
     }
 
@@ -2786,10 +2806,10 @@ mod tests {
         pool_config: serde_json::Value,
     ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
         let wallet_config = WalletConfig {
-            mints: vec![MintConfig {
+            mints: Some(vec![MintConfig {
                 mint: MINT.to_string(),
                 token_program: pda::spl_token_program_id().to_string(),
-            }],
+            }]),
             ..config()
         };
         let registry_address = pda::spl_asset_registry(&MINT).to_string();

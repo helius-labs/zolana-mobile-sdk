@@ -64,8 +64,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<List<ActivityEntry>> activity();
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the configured mints, each with what prepared spends
-  /// reserve of it and the most one spend can take per proof width.
+  /// held in SOL and the mints the wallet knows, each with what prepared
+  /// spends reserve of it and the most one spend can take per proof width.
   Future<List<TokenBalance>> balances();
 
   /// Wait for a transaction the application sent itself, as
@@ -967,11 +967,12 @@ class WalletConfig {
   final BigInt? reuseNotesMs;
 
   /// The SPL mints the wallet holds, each with its token program. A call
-  /// that names another mint fails with [`WalletError::MintNotConfigured`].
-  /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
-  /// are left out, as the Zolana SDK leaves out assets its registry does
-  /// not hold.
-  final List<MintConfig> mints;
+  /// that names another mint fails with [`WalletError::MintNotConfigured`],
+  /// and [`MobileWallet::balances`] reports SOL and these only; notes in
+  /// other mints are left out. `None` holds every mint the shielded pool
+  /// registered: the wallet looks up a mint a call names, and the mints of
+  /// notes a read meets.
+  final List<MintConfig>? mints;
 
   const WalletConfig({
     required this.rpcUrl,
@@ -982,7 +983,7 @@ class WalletConfig {
     this.proverUrl,
     this.maxSpendInputs,
     this.reuseNotesMs,
-    required this.mints,
+    this.mints,
   });
 
   @override

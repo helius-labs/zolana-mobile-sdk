@@ -97,7 +97,6 @@ final wallet = await ZolanaWallet.open(
     rpcUrl: rpcUrl,
     indexerUrl: indexerUrl,
     provingKeyDir: '${(await getApplicationSupportDirectory()).path}/keys',
-    mints: const [],                  // SPL mints the wallet holds, see Tokens
   ),
 );
 await wallet.register();               // once, so others can pay this wallet
@@ -172,9 +171,12 @@ await wallet.spend(
   that file instead of decompressing the key, and the system can page the
   key out under memory pressure instead of ending the app.
   `clearProvingKeys()` removes the images with the keys.
-- **Tokens**: list each SPL Token or Token-2022 mint the wallet holds in
-  `WalletConfig.mints`, with the token program that owns it, as your Solana
-  SDK reads it:
+- **Tokens**: the wallet holds every SPL Token or Token-2022 mint the
+  shielded pool registered. It reads a mint's asset id and token program the
+  first time a call names the mint, and when a read meets notes in a mint it
+  does not know yet, it reads the pool's registrations and the notes again. To
+  hold only some mints, list each in `WalletConfig.mints` with the token
+  program that owns it, as your Solana SDK reads it:
 
   ```dart
   mints: [
@@ -185,22 +187,23 @@ await wallet.spend(
   ],
   ```
 
-  The wallet reads only the asset id the shielded pool registered for each.
-  Then pass `mint` (base58) to a call; no `mint` is SOL. Amounts are in base
-  units. A mint that is not in the config fails with
-  `WalletError.mintNotConfigured`, and a token program that is neither SPL
-  Token nor Token-2022 fails `open` with `WalletError.invalidTokenProgram`.
-  A listed mint the pool has not registered yet has no balance and no
-  history, and the other assets read as usual. Its first deposit registers
-  it: the transaction creates the mint's registry entry and vault before the
+  The wallet then reads only the asset id the shielded pool registered for
+  each. Pass `mint` (base58) to a call; no `mint` is SOL. Amounts are in base
+  units. With a list, a mint that is not in it fails with
+  `WalletError.mintNotConfigured`, a token program that is neither SPL Token
+  nor Token-2022 fails `open` with `WalletError.invalidTokenProgram`, and
+  notes in other mints are left out.
+  A mint the pool has not registered yet has no balance and no history, and
+  the other assets read as usual. Its first deposit registers it: the
+  transaction creates the mint's registry entry and vault before the
   deposit, this account pays their rent, and `Operation.deposit` has
   `createsSplInterface` set so the approval screen can say so. A pool that
   lets only its authority register mints refuses that deposit with
   `WalletError.assetNotSupported`, as it refuses a spend or merge of a mint
   it has not registered. Two first deposits of one mint prepared at the same
   time both register it, so the second to land fails.
-  `balances()` lists the private balance of SOL and of each configured mint;
-  notes in other mints are left out.
+  `balances()` lists the private balance of SOL and of each mint the wallet
+  knows.
   A public token output goes to the recipient's associated token account.
   When the recipient has none for the mint, the transaction creates it ahead
   of the spend and the fee payer pays its rent (about 0.002 SOL);
@@ -271,8 +274,8 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `notesReserved` | `amount` | only notes a prepared spend reserves would cover the amount |
 | `recipientNotRegistered` | `recipient` | the recipient has no shielded address in the registry |
 | `registrationConflict` | `owner` | the registry holds other keys for this account |
-| `assetNotSupported` | `mint` | the shielded pool has not registered the mint, and this call cannot: a spend, a merge, or a deposit the pool lets only its authority register |
-| `mintNotConfigured` | `mint` | the mint is not in `WalletConfig.mints` |
+| `assetNotSupported` | `mint` | the shielded pool has not registered the mint, and this call cannot: a spend, a merge, or a deposit the pool lets only its authority register; or the mint is not an SPL Token or Token-2022 mint |
+| `mintNotConfigured` | `mint` | `WalletConfig.mints` lists mints and this one is not among them |
 | `invalidMint` | `mint` | not a base58 key |
 | `invalidTokenProgram` | `mint`, `tokenProgram` | the configured token program is neither SPL Token nor Token-2022 |
 | `invalidPubkey` | `value` | not a base58 public key |
@@ -499,7 +502,6 @@ final wallet = await ZolanaWallet.open(
     provingKeyDir: provingKeyDir,
     proverUrl: 'https://backend.example/zolana', // your backend
     proving: Proving.remote,                     // the default; optional
-    mints: const [],
   ),
 );
 await wallet.spend(

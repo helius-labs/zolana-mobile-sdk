@@ -10,10 +10,12 @@ Unreleased.
   application's `SolanaSigner`.
 * The wallet keeps no chain state: `balances()`, `privateBalance()`,
   `activity()` and every spend read the indexer when they run.
-  `WalletConfig.mints` lists the SPL mints the wallet holds, each with its
-  token program; the wallet reads only their asset ids. A listed mint the
-  pool has not registered yet reads as no balance and no history, and its
-  first deposit registers it in the same transaction:
+  The wallet holds every mint the shielded pool registered, reading a mint's
+  asset id and token program when a call names it or a read meets its
+  notes; `WalletConfig.mints` limits it to the listed mints, each with its
+  token program, and then reads only their asset ids. A mint the pool has
+  not registered yet reads as no balance and no history, and its first
+  deposit registers it in the same transaction:
   `Operation.deposit.createsSplInterface` shows the extra rent. A spend takes the
   largest notes first, at most 40 from at most two trees, as the Zolana
   SDK selects them, and fails with `WalletError.mergeRequired` or
