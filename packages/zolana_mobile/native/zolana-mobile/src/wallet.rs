@@ -70,7 +70,7 @@ use zolana_user_registry_interface::MergeEncryptionScheme;
 
 use crate::{
     activity::{self, ActivityEntry},
-    asset::{mint_name, registrations, Asset, Assets, MintConfig},
+    asset::{mint_name, Asset, Assets, MintConfig},
     error::{client_message, settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
@@ -1203,33 +1203,23 @@ impl MobileWallet {
     /// The wallet's notes and history, in SOL and every mint it knows, once
     /// the indexer has caught up with the RPC. Kept for the spends
     /// [`WalletConfig::reuse_notes_ms`] lets take their notes from it. A
-    /// discovering wallet that meets notes in mints it does not know learns
-    /// the registered ones and reads once more.
+    /// discovering wallet delegates registry lookup and re-decryption to the
+    /// SDK, retaining its resolved mappings only after a successful scan.
     fn scan(&self) -> Result<UtxoScanResult, WalletError> {
         let indexed = self.indexed()?;
         let scan = {
             let mut assets = self.assets();
-            let read = |assets: &mut Assets| -> Result<UtxoScanResult, WalletError> {
-                let registry = assets.registry(&self.client)?;
-                Ok(UtxoScan::new(&self.keys, registry)
-                    .with_indexer_config(indexed)
-                    .fetch(&self.client)?)
-            };
-            let scan = read(&mut assets)?;
-            let unknown = &scan.history;
-            if assets.discovers()
-                && !(unknown.unknown_asset_ids.is_empty() && unknown.unknown_mints.is_empty())
-                && assets.learn(
-                    &self.client,
-                    &registrations(self.client.rpc())?,
-                    &unknown.unknown_asset_ids,
-                    &unknown.unknown_mints,
-                )?
-            {
-                read(&mut assets)?
+            let discover = assets.discovers();
+            let registry = assets.registry(&self.client)?;
+            let scan = UtxoScan::new(&self.keys, registry).with_indexer_config(indexed);
+            let scan = if discover {
+                scan.with_asset_discovery()
             } else {
                 scan
-            }
+            };
+            let scan = scan.fetch(&self.client)?;
+            assets.remember_registry(scan.asset_registry.clone());
+            scan
         };
         if !self.reuse_notes.is_zero() {
             *self.recent() = Some(RecentRead {

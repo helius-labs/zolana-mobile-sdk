@@ -4,24 +4,14 @@
 //! wallet reads only the asset id the pool registered for it and, when it
 //! discovers the mint, the token program that owns it.
 
-use std::{
-    collections::{BTreeSet, HashMap},
-    str::FromStr,
-};
+use std::{collections::HashMap, str::FromStr};
 
-use solana_account::Account;
 use solana_pubkey::Pubkey;
-use zolana_client::{fetch_asset_id, ClientError, ProgramAccountsFilter, Rpc, SolanaRpc};
-use zolana_interface::{
-    pda,
-    state::{discriminator::SPL_ASSET_REGISTRY, SplAssetRegistry},
-};
+use zolana_client::{fetch_asset_id, ClientError, Rpc};
+use zolana_interface::pda;
 use zolana_transaction::{AssetRegistry, SOL_MINT};
 
 use crate::error::WalletError;
-
-/// The most accounts one `getMultipleAccounts` request may name.
-const MAX_ACCOUNTS_PER_READ: usize = 100;
 
 /// An SPL mint the wallet holds, and the token program that owns it: SPL
 /// Token or Token-2022. Both base58.
@@ -158,48 +148,10 @@ impl Assets {
         Ok(&self.registry)
     }
 
-    /// Learns, from the pool's asset `registrations`, the `asset_ids` and
-    /// `mints` a scan met but did not know, each mint with its token program.
-    /// Registrations the pool does not own, and mints no token program owns,
-    /// are passed over. Whether it learned any.
-    pub fn learn(
-        &mut self,
-        rpc: &impl Rpc,
-        registrations: &[(Pubkey, Account)],
-        asset_ids: &BTreeSet<u64>,
-        mints: &BTreeSet<Pubkey>,
-    ) -> Result<bool, WalletError> {
-        let met: Vec<(u64, Pubkey)> = registrations
-            .iter()
-            .filter(|(_, account)| account.owner == pda::shielded_pool_program_id())
-            .filter_map(|(address, account)| {
-                let registration = SplAssetRegistry::from_account_bytes(&account.data).ok()?;
-                let (asset_id, mint) = (registration.asset_id, registration.mint);
-                let named = asset_ids.contains(&asset_id) || mints.contains(&mint);
-                let known = self.registry.resolve(asset_id).is_ok()
-                    || self.registry.asset_id(&mint).is_ok();
-                (*address == pda::spl_asset_registry(&mint) && named && !known)
-                    .then_some((asset_id, mint))
-            })
-            .collect();
-        let mut learned = false;
-        for batch in met.chunks(MAX_ACCOUNTS_PER_READ) {
-            let accounts =
-                rpc.get_multiple_accounts(batch.iter().map(|(_, mint)| *mint).collect())?;
-            for (&(asset_id, mint), account) in batch.iter().zip(accounts) {
-                let Some(program) = account
-                    .map(|account| account.owner)
-                    .filter(is_token_program)
-                else {
-                    continue;
-                };
-                if self.registry.insert(asset_id, mint).is_ok() {
-                    self.token_programs.insert(mint, program);
-                    learned = true;
-                }
-            }
-        }
-        Ok(learned)
+    /// Keep the validated mappings returned by the SDK's successful scan.
+    /// Token programs remain lazy: `asset` reads one when a call names a mint.
+    pub fn remember_registry(&mut self, registry: AssetRegistry) {
+        self.registry = registry;
     }
 
     /// Whether the pool has registered `mint`, reading its asset id the
@@ -226,14 +178,6 @@ impl Assets {
     }
 }
 
-/// Every asset registration the shielded pool holds, for
-/// [`Assets::learn`].
-pub(crate) fn registrations(rpc: &SolanaRpc) -> Result<Vec<(Pubkey, Account)>, WalletError> {
-    let filter =
-        ProgramAccountsFilter::new(SplAssetRegistry::SIZE).with_memcmp(0, [SPL_ASSET_REGISTRY]);
-    Ok(rpc.get_program_accounts_filtered(pda::shielded_pool_program_id(), &filter)?)
-}
-
 /// `None` for SOL, the base58 mint otherwise: how assets cross to Dart.
 pub(crate) fn mint_name(mint: &Pubkey) -> Option<String> {
     (*mint != SOL_MINT).then(|| mint.to_string())
@@ -250,6 +194,9 @@ fn parse_mint(mint: &str) -> Result<Pubkey, WalletError> {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+
+    use solana_account::Account;
+    use zolana_interface::state::SplAssetRegistry;
 
     use super::*;
 
@@ -271,17 +218,6 @@ mod tests {
         fn get_account(&self, address: Pubkey) -> Result<Option<Account>, ClientError> {
             self.reads.set(self.reads.get() + 1);
             Ok(self.accounts.get(&address).cloned())
-        }
-
-        fn get_multiple_accounts(
-            &self,
-            addresses: Vec<Pubkey>,
-        ) -> Result<Vec<Option<Account>>, ClientError> {
-            self.reads.set(self.reads.get() + 1);
-            Ok(addresses
-                .iter()
-                .map(|address| self.accounts.get(address).cloned())
-                .collect())
         }
     }
 
@@ -423,17 +359,6 @@ mod tests {
         assert_eq!(resolve(&invalid), unsupported);
     }
 
-    /// The pool's registration of `mint` as `asset_id`, at its address.
-    fn registration(mint: Pubkey, asset_id: u64) -> (Pubkey, Account) {
-        (
-            pda::spl_asset_registry(&mint),
-            account(
-                pda::shielded_pool_program_id(),
-                SplAssetRegistry::account_bytes(mint, asset_id).to_vec(),
-            ),
-        )
-    }
-
     #[test]
     fn discovers_a_mint_a_call_names() {
         let mut assets = Assets::new(None).unwrap();
@@ -466,58 +391,14 @@ mod tests {
     }
 
     #[test]
-    fn learns_the_registered_assets_a_scan_met() {
-        let named = Pubkey::new_from_array([10; 32]);
-        let not_met = Pubkey::new_from_array([11; 32]);
-        let forged = Pubkey::new_from_array([12; 32]);
-        let misplaced = Pubkey::new_from_array([13; 32]);
-        let not_a_token = Pubkey::new_from_array([14; 32]);
-        let rpc = [named, MINT, not_met, forged, misplaced]
-            .into_iter()
-            .fold(Accounts::default(), |rpc, mint| {
-                rpc.with(mint, pda::spl_token_program_id(), Vec::new())
-            })
-            .with(not_a_token, Pubkey::new_from_array([9; 32]), Vec::new());
-        let (forged_address, mut forged_account) = registration(forged, 5);
-        forged_account.owner = Pubkey::new_from_array([9; 32]);
-        let (_, misplaced_account) = registration(misplaced, 6);
-        let registrations = [
-            registration(MINT, 2),
-            registration(named, 3),
-            registration(not_met, 4),
-            (forged_address, forged_account),
-            (pda::spl_asset_registry(&named), misplaced_account),
-            registration(not_a_token, 7),
-        ];
-        let asset_ids = BTreeSet::from([2, 5, 6, 7, 99]);
-        let mints = BTreeSet::from([named]);
-
+    fn a_discovered_registry_keeps_token_program_lookup_lazy() {
         let mut assets = Assets::new(None).unwrap();
-        assert!(assets
-            .learn(&rpc, &registrations, &asset_ids, &mints)
-            .unwrap());
-        assert_eq!(
-            rpc.reads.get(),
-            1,
-            "one read for every mint's token program"
-        );
-        let registry = assets.registry(&rpc).unwrap();
-        assert_eq!(registry.resolve(2).unwrap().asset, MINT);
-        assert_eq!(registry.asset_id(&named).unwrap(), 3);
-        for unknown in [4, 5, 6, 7, 99] {
-            assert!(registry.resolve(unknown).is_err(), "asset id {unknown}");
-        }
-        let asset = assets.resolve(&rpc, Some(&named.to_string())).unwrap();
-        assert_eq!(asset.token_program, Some(pda::spl_token_program_id()));
-        assert_eq!(rpc.reads.get(), 1);
-
-        assert!(!assets
-            .learn(&rpc, &registrations, &asset_ids, &mints)
-            .unwrap());
-        assert_eq!(
-            rpc.reads.get(),
-            2,
-            "only the passed-over mint is read again"
-        );
+        assets.remember_registry(AssetRegistry::new([(2, MINT)]).unwrap());
+        // There is no registry account in this RPC: the scan already read it.
+        let rpc = Accounts::default().with(MINT, pda::spl_token_2022_program_id(), Vec::new());
+        let asset = assets.resolve(&rpc, Some(&MINT.to_string())).unwrap();
+        assert_eq!(asset.token_program, Some(pda::spl_token_2022_program_id()));
+        assert_eq!(assets.registry(&rpc).unwrap().asset_id(&MINT).unwrap(), 2);
+        assert_eq!(rpc.reads.get(), 1, "only the mint's token program is read");
     }
 }
