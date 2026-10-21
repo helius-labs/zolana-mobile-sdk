@@ -42,6 +42,7 @@ void main() {
             Output.private(recipient: b, amount: BigInt.from(1000000000)),
             Output.private(recipient: collector, amount: BigInt.from(5000000)),
           ],
+          createdTokenAccounts: const [],
         ),
       ),
       'Send 1 SOL privately to 8JEE…sS8E, 0.005 SOL privately to CWhA…gCdt',
@@ -54,9 +55,21 @@ void main() {
             Output.public(recipient: b, amount: BigInt.from(2500000)),
             Output.private(recipient: collector, amount: BigInt.from(12500)),
           ],
+          createdTokenAccounts: const [],
         ),
       ),
       'Send 2.5 TEST publicly to 8JEE…sS8E, 0.0125 TEST privately to CWhA…gCdt',
+    );
+    expect(
+      approvalText(
+        Operation.spend(
+          mint: demoToken.mint,
+          outputs: [Output.public(recipient: b, amount: BigInt.from(2500000))],
+          createdTokenAccounts: const [b],
+        ),
+      ),
+      'Send 2.5 TEST publicly to 8JEE…sS8E, creating a token account for '
+      '8JEE…sS8E (you pay its rent)',
     );
     expect(
       approvalText(

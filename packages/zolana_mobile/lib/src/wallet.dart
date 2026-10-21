@@ -349,10 +349,11 @@ class ZolanaWallet {
   /// Fails before anything is asked with [WalletError.noOutputs] for an
   /// empty list and [WalletError.amountZero] for a zero amount; then with
   /// [WalletError.recipientNotRegistered] for a private recipient without a
-  /// shielded address, which a public output pays instead, and with
-  /// [WalletError.recipientTokenAccountMissing] for a public token recipient
-  /// without an associated token account, which the application creates with
-  /// its own Solana client. A spend with `k` private outputs proves with
+  /// shielded address, which a public output pays instead. A public token
+  /// recipient without an associated token account gets one: the transaction
+  /// creates it ahead of the spend, the fee payer pays its rent, and
+  /// [native.Operation_Spend.createdTokenAccounts] names the recipient. A
+  /// spend with `k` private outputs proves with
   /// `k + 1` outputs, its change included, and public outputs take no slot,
   /// so it takes at most 40 notes for `k <= 1`, 24 for `k <= 3`, 16 for
   /// `k <= 7` and 8 for `k <= 15`, within `WalletConfig.maxSpendInputs`.

@@ -48,9 +48,6 @@ pub enum WalletError {
     /// `recipient` has not registered a shielded address. A public output
     /// pays it publicly.
     RecipientNotRegistered { recipient: String },
-    /// `recipient` has no associated token account for `mint`. The
-    /// application's Solana client creates it.
-    RecipientTokenAccountMissing { recipient: String, mint: String },
     /// The user registry holds other keys for `owner`. The wallet never
     /// replaces them.
     RegistrationConflict { owner: String },

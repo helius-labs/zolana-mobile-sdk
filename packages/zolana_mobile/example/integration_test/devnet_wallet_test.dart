@@ -96,7 +96,10 @@ void main() {
       Output.private(recipient: demoFeeCollector.publicKey, amount: fee),
     ];
     final prepared = await sender.prepareSpend(outputs: outputs);
-    expect(prepared.operation, Operation.spend(outputs: outputs));
+    expect(
+      prepared.operation,
+      Operation.spend(outputs: outputs, createdTokenAccounts: const []),
+    );
     // A slow approval: the same proof under a new blockhash.
     final transaction = await sender.refresh(prepared);
     expect(
