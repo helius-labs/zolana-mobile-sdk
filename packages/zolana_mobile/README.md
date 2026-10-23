@@ -412,6 +412,19 @@ sends through the wallet's RPC instead.
   `tx.signers` is `[feePayer, owner]`, and the fee payer's signature is the
   transaction signature. The proof binds the fee payer, so choose it at
   prepare. `spend` always uses this account.
+- Every `prepare` method, and `register`, `deposit`, `spend`, `setMerging`
+  and `merge`, takes an optional `priorityFeeLamports`:
+  `WalletConfig.priorityFeeLamports` when it is null, and no priority fee
+  without either. It is the priority fee of the whole transaction in
+  lamports, which a v1 message carries in its header, not a price per
+  compute unit. It is in `tx.message` when the call returns, so
+  `tx.priorityFeeLamports` is final for the approval: the fee payer pays it
+  on top of the base fee of its signatures, plus the rent of any token
+  account the spend creates (`Operation_Spend.createdTokenAccounts`).
+  Creating a token account raises the transaction's compute limit, not its
+  priority fee. `refresh` keeps the fee; prepare again to change it. Only
+  the fee payer signs a merge, so a relayer that pays for one checks
+  `tx.priorityFeeLamports` before signing.
 - The message carries a recent blockhash: `tx.lastValidBlockHeight` is the
   last block height at which it can land, about 150 blocks (60–90 s) after it
   was prepared. For a slower approval, `wallet.refresh(tx)` returns it with a
@@ -493,6 +506,14 @@ try {
   await settlePendingSend(wallet, pending);
 }
 ```
+
+A restart can come long after the send. The RPC's status cache holds recent
+transactions only, so a payment that landed may be gone from it by then.
+Past the saved `lastValidBlockHeight`, `waitForTransaction` looks for a
+transaction the cache does not hold at the indexer, once the indexer has
+reached the RPC's slot. It reports `transactionExpired` only when the indexer
+does not have the transaction, and `transactionOutcomeUnknown` while the
+indexer cannot be read, so keep the signature and try again later.
 
 ### Backend proving
 
@@ -585,7 +606,7 @@ take now.
 ### Balances
 
 `balances()` returns one `TokenBalance` per asset held, and `overview()` the
-same from one read with the history:
+same from one read with the history and `unresolvedAssets`:
 
 - `amount` is what the indexer has confirmed for this wallet, `reserved`
   included. A payment or change on its way appears once its transaction is
@@ -604,6 +625,19 @@ same from one read with the history:
   application fee the spend pays. Every amount up to a limit selects; one
   more fails with `WalletError.mergeRequired`,
   `WalletError.tooManyInputTrees` or `WalletError.insufficientPrivateBalance`.
+
+A read can find notes for the wallet that it cannot count. Their output names
+an asset id the pool has not registered, or the wallet's deposit or merge
+output names a mint without an asset id. A read meeting one looks the pool's
+registrations up again and decrypts once more. Notes still unresolved after
+that are left out of the balances and the history, not failed on: the sender
+writes a note's asset id and nothing on chain checks it, so anyone could
+otherwise stop the wallet's reads with one note. `overview()` lists their
+asset ids and mints in `unresolvedAssets`. While it is not empty, show the
+known balances and spend them as usual, but mark the portfolio as
+incomplete, for instance with an "unrecognized assets" line. A later read
+counts the notes once the pool registers their asset. With
+`WalletConfig.mints`, notes in mints outside the list are listed there too.
 
 ### Merges
 

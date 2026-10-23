@@ -83,14 +83,13 @@ pub enum WalletError {
     SignatureCountMismatch { expected: u64, got: u64 },
     /// Solana did not confirm the transaction within the wait.
     TransactionNotConfirmed { signature: String },
-    /// A transaction whose send went unanswered did not land before its
-    /// blockhash expired. It can no longer land, so sending it again is safe:
-    /// `refresh` it, or prepare it again.
+    /// A deposit, spend or merge did not succeed and no longer can: its
+    /// blockhash expired and the indexer, past that point, has no record of
+    /// it. A new transaction is safe: `refresh` it, or prepare it again.
     TransactionExpired { signature: String },
-    /// Whether a transaction whose send went unanswered landed could not be
-    /// told: the status lookups kept failing, or it landed and did not
-    /// confirm. Wait for it with `wait_for_transaction` before sending it
-    /// again.
+    /// The wait for a deposit, spend or merge ended before its outcome was
+    /// known: it may have landed or may still land. Wait for it again with
+    /// `wait_for_transaction` before sending a new one.
     TransactionOutcomeUnknown { signature: String, message: String },
     /// The spend asked for remote proving and `WalletConfig.prover_url` is
     /// not set.
@@ -162,6 +161,15 @@ impl From<ClientError> for WalletError {
                 owner: owner.to_string(),
             },
             ClientError::MergeEncryptionSchemeUnsupported { .. } => Self::MergingDisabled,
+            ClientError::TransactionExpired { signature } => Self::TransactionExpired {
+                signature: signature.to_string(),
+            },
+            ClientError::TransactionOutcomeUnknown { signature, message } => {
+                Self::TransactionOutcomeUnknown {
+                    signature: signature.to_string(),
+                    message: redact_api_keys(&message),
+                }
+            }
             ClientError::IndexerNotCaughtUp {
                 required, indexed, ..
             } => Self::IndexerBehind {
