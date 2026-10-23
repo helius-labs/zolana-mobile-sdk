@@ -1361,14 +1361,13 @@ impl MobileWallet {
         Ok(submission.finish_unsigned_sync(&self.client)?)
     }
 
-    /// Attach the signatures, send, and wait as [`Self::confirm`] does.
-    /// Returns the signature.
+    /// Attach the signatures, send, and wait as [`Self::confirm`] does: a
+    /// deposit, spend or merge whose response was lost is looked up; a
+    /// registration or merging change fails with the send's error, and
+    /// preparing it again finds one that landed. Returns the signature.
     ///
     /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
-    /// before anything is sent. A spend's notes are released once the send
-    /// has an outcome: spent when it landed, free again when the chain
-    /// refused it, it expired or it spent a note the chain already had. They
-    /// stay reserved while the outcome is unknown, since it may still land.
+    /// before anything is sent.
     pub fn submit(
         &self,
         pending: &PreparedTransaction,
@@ -1396,26 +1395,29 @@ impl MobileWallet {
             }
             transaction_signatures.push(Signature::from(signature));
         }
+        let signature = transaction_signatures[0];
         let transaction = VersionedTransaction {
             signatures: transaction_signatures,
             message: pending.message.clone(),
         };
         self.forget_notes();
-        let sent = self
-            .client
-            .submit_transaction_sync(transaction, pending.last_valid_block_height);
-        Ok(self.settle(pending, sent)?.to_string())
+        if pending.operation.indexed() {
+            let sent = self
+                .client
+                .submit_private_transaction_sync(transaction, pending.last_valid_block_height);
+            self.settle(pending, sent.map(drop))?;
+        } else {
+            // A registration or a merging change: preparing it again finds
+            // one whose response was lost but that landed.
+            self.client.process_transaction(transaction)?;
+        }
+        Ok(signature.to_string())
     }
 
-    /// Wait for a transaction the application sent itself, as
-    /// [`Self::submit`] waits for a send whose response was lost: until Solana
-    /// confirms it and, for shielded-pool transactions, the indexer has it,
-    /// so the next balance or spend reads the notes it created and not the
-    /// ones it spent; the chain's error when the chain refused it;
-    /// [`WalletError::TransactionExpired`] when it did not land before
-    /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
-    /// when that cannot be told. A spend's notes are released with every
-    /// outcome but the unknown one.
+    /// Wait for a transaction the application sent itself: a registration or
+    /// a merging change until Solana confirms it, anything else as
+    /// [`Self::wait_for_transaction`] does. A spend's notes are released with
+    /// every outcome but the unknown one.
     ///
     /// `signature` is the transaction signature, the fee payer's; it is
     /// checked against `pending` before anything is asked.
@@ -1440,24 +1442,13 @@ impl MobileWallet {
         self.settle(pending, outcome)
     }
 
-    /// Wait for a shielded-pool transaction by its signature, such as one sent
-    /// before the application restarted, until its outcome is known, as
-    /// [`Self::submit`] tells a send whose response was lost: done once Solana
-    /// confirms it and the indexer has it, so the next balance reads its
-    /// notes; the chain's error when the chain refused it;
-    /// [`WalletError::TransactionExpired`] when it did not land before
-    /// `last_valid_block_height`, so sending it again is safe; and
-    /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
-    /// Save the prepared transaction's last valid block height with its
-    /// signature: without it, a transaction never seen cannot be told expired
-    /// and ends unknown.
-    ///
-    /// The RPC's status cache holds recent transactions only, so one waited
-    /// for long after it was sent may be gone from it though it landed. Past
-    /// `last_valid_block_height`, a transaction the cache does not hold is
-    /// looked for at the indexer once the indexer reached the RPC's slot: it
-    /// is expired only when the indexer does not have it, and unknown while
-    /// the indexer cannot be read.
+    /// Wait for a deposit, spend or merge by its signature, such as one sent
+    /// before the application restarted, as the Zolana SDK's
+    /// `wait_for_private_transaction` does: done once Solana confirmed it, the
+    /// chain's error when it failed, [`WalletError::TransactionExpired`] once
+    /// a new transaction is safe, and [`WalletError::TransactionOutcomeUnknown`]
+    /// when the wait ended first. Save `last_valid_block_height` with the
+    /// signature: without it, a transaction never seen cannot be told expired.
     pub fn wait_for_transaction(
         &self,
         signature: String,
@@ -1466,25 +1457,34 @@ impl MobileWallet {
         let signature =
             Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
         self.forget_notes();
-        Ok(self
-            .client
-            .wait_for_private_transaction_sync(signature, last_valid_block_height)?)
+        landed(
+            self.client
+                .wait_for_private_transaction_sync(signature, last_valid_block_height),
+        )
     }
 
-    /// `outcome`, what became of `pending`'s send, with `pending`'s notes
-    /// released unless it is unknown: spent once it landed, free again when
-    /// the chain refused it, it expired or it spent a note the chain already
-    /// had. An unknown outcome keeps them reserved, since the transaction may
-    /// still land.
-    fn settle<T>(
+    /// `outcome` of `pending`'s send, releasing its notes unless it is
+    /// unknown: spent once it landed, free again when the chain refused it or
+    /// it expired. An unknown outcome keeps them reserved: it may still land.
+    fn settle(
         &self,
         pending: &PreparedTransaction,
-        outcome: Result<T, ClientError>,
-    ) -> Result<T, WalletError> {
+        outcome: Result<(), ClientError>,
+    ) -> Result<(), WalletError> {
         if !matches!(outcome, Err(ClientError::TransactionOutcomeUnknown { .. })) {
             self.release(pending);
         }
-        Ok(outcome?)
+        landed(outcome)
+    }
+}
+
+/// `outcome` of a private transaction, done once Solana confirmed it: every
+/// read waits for the indexer to reach the RPC's slot, so one the indexer lags
+/// on is read once it catches up.
+fn landed(outcome: Result<(), ClientError>) -> Result<(), WalletError> {
+    match outcome {
+        Err(ClientError::TransactionNotIndexed { .. }) => Ok(()),
+        outcome => Ok(outcome?),
     }
 }
 
@@ -1843,50 +1843,57 @@ mod tests {
         serde_json::json!({"result": {"context": {"slot": 5}, "value": value}})
     }
 
-    /// A send whose confirmation the RPC lost, for a transaction that landed
-    /// (or did not): the wallet looks for it before it reports a failure.
+    /// A send whose response was lost: a deposit, spend or merge is looked up
+    /// before the wallet reports a failure; a registration fails with the
+    /// send's error, and preparing it again finds one that landed.
     #[test]
-    fn a_send_error_is_checked_against_the_signature_status() {
+    fn a_lost_send_is_looked_up_unless_it_is_a_registration() {
         let signer = Keypair::new();
-        let internal =
-            || serde_json::json!({"error": {"code": -32603, "message": "Internal error"}});
-        let registration = |signer: &Keypair| PreparedTransaction {
-            operation: Operation::Registration,
-            ..unsigned(signer)
-        };
         let signed = |pending: &PreparedTransaction| {
             vec![signer.sign_message(&pending.message()).as_ref().to_vec()]
         };
-
-        let (wallet, asked) = rpc_wallet(&signer, move |method| match method {
-            "sendTransaction" => internal(),
-            _ => status(true),
-        });
-        let pending = registration(&signer);
-        let signature = wallet
-            .submit(&pending, signed(&pending))
-            .expect("it landed");
-        assert_eq!(
-            signature,
-            signer.sign_message(&pending.message()).to_string()
-        );
-        assert!(asked
-            .lock()
-            .unwrap()
-            .contains(&"getSignatureStatuses".to_string()));
-
-        // Not seen, and past its blockhash: it can be sent again.
-        let (wallet, _) = rpc_wallet(&signer, move |method| match method {
-            "sendTransaction" => internal(),
-            "getBlockHeight" => serde_json::json!({"result": 10}),
-            _ => status(false),
-        });
-        assert_eq!(
-            wallet.submit(&pending, signed(&pending)).unwrap_err(),
-            WalletError::TransactionExpired {
-                signature: signer.sign_message(&pending.message()).to_string()
+        let lost = |landed: bool| {
+            move |method: &str, params: &serde_json::Value| match method {
+                "sendTransaction" => {
+                    serde_json::json!({"error": {"code": -32603, "message": "Internal error"}})
+                }
+                "getSignatureStatuses" => status(landed),
+                "getBlockHeight" => serde_json::json!({"result": 10}),
+                "getSlot" => serde_json::json!({"result": 100}),
+                _ if landed => indexed_answer(
+                    Signature::from_str(params["txSignature"].as_str().unwrap()).unwrap(),
+                ),
+                _ => serde_json::json!({"result": {
+                    "context": {"blockTime": 0, "slot": 100},
+                    "transactions": [],
+                }}),
             }
+        };
+        let deposit = PreparedTransaction {
+            operation: Operation::Deposit {
+                mint: None,
+                amount: 1,
+                creates_spl_interface: false,
+            },
+            ..unsigned(&signer)
+        };
+
+        let (wallet, _) = rpc_wallet_asked(&signer, config(), lost(true));
+        assert_eq!(
+            wallet.submit(&deposit, signed(&deposit)),
+            Ok(signer.sign_message(&deposit.message()).to_string())
         );
+
+        let (wallet, _) = rpc_wallet_asked(&signer, config(), lost(false));
+        assert!(matches!(
+            wallet.submit(&deposit, signed(&deposit)),
+            Err(WalletError::TransactionExpired { .. })
+        ));
+        let registration = unsigned(&signer);
+        assert!(matches!(
+            wallet.submit(&registration, signed(&registration)),
+            Err(WalletError::Client { .. })
+        ));
     }
 
     const QUICK: IndexerPollConfig = IndexerPollConfig {
@@ -2309,7 +2316,7 @@ mod tests {
     #[test]
     fn submit_checks_every_signature_before_sending() {
         let signer = Keypair::new();
-        let mut wallet = open(&signer).unwrap();
+        let wallet = open(&signer).unwrap();
         let pending = || unsigned(&signer);
         assert_eq!(pending().signers(), vec![signer.pubkey().to_string()]);
         let valid = signer.sign_message(&pending().message());
@@ -2330,15 +2337,11 @@ mod tests {
             assert_eq!(wallet.submit(&pending(), signatures).err(), Some(expected));
         }
         // A valid signature gets as far as the transport, which answers
-        // neither the send nor the lookups after it.
-        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
+        // nothing.
         let error = wallet
             .submit(&pending(), vec![valid.as_ref().to_vec()])
             .unwrap_err();
-        assert!(
-            matches!(error, WalletError::TransactionOutcomeUnknown { .. }),
-            "{error:?}"
-        );
+        assert!(matches!(error, WalletError::Client { .. }), "{error:?}");
     }
 
     #[test]

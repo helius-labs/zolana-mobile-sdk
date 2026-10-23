@@ -441,11 +441,12 @@ class ZolanaWallet {
       _serial(() => _prepare(_wallet.refresh(pending: transaction)));
 
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
-  /// wait as [confirm] does. Returns the transaction signature. A send that
-  /// fails without the chain's verdict, such as a lost confirmation, is
-  /// checked against the signature's status until the blockhash expires, and
-  /// then at the indexer, as [waitForTransaction] does. A note the chain
-  /// already spent fails with [WalletError.notesAlreadySpent].
+  /// wait as [confirm] does. Returns the transaction signature. A deposit,
+  /// spend or merge whose send fails without the chain's verdict, such as a
+  /// lost confirmation, is looked up as [waitForTransaction] does; a
+  /// registration or merging change fails, and preparing it again finds one
+  /// that landed. A note the chain already spent fails with
+  /// [WalletError.notesAlreadySpent].
   ///
   /// A spend's notes are released once the send has an outcome: spent when
   /// it landed, free for the next spend when the chain refused it, it

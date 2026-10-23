@@ -5196,15 +5196,10 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<List<TokenBalance>> balances() =>
       RustLib.instance.api.zolanaMobileMobileWalletBalances(that: this);
 
-  /// Wait for a transaction the application sent itself, as
-  /// [`Self::submit`] waits for a send whose response was lost: until Solana
-  /// confirms it and, for shielded-pool transactions, the indexer has it,
-  /// so the next balance or spend reads the notes it created and not the
-  /// ones it spent; the chain's error when the chain refused it;
-  /// [`WalletError::TransactionExpired`] when it did not land before
-  /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
-  /// when that cannot be told. A spend's notes are released with every
-  /// outcome but the unknown one.
+  /// Wait for a transaction the application sent itself: a registration or
+  /// a merging change until Solana confirms it, anything else as
+  /// [`Self::wait_for_transaction`] does. A spend's notes are released with
+  /// every outcome but the unknown one.
   ///
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
@@ -5403,14 +5398,13 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<String> shieldedAddress() =>
       RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this);
 
-  /// Attach the signatures, send, and wait as [`Self::confirm`] does.
-  /// Returns the signature.
+  /// Attach the signatures, send, and wait as [`Self::confirm`] does: a
+  /// deposit, spend or merge whose response was lost is looked up; a
+  /// registration or merging change fails with the send's error, and
+  /// preparing it again finds one that landed. Returns the signature.
   ///
   /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
-  /// before anything is sent. A spend's notes are released once the send
-  /// has an outcome: spent when it landed, free again when the chain
-  /// refused it, it expired or it spent a note the chain already had. They
-  /// stay reserved while the outcome is unknown, since it may still land.
+  /// before anything is sent.
   Future<String> submit({
     required PreparedTransaction pending,
     required List<Uint8List> signatures,
@@ -5420,24 +5414,13 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
     signatures: signatures,
   );
 
-  /// Wait for a shielded-pool transaction by its signature, such as one sent
-  /// before the application restarted, until its outcome is known, as
-  /// [`Self::submit`] tells a send whose response was lost: done once Solana
-  /// confirms it and the indexer has it, so the next balance reads its
-  /// notes; the chain's error when the chain refused it;
-  /// [`WalletError::TransactionExpired`] when it did not land before
-  /// `last_valid_block_height`, so sending it again is safe; and
-  /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
-  /// Save the prepared transaction's last valid block height with its
-  /// signature: without it, a transaction never seen cannot be told expired
-  /// and ends unknown.
-  ///
-  /// The RPC's status cache holds recent transactions only, so one waited
-  /// for long after it was sent may be gone from it though it landed. Past
-  /// `last_valid_block_height`, a transaction the cache does not hold is
-  /// looked for at the indexer once the indexer reached the RPC's slot: it
-  /// is expired only when the indexer does not have it, and unknown while
-  /// the indexer cannot be read.
+  /// Wait for a deposit, spend or merge by its signature, such as one sent
+  /// before the application restarted, as the Zolana SDK's
+  /// `wait_for_private_transaction` does: done once Solana confirmed it, the
+  /// chain's error when it failed, [`WalletError::TransactionExpired`] once
+  /// a new transaction is safe, and [`WalletError::TransactionOutcomeUnknown`]
+  /// when the wait ended first. Save `last_valid_block_height` with the
+  /// signature: without it, a transaction never seen cannot be told expired.
   Future<void> waitForTransaction({
     required String signature,
     BigInt? lastValidBlockHeight,
