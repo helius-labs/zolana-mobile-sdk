@@ -84,13 +84,14 @@ pub enum WalletError {
     /// Solana did not confirm the transaction within the wait.
     TransactionNotConfirmed { signature: String },
     /// A transaction whose send went unanswered did not land before its
-    /// blockhash expired. It can no longer land, so sending it again is safe:
-    /// `refresh` it, or prepare it again.
+    /// blockhash expired: past it, neither the RPC's status cache nor, for a
+    /// shielded-pool transaction, the indexer has it. It can no longer land,
+    /// so sending it again is safe: `refresh` it, or prepare it again.
     TransactionExpired { signature: String },
     /// Whether a transaction whose send went unanswered landed could not be
-    /// told: the status lookups kept failing, or it landed and did not
-    /// confirm. Wait for it with `wait_for_transaction` before sending it
-    /// again.
+    /// told: the status lookups kept failing, it landed and did not confirm,
+    /// or, past its blockhash, the indexer could not be read. Wait for it
+    /// with `wait_for_transaction` before sending it again.
     TransactionOutcomeUnknown { signature: String, message: String },
     /// The spend asked for remote proving and `WalletConfig.prover_url` is
     /// not set.
@@ -162,6 +163,15 @@ impl From<ClientError> for WalletError {
                 owner: owner.to_string(),
             },
             ClientError::MergeEncryptionSchemeUnsupported { .. } => Self::MergingDisabled,
+            ClientError::TransactionExpired { signature } => Self::TransactionExpired {
+                signature: signature.to_string(),
+            },
+            ClientError::TransactionOutcomeUnknown { signature, message } => {
+                Self::TransactionOutcomeUnknown {
+                    signature: signature.to_string(),
+                    message: redact_api_keys(&message),
+                }
+            }
             ClientError::IndexerNotCaughtUp {
                 required, indexed, ..
             } => Self::IndexerBehind {
@@ -235,19 +245,6 @@ fn program_error(failure: Option<&ChainError>) -> Option<u32> {
         ChainError::InstructionError(_, InstructionError::Custom(code)) => Some(*code),
         _ => None,
     }
-}
-
-/// Whether `failure` settles a send: the chain ran the transaction and
-/// refused it, or refused it in simulation, so it was never sent. A
-/// simulation that found it already processed does not settle it, since it
-/// may have landed; nor does any other failure, which may have come after
-/// the transaction went out.
-pub(crate) fn settles_the_send(failure: &ClientError) -> bool {
-    matches!(failure, ClientError::SolanaRpcTransaction { source, .. }
-    if !matches!(
-        source.get_transaction_error(),
-        None | Some(ChainError::AlreadyProcessed)
-    ))
 }
 
 /// The error and its causes, so a failed request says why it failed (DNS,

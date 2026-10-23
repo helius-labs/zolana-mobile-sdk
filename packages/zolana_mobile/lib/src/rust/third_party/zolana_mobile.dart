@@ -116,7 +116,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   );
 
   /// [`Self::balances`] and [`Self::activity`] from one read of the
-  /// indexer, which each of them makes on its own.
+  /// indexer, which each of them makes on its own, and the assets of the
+  /// notes the read could not count, which both leave out.
   Future<WalletOverview> overview();
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -132,6 +133,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
+    BigInt? priorityFeeLamports,
   });
 
   /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -153,6 +155,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
     int? maxInputs,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   });
 
   /// Turn merges of this account's notes on or off; this account signs.
@@ -160,12 +163,19 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// proved with this wallet's nullifier secret is valid without this
   /// account's signature: whoever holds the secret and the notes, such as a
   /// prover that proved its spends, can merge them. It cannot move funds.
-  Future<PreparedTransaction?> prepareMerging({required bool enabled});
+  Future<PreparedTransaction?> prepareMerging({
+    required bool enabled,
+    BigInt? priorityFeeLamports,
+  });
 
   /// `None` when the registry already holds this wallet's address. Fails
   /// with [`WalletError::RegistrationConflict`] when it holds other keys:
-  /// this wallet never replaces them.
-  Future<PreparedTransaction?> prepareRegistration();
+  /// this wallet never replaces them. `priority_fee_lamports` overrides
+  /// [`WalletConfig::priority_fee_lamports`], as on every prepared
+  /// transaction.
+  Future<PreparedTransaction?> prepareRegistration({
+    BigInt? priorityFeeLamports,
+  });
 
   /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in
   /// one transaction. A private output is a note for a registered wallet,
@@ -208,6 +218,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
     String? mint,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   });
 
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -267,6 +278,13 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// Save the prepared transaction's last valid block height with its
   /// signature: without it, a transaction never seen cannot be told expired
   /// and ends unknown.
+  ///
+  /// The RPC's status cache holds recent transactions only, so one waited
+  /// for long after it was sent may be gone from it though it landed. Past
+  /// `last_valid_block_height`, a transaction the cache does not hold is
+  /// looked for at the indexer once the indexer reached the RPC's slot: it
+  /// is expired only when the indexer does not have it, and unknown while
+  /// the indexer cannot be read.
   Future<void> waitForTransaction({
     required String signature,
     BigInt? lastValidBlockHeight,
@@ -287,6 +305,11 @@ abstract class PreparedTransaction implements RustOpaqueInterface {
 
   /// What it does, with what it moves and to whom.
   Operation get operation;
+
+  /// The priority fee in lamports the fee payer pays on top of the base fee
+  /// of its signatures: the whole transaction's, from the message header.
+  /// Zero without one.
+  BigInt get priorityFeeLamports;
 
   /// Base58 public keys that must sign, in signature order. The first is
   /// the fee payer, whose signature is the transaction signature.
@@ -923,6 +946,40 @@ class TransportResponse {
           body == other.body;
 }
 
+/// The assets of notes a read found for this wallet but could not count,
+/// even after it looked the pool's registrations up again: their balances
+/// and history are left out. Empty when the read counted every note.
+///
+/// With [`WalletConfig::mints`], notes in mints outside the list are here
+/// too.
+class UnresolvedAssets {
+  /// Asset ids that notes for this wallet name and the pool has not
+  /// registered, ascending. The sender wrote the id and nothing on chain
+  /// checks it, so an id may name no asset at all: a later read counts the
+  /// notes once the pool registers it.
+  final Uint64List assetIds;
+
+  /// Base58 mints that this wallet's deposits or merge outputs name and the
+  /// pool has no asset id for, ascending.
+  final List<String> mints;
+
+  const UnresolvedAssets({required this.assetIds, required this.mints});
+
+  static Future<UnresolvedAssets> default_() =>
+      RustLib.instance.api.zolanaMobileUnresolvedAssetsDefault();
+
+  @override
+  int get hashCode => assetIds.hashCode ^ mints.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UnresolvedAssets &&
+          runtimeType == other.runtimeType &&
+          assetIds == other.assetIds &&
+          mints == other.mints;
+}
+
 /// Where the wallet reads chain state and stores proving keys.
 class WalletConfig {
   final String rpcUrl;
@@ -970,6 +1027,12 @@ class WalletConfig {
   /// notes a read meets.
   final List<MintConfig>? mints;
 
+  /// The priority fee, in lamports, of every transaction the wallet
+  /// prepares unless the call names one: the whole transaction's, as a v1
+  /// message carries it in its header, not a price per compute unit. No
+  /// priority fee when `None`.
+  final BigInt? priorityFeeLamports;
+
   const WalletConfig({
     required this.rpcUrl,
     required this.indexerUrl,
@@ -980,6 +1043,7 @@ class WalletConfig {
     this.maxSpendInputs,
     this.reuseNotesMs,
     this.mints,
+    this.priorityFeeLamports,
   });
 
   @override
@@ -992,7 +1056,8 @@ class WalletConfig {
       proverUrl.hashCode ^
       maxSpendInputs.hashCode ^
       reuseNotesMs.hashCode ^
-      mints.hashCode;
+      mints.hashCode ^
+      priorityFeeLamports.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1007,7 +1072,8 @@ class WalletConfig {
           proverUrl == other.proverUrl &&
           maxSpendInputs == other.maxSpendInputs &&
           reuseNotesMs == other.reuseNotesMs &&
-          mints == other.mints;
+          mints == other.mints &&
+          priorityFeeLamports == other.priorityFeeLamports;
 }
 
 @freezed
@@ -1140,15 +1206,16 @@ sealed class WalletError with _$WalletError implements FrbException {
   }) = WalletError_TransactionNotConfirmed;
 
   /// A transaction whose send went unanswered did not land before its
-  /// blockhash expired. It can no longer land, so sending it again is safe:
-  /// `refresh` it, or prepare it again.
+  /// blockhash expired: past it, neither the RPC's status cache nor, for a
+  /// shielded-pool transaction, the indexer has it. It can no longer land,
+  /// so sending it again is safe: `refresh` it, or prepare it again.
   const factory WalletError.transactionExpired({required String signature}) =
       WalletError_TransactionExpired;
 
   /// Whether a transaction whose send went unanswered landed could not be
-  /// told: the status lookups kept failing, or it landed and did not
-  /// confirm. Wait for it with `wait_for_transaction` before sending it
-  /// again.
+  /// told: the status lookups kept failing, it landed and did not confirm,
+  /// or, past its blockhash, the indexer could not be read. Wait for it
+  /// with `wait_for_transaction` before sending it again.
   const factory WalletError.transactionOutcomeUnknown({
     required String signature,
     required String message,
@@ -1297,14 +1364,22 @@ class WalletKeys {
 }
 
 /// The private balances, one per asset held, and the history, newest first.
+/// Both leave out the notes in [`Self::unresolved_assets`]: while it holds
+/// any, they are not the whole portfolio.
 class WalletOverview {
   final List<TokenBalance> balances;
   final List<ActivityEntry> activity;
+  final UnresolvedAssets unresolvedAssets;
 
-  const WalletOverview({required this.balances, required this.activity});
+  const WalletOverview({
+    required this.balances,
+    required this.activity,
+    required this.unresolvedAssets,
+  });
 
   @override
-  int get hashCode => balances.hashCode ^ activity.hashCode;
+  int get hashCode =>
+      balances.hashCode ^ activity.hashCode ^ unresolvedAssets.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1312,5 +1387,6 @@ class WalletOverview {
       other is WalletOverview &&
           runtimeType == other.runtimeType &&
           balances == other.balances &&
-          activity == other.activity;
+          activity == other.activity &&
+          unresolvedAssets == other.unresolvedAssets;
 }

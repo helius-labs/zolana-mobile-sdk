@@ -32,16 +32,14 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use solana_commitment_config::CommitmentConfig;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_message::{v1, VersionedMessage};
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
-use solana_transaction_error::TransactionError as ChainError;
 use zeroize::Zeroizing;
 use zolana_client::{
-    compile_message,
+    compile_message, set_priority_fee,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, set_merge_encryption_instruction,
@@ -70,7 +68,7 @@ use zolana_user_registry_interface::MergeEncryptionScheme;
 use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
-    error::{client_message, settles_the_send, WalletError},
+    error::WalletError,
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
@@ -115,6 +113,11 @@ pub struct WalletConfig {
     /// registered: the wallet looks up a mint a call names, and the mints of
     /// notes a read meets.
     pub mints: Option<Vec<MintConfig>>,
+    /// The priority fee, in lamports, of every transaction the wallet
+    /// prepares unless the call names one: the whole transaction's, as a v1
+    /// message carries it in its header, not a price per compute unit. No
+    /// priority fee when `None`.
+    pub priority_fee_lamports: Option<u64>,
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -192,6 +195,15 @@ pub enum Output {
     Public { recipient: String, amount: u64 },
 }
 
+impl Operation {
+    /// Whether it is a shielded-pool transaction, which the indexer records
+    /// once it lands. A registration or a merging change is the user
+    /// registry's.
+    fn indexed(&self) -> bool {
+        !matches!(self, Operation::Registration | Operation::Merging { .. })
+    }
+}
+
 impl Output {
     fn recipient(&self) -> &str {
         match self {
@@ -261,6 +273,17 @@ impl PreparedTransaction {
         self.message.serialize()
     }
 
+    /// The priority fee in lamports the fee payer pays on top of the base fee
+    /// of its signatures: the whole transaction's, from the message header.
+    /// Zero without one.
+    #[flutter_rust_bridge::frb(sync, getter)]
+    pub fn priority_fee_lamports(&self) -> u64 {
+        match &self.message {
+            VersionedMessage::V1(message) => message.config.priority_fee.unwrap_or(0),
+            _ => 0,
+        }
+    }
+
     /// Base58 public keys that must sign, in signature order. The first is
     /// the fee payer, whose signature is the transaction signature.
     #[flutter_rust_bridge::frb(sync, getter)]
@@ -290,10 +313,46 @@ pub struct WalletKeys {
 }
 
 /// The private balances, one per asset held, and the history, newest first.
+/// Both leave out the notes in [`Self::unresolved_assets`]: while it holds
+/// any, they are not the whole portfolio.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WalletOverview {
     pub balances: Vec<TokenBalance>,
     pub activity: Vec<ActivityEntry>,
+    pub unresolved_assets: UnresolvedAssets,
+}
+
+/// The assets of notes a read found for this wallet but could not count,
+/// even after it looked the pool's registrations up again: their balances
+/// and history are left out. Empty when the read counted every note.
+///
+/// With [`WalletConfig::mints`], notes in mints outside the list are here
+/// too.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct UnresolvedAssets {
+    /// Asset ids that notes for this wallet name and the pool has not
+    /// registered, ascending. The sender wrote the id and nothing on chain
+    /// checks it, so an id may name no asset at all: a later read counts the
+    /// notes once the pool registers it.
+    pub asset_ids: Vec<u64>,
+    /// Base58 mints that this wallet's deposits or merge outputs name and the
+    /// pool has no asset id for, ascending.
+    pub mints: Vec<String>,
+}
+
+impl UnresolvedAssets {
+    /// What a read whose history is `history` left out: the Zolana SDK
+    /// reports the same assets in both halves of one read.
+    fn of(history: &zolana_transaction::History) -> Self {
+        UnresolvedAssets {
+            asset_ids: history.unknown_asset_ids.iter().copied().collect(),
+            mints: history
+                .unknown_mints
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        }
+    }
 }
 
 /// A spendable private balance. `mint` is `None` for SOL.
@@ -438,8 +497,8 @@ pub struct MobileWallet {
     recent: Mutex<Option<RecentRead>>,
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
-    /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
-    send_lookup: IndexerPollConfig,
+    /// [`WalletConfig::priority_fee_lamports`].
+    priority_fee: Option<u64>,
     proving_keys: Arc<KeyStore>,
     /// The device prover, the client's too: [`Self::proving_keys`] proves
     /// with it so that a key stays loaded between the two.
@@ -557,7 +616,7 @@ impl MobileWallet {
             reuse_notes: Duration::from_millis(config.reuse_notes_ms.unwrap_or(0)),
             recent: Mutex::new(None),
             proving: config.proving.unwrap_or(Proving::Local),
-            send_lookup: SEND_LOOKUP,
+            priority_fee: config.priority_fee_lamports,
             proving_keys,
             native_prover,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
@@ -600,12 +659,20 @@ impl MobileWallet {
 
     /// `None` when the registry already holds this wallet's address. Fails
     /// with [`WalletError::RegistrationConflict`] when it holds other keys:
-    /// this wallet never replaces them.
-    pub fn prepare_registration(&self) -> Result<Option<PreparedTransaction>, WalletError> {
+    /// this wallet never replaces them. `priority_fee_lamports` overrides
+    /// [`WalletConfig::priority_fee_lamports`], as on every prepared
+    /// transaction.
+    pub fn prepare_registration(
+        &self,
+        priority_fee_lamports: Option<u64>,
+    ) -> Result<Option<PreparedTransaction>, WalletError> {
         let message =
             build_registration_transaction_sync(&self.client, self.owner, &self.address, None)?;
         message
-            .map(|message| self.pending(Operation::Registration, message))
+            .map(|message| {
+                let message = self.with_priority_fee(message, priority_fee_lamports)?;
+                self.pending(Operation::Registration, message)
+            })
             .transpose()
     }
 
@@ -626,6 +693,7 @@ impl MobileWallet {
     pub fn prepare_merging(
         &self,
         enabled: bool,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<Option<PreparedTransaction>, WalletError> {
         if self.merging_enabled()? == enabled {
             return Ok(None);
@@ -636,11 +704,10 @@ impl MobileWallet {
             MergeEncryptionScheme::Disabled
         };
         let instruction = set_merge_encryption_instruction(self.owner, scheme);
-        self.pending(
-            Operation::Merging { enabled },
-            self.message(&[instruction])?,
-        )
-        .map(Some)
+        let message =
+            self.with_priority_fee(self.message(&[instruction])?, priority_fee_lamports)?;
+        self.pending(Operation::Merging { enabled }, message)
+            .map(Some)
     }
 
     /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -663,6 +730,7 @@ impl MobileWallet {
         max_inputs: Option<u32>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
@@ -693,12 +761,14 @@ impl MobileWallet {
                 .ok_or(WalletError::RemoteProverMissing)?;
             submission = submission.with_prover(remote);
         }
+        let mut unsigned = submission.finish_unsigned_sync(&self.client, payer)?;
+        unsigned.message = self.with_priority_fee(unsigned.message, priority_fee_lamports)?;
         let pending = self.proved(
             Operation::Merge {
                 mint: mint_name(&asset.mint),
                 amount,
             },
-            submission.finish_unsigned_sync(&self.client, payer)?,
+            unsigned,
         );
         Ok(self.reserve(pending, spends))
     }
@@ -717,6 +787,7 @@ impl MobileWallet {
         &mut self,
         mint: Option<String>,
         amount: u64,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
         let (asset, registered) = self
             .assets()
@@ -760,13 +831,15 @@ impl MobileWallet {
         }
         .instruction()?;
         instructions.push(deposit);
+        let message =
+            self.with_priority_fee(self.message(&instructions)?, priority_fee_lamports)?;
         self.pending(
             Operation::Deposit {
                 mint: mint_name(&asset.mint),
                 amount,
                 creates_spl_interface: !registered,
             },
-            self.message(&instructions)?,
+            message,
         )
     }
 
@@ -801,12 +874,14 @@ impl MobileWallet {
     }
 
     /// [`Self::balances`] and [`Self::activity`] from one read of the
-    /// indexer, which each of them makes on its own.
+    /// indexer, which each of them makes on its own, and the assets of the
+    /// notes the read could not count, which both leave out.
     pub fn overview(&mut self) -> Result<WalletOverview, WalletError> {
         let scan = self.scan()?;
         Ok(WalletOverview {
             balances: self.token_balances(&scan.spendable)?,
             activity: activity::entries(&scan.history),
+            unresolved_assets: UnresolvedAssets::of(&scan.history),
         })
     }
 
@@ -891,6 +966,7 @@ impl MobileWallet {
         mint: Option<String>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
         if outputs.is_empty() {
             return Err(WalletError::NoOutputs);
@@ -959,13 +1035,15 @@ impl MobileWallet {
             None => Vec::new(),
         };
         let unsigned = self.prove(transaction, settlements, payer, proving)?;
+        let mut unsigned = with_setup(unsigned, &payer, &setup)?;
+        unsigned.message = self.with_priority_fee(unsigned.message, priority_fee_lamports)?;
         let pending = self.proved(
             Operation::Spend {
                 mint: mint_name(&asset.mint),
                 outputs,
                 created_token_accounts: created.iter().map(ToString::to_string).collect(),
             },
-            with_setup(unsigned, &payer, &setup)?,
+            unsigned,
         );
         Ok(self.reserve(pending, spends))
     }
@@ -1014,6 +1092,21 @@ impl MobileWallet {
             (Proving::Remote, None) => Err(WalletError::RemoteProverMissing),
             _ => Ok(proving),
         }
+    }
+
+    /// `message` with the priority fee `priority_fee_lamports` names, or else
+    /// [`WalletConfig::priority_fee_lamports`], in its v1 header; as built
+    /// without either. The header is not part of a proof, only of the
+    /// signatures, so a proved message takes the fee as it is.
+    fn with_priority_fee(
+        &self,
+        mut message: VersionedMessage,
+        priority_fee_lamports: Option<u64>,
+    ) -> Result<VersionedMessage, WalletError> {
+        if let Some(fee) = priority_fee_lamports.or(self.priority_fee) {
+            set_priority_fee(&mut message, fee)?;
+        }
+        Ok(message)
     }
 
     /// A message with `instructions`, paid by this account. Its blockhash is
@@ -1303,26 +1396,15 @@ impl MobileWallet {
             }
             transaction_signatures.push(Signature::from(signature));
         }
-        let signature = transaction_signatures[0];
         let transaction = VersionedTransaction {
             signatures: transaction_signatures,
             message: pending.message.clone(),
         };
         self.forget_notes();
-        match self.client.process_transaction(transaction) {
-            Ok(_) => {}
-            // The chain refused it, in simulation or after it ran: it never
-            // spent its notes.
-            Err(failure) if settles_the_send(&failure) => {
-                self.release(pending);
-                return Err(failure.into());
-            }
-            // A send can fail after the transaction went out, such as when
-            // the RPC loses the confirmation: look for it before failing.
-            Err(_) => self.outcome(pending, signature)?,
-        }
-        self.settle(pending, signature, true)?;
-        Ok(signature.to_string())
+        let sent = self
+            .client
+            .submit_transaction_sync(transaction, pending.last_valid_block_height);
+        Ok(self.settle(pending, sent)?.to_string())
     }
 
     /// Wait for a transaction the application sent itself, as
@@ -1348,7 +1430,14 @@ impl MobileWallet {
         if !signed_by(fee_payer, &pending.message(), signature.as_array()) {
             return Err(WalletError::SignatureInvalid);
         }
-        self.settle(pending, signature, false)
+        self.forget_notes();
+        if !pending.operation.indexed() {
+            return wait_for_confirmation(&self.client, signature);
+        }
+        let outcome = self
+            .client
+            .wait_for_private_transaction_sync(signature, Some(pending.last_valid_block_height));
+        self.settle(pending, outcome)
     }
 
     /// Wait for a shielded-pool transaction by its signature, such as one sent
@@ -1362,6 +1451,13 @@ impl MobileWallet {
     /// Save the prepared transaction's last valid block height with its
     /// signature: without it, a transaction never seen cannot be told expired
     /// and ends unknown.
+    ///
+    /// The RPC's status cache holds recent transactions only, so one waited
+    /// for long after it was sent may be gone from it though it landed. Past
+    /// `last_valid_block_height`, a transaction the cache does not hold is
+    /// looked for at the indexer once the indexer reached the RPC's slot: it
+    /// is expired only when the indexer does not have it, and unknown while
+    /// the indexer cannot be read.
     pub fn wait_for_transaction(
         &self,
         signature: String,
@@ -1370,60 +1466,25 @@ impl MobileWallet {
         let signature =
             Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
         self.forget_notes();
-        reconcile(
-            &self.client,
-            signature,
-            last_valid_block_height,
-            self.send_lookup,
-        )?;
-        Ok(self.client.confirm_private_transaction_sync(signature)?)
+        Ok(self
+            .client
+            .wait_for_private_transaction_sync(signature, last_valid_block_height)?)
     }
 
-    /// Wait for `pending`, sent as `signature`: a registration or a merging
-    /// change until Solana confirms it, a shielded-pool transaction until its
-    /// outcome is known and the indexer has it. `landed` when the send
-    /// already confirmed it, so its status is not asked again.
-    fn settle(
+    /// `outcome`, what became of `pending`'s send, with `pending`'s notes
+    /// released unless it is unknown: spent once it landed, free again when
+    /// the chain refused it, it expired or it spent a note the chain already
+    /// had. An unknown outcome keeps them reserved, since the transaction may
+    /// still land.
+    fn settle<T>(
         &self,
         pending: &PreparedTransaction,
-        signature: Signature,
-        landed: bool,
-    ) -> Result<(), WalletError> {
-        self.forget_notes();
-        if matches!(
-            pending.operation,
-            Operation::Registration | Operation::Merging { .. }
-        ) {
-            return wait_for_confirmation(&self.client, signature);
-        }
-        if landed {
-            self.release(pending);
-        } else {
-            self.outcome(pending, signature)?;
-        }
-        Ok(self.client.confirm_private_transaction_sync(signature)?)
-    }
-
-    /// What became of `pending`, sent as `signature`, as [`reconcile`] tells
-    /// it. Every outcome but the unknown one releases its notes: spent once
-    /// it landed, free again when the chain refused it, it expired or it
-    /// spent a note the chain already had. An unknown outcome keeps them
-    /// reserved, since the transaction may still land.
-    fn outcome(
-        &self,
-        pending: &PreparedTransaction,
-        signature: Signature,
-    ) -> Result<(), WalletError> {
-        let outcome = reconcile(
-            &self.client,
-            signature,
-            Some(pending.last_valid_block_height),
-            self.send_lookup,
-        );
-        if !matches!(outcome, Err(WalletError::TransactionOutcomeUnknown { .. })) {
+        outcome: Result<T, ClientError>,
+    ) -> Result<T, WalletError> {
+        if !matches!(outcome, Err(ClientError::TransactionOutcomeUnknown { .. })) {
             self.release(pending);
         }
-        outcome
+        Ok(outcome?)
     }
 }
 
@@ -1515,122 +1576,6 @@ fn merge_expiry() -> u64 {
         .unwrap_or_default()
         .saturating_add(MERGE_LIFETIME)
         .as_secs()
-}
-
-/// How a send whose response was lost is looked up: on the indexer poll's
-/// schedule, then at its longest delay until the blockhash expires.
-const SEND_LOOKUP: IndexerPollConfig = IndexerPollConfig {
-    num_retries: 10,
-    delay_ms: 400,
-    max_delay_ms: 8_000,
-};
-
-/// What a status lookup says of a transaction whose send went unanswered.
-enum SendStatus {
-    /// Landed and confirmed, without an error.
-    Confirmed,
-    /// Landed and confirmed, and the chain refused it.
-    Refused(ChainError),
-    /// Landed but not confirmed yet: it may still be dropped with its fork.
-    Processed,
-    /// Not seen, and its blockhash still lets it land.
-    Pending,
-    /// Not seen, and its blockhash no longer lets it land.
-    Expired,
-}
-
-/// What became of `signature`, whose send went unanswered: looked up until it
-/// is confirmed, refused by the chain or expired. Lookups that fail one after
-/// another, a landed transaction that does not confirm, and, without
-/// `last_valid_block_height`, one never seen, end after `poll`'s retries as
-/// [`WalletError::TransactionOutcomeUnknown`].
-fn reconcile(
-    rpc: &impl Rpc,
-    signature: Signature,
-    last_valid_block_height: Option<u64>,
-    poll: IndexerPollConfig,
-) -> Result<(), WalletError> {
-    let unknown = |message: String| WalletError::TransactionOutcomeUnknown {
-        signature: signature.to_string(),
-        message,
-    };
-    let mut delays = poll
-        .backoff()
-        .chain(std::iter::repeat(Duration::from_millis(poll.max_delay_ms)));
-    let (mut failed_lookups, mut processed_lookups, mut unseen_lookups) = (0, 0, 0);
-    loop {
-        match send_status(rpc, signature, last_valid_block_height) {
-            Ok(SendStatus::Confirmed) => return Ok(()),
-            Ok(SendStatus::Refused(failure)) => {
-                return Err(ClientError::SolanaRpcTransaction {
-                    operation: "process_transaction",
-                    source: failure.into(),
-                }
-                .into())
-            }
-            Ok(SendStatus::Expired) => {
-                return Err(WalletError::TransactionExpired {
-                    signature: signature.to_string(),
-                })
-            }
-            Ok(SendStatus::Pending) => {
-                failed_lookups = 0;
-                unseen_lookups += 1;
-                if last_valid_block_height.is_none() && unseen_lookups > poll.num_retries {
-                    return Err(unknown(
-                        "not seen, and without its last valid block height it cannot be told expired"
-                            .to_string(),
-                    ));
-                }
-            }
-            Ok(SendStatus::Processed) => {
-                failed_lookups = 0;
-                processed_lookups += 1;
-                if processed_lookups > poll.num_retries {
-                    return Err(unknown("landed but not confirmed".to_string()));
-                }
-            }
-            Err(failure) => {
-                failed_lookups += 1;
-                if failed_lookups > poll.num_retries {
-                    return Err(unknown(client_message(&failure)));
-                }
-            }
-        }
-        sleep(delays.next().unwrap_or_default());
-    }
-}
-
-/// One look at `signature` in the RPC's status cache, which holds a landed
-/// transaction for longer than its blockhash lets it land, so one missing once
-/// `last_valid_block_height` passed never landed.
-fn send_status(
-    rpc: &impl Rpc,
-    signature: Signature,
-    last_valid_block_height: Option<u64>,
-) -> Result<SendStatus, ClientError> {
-    let status = rpc
-        .get_signature_statuses(vec![signature])?
-        .into_iter()
-        .next()
-        .flatten();
-    Ok(match status {
-        Some(status) if status.satisfies_commitment(CommitmentConfig::confirmed()) => {
-            match status.err {
-                None => SendStatus::Confirmed,
-                Some(failure) => SendStatus::Refused(failure),
-            }
-        }
-        Some(_) => SendStatus::Processed,
-        None if last_valid_block_height
-            .map(|height| Ok::<_, ClientError>(rpc.get_block_height()? > height))
-            .transpose()?
-            .unwrap_or(false) =>
-        {
-            SendStatus::Expired
-        }
-        None => SendStatus::Pending,
-    })
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
@@ -1748,9 +1693,6 @@ fn parse_pubkey(value: &str) -> Result<Pubkey, WalletError> {
 mod tests {
     use solana_keypair::Keypair;
     use solana_signer::Signer;
-    use solana_transaction_status_client_types::{
-        TransactionConfirmationStatus, TransactionStatus,
-    };
     use zolana_client::{compile_message, ClientError, ComputeBudgetConfig};
     use zolana_transaction::instructions::transact::canonical_shape;
 
@@ -1768,6 +1710,7 @@ mod tests {
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
+            priority_fee_lamports: None,
         }
     }
 
@@ -1946,158 +1889,11 @@ mod tests {
         );
     }
 
-    /// What one status lookup answers.
-    #[derive(Clone)]
-    enum Lookup {
-        Fails,
-        Missing,
-        Processed,
-        Confirmed(Option<ChainError>),
-    }
-
-    /// An RPC whose status lookups answer `lookups` in turn, the last one from
-    /// then on, at `block_height`. Counts the lookups.
-    struct Lookups {
-        lookups: Mutex<std::collections::VecDeque<Lookup>>,
-        block_height: u64,
-        asked: Mutex<u32>,
-    }
-
-    impl Lookups {
-        fn new(lookups: &[Lookup], block_height: u64) -> Self {
-            Self {
-                lookups: Mutex::new(lookups.iter().cloned().collect()),
-                block_height,
-                asked: Mutex::new(0),
-            }
-        }
-    }
-
-    impl Rpc for Lookups {
-        fn get_block_height(&self) -> Result<u64, ClientError> {
-            Ok(self.block_height)
-        }
-
-        fn get_signature_statuses(
-            &self,
-            signatures: Vec<Signature>,
-        ) -> Result<Vec<Option<TransactionStatus>>, ClientError> {
-            *self.asked.lock().unwrap() += 1;
-            let mut lookups = self.lookups.lock().unwrap();
-            let lookup = if lookups.len() > 1 {
-                lookups.pop_front()
-            } else {
-                lookups.front().cloned()
-            };
-            let level = |err, confirmation_status| {
-                Some(TransactionStatus {
-                    slot: 1,
-                    confirmations: Some(1),
-                    status: Ok(()),
-                    err,
-                    confirmation_status: Some(confirmation_status),
-                })
-            };
-            let status = match lookup.expect("a scripted lookup") {
-                Lookup::Fails => return Err(ClientError::Rpc("lookup timed out".into())),
-                Lookup::Missing => None,
-                Lookup::Processed => level(None, TransactionConfirmationStatus::Processed),
-                Lookup::Confirmed(err) => level(err, TransactionConfirmationStatus::Confirmed),
-            };
-            Ok(signatures.iter().map(|_| status.clone()).collect())
-        }
-    }
-
     const QUICK: IndexerPollConfig = IndexerPollConfig {
         num_retries: 2,
         delay_ms: 1,
         max_delay_ms: 1,
     };
-
-    fn reconciled(rpc: &Lookups) -> Result<(), WalletError> {
-        reconcile(rpc, Signature::from([3; 64]), Some(100), QUICK)
-    }
-
-    /// The lookups last until the blockhash expires, however short the
-    /// retry schedule, and only a confirmed status counts: a processed one
-    /// can still be dropped with its fork.
-    #[test]
-    fn a_lost_send_is_looked_up_until_it_is_confirmed() {
-        let unseen = Lookups::new(
-            &[
-                Lookup::Missing,
-                Lookup::Missing,
-                Lookup::Missing,
-                Lookup::Missing,
-                Lookup::Confirmed(None),
-            ],
-            99,
-        );
-        assert_eq!(reconciled(&unseen), Ok(()));
-
-        let processed = Lookups::new(&[Lookup::Processed, Lookup::Confirmed(None)], 99);
-        assert_eq!(reconciled(&processed), Ok(()));
-        assert_eq!(*processed.asked.lock().unwrap(), 2);
-
-        let flaky = Lookups::new(&[Lookup::Fails, Lookup::Confirmed(None)], 99);
-        assert_eq!(reconciled(&flaky), Ok(()));
-    }
-
-    /// Each outcome says whether sending again is safe.
-    #[test]
-    fn a_lost_send_ends_refused_expired_or_unknown() {
-        let refused = Lookups::new(
-            &[Lookup::Confirmed(Some(ChainError::InsufficientFundsForFee))],
-            99,
-        );
-        assert!(matches!(
-            reconciled(&refused),
-            Err(WalletError::Client { message }) if message.contains("Insufficient funds for fee")
-        ));
-
-        let expired = Lookups::new(&[Lookup::Missing], 101);
-        assert!(matches!(
-            reconciled(&expired),
-            Err(WalletError::TransactionExpired { .. })
-        ));
-
-        let unreachable = Lookups::new(&[Lookup::Fails], 99);
-        assert!(matches!(
-            reconciled(&unreachable),
-            Err(WalletError::TransactionOutcomeUnknown { message, .. })
-                if message.contains("lookup timed out")
-        ));
-
-        let unconfirmed = Lookups::new(&[Lookup::Processed], 99);
-        assert!(matches!(
-            reconciled(&unconfirmed),
-            Err(WalletError::TransactionOutcomeUnknown { .. })
-        ));
-    }
-
-    /// A send refused in simulation was never sent and settles at once; one
-    /// found already processed may have landed and is looked up.
-    #[test]
-    fn only_an_already_processed_simulation_is_looked_up() {
-        let preflight = |err: &str| {
-            let result: solana_rpc_client_api::response::RpcSimulateTransactionResult =
-                serde_json::from_str(&format!(r#"{{"err":"{err}"}}"#)).unwrap();
-            ClientError::SolanaRpcTransaction {
-                operation: "process_transaction",
-                source: solana_rpc_client_api::request::RpcError::RpcResponseError {
-                    code: -32002,
-                    message: "Transaction simulation failed".into(),
-                    data: solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(result),
-                }
-                .into(),
-            }
-        };
-        assert!(settles_the_send(&preflight("InsufficientFundsForFee")));
-        assert!(!settles_the_send(&preflight("AlreadyProcessed")));
-        assert!(!settles_the_send(&ClientError::Rpc(
-            "connection reset".into()
-        )));
-    }
 
     /// The notes and history wait for the indexer to reach the RPC's slot,
     /// and a stalled indexer fails as `IndexerBehind` instead of answering
@@ -2126,6 +1922,7 @@ mod tests {
             WalletOverview {
                 balances: Vec::new(),
                 activity: Vec::new(),
+                unresolved_assets: UnresolvedAssets::default(),
             }
         );
         // One read of each stream serves both halves.
@@ -2422,21 +2219,21 @@ mod tests {
         assert_eq!(tag_reads(&asked), 1);
         // The merge finds nothing to take, in the notes of the read.
         assert!(matches!(
-            wallet.prepare_merge(None, None, None, None).err(),
+            wallet.prepare_merge(None, None, None, None, None).err(),
             Some(WalletError::NothingToMerge { .. })
         ));
         assert_eq!(tag_reads(&asked), 1, "no read within the window");
         wallet.forget_notes();
-        let _ = wallet.prepare_merge(None, None, None, None);
+        let _ = wallet.prepare_merge(None, None, None, None, None);
         assert_eq!(tag_reads(&asked), 2, "read again once forgotten");
         let stale = Instant::now().checked_sub(Duration::from_secs(61)).unwrap();
         wallet.recent().as_mut().unwrap().at = stale;
-        let _ = wallet.prepare_merge(None, None, None, None);
+        let _ = wallet.prepare_merge(None, None, None, None, None);
         assert_eq!(tag_reads(&asked), 3, "a read older than the window");
 
         let (mut wallet, asked) = rpc_wallet_with(&signer, config(), caught_up);
         wallet.balances().unwrap();
-        let _ = wallet.prepare_merge(None, None, None, None);
+        let _ = wallet.prepare_merge(None, None, None, None, None);
         assert_eq!(tag_reads(&asked), 2, "every spend reads without a window");
     }
 
@@ -2534,7 +2331,7 @@ mod tests {
         }
         // A valid signature gets as far as the transport, which answers
         // neither the send nor the lookups after it.
-        wallet.send_lookup = QUICK;
+        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
         let error = wallet
             .submit(&pending(), vec![valid.as_ref().to_vec()])
             .unwrap_err();
@@ -2565,7 +2362,7 @@ mod tests {
     #[test]
     fn waits_for_a_transaction_by_its_signature() {
         let mut wallet = open(&Keypair::new()).unwrap();
-        wallet.send_lookup = QUICK;
+        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
         assert_eq!(
             wallet
                 .wait_for_transaction("not-a-signature".to_string(), None)
@@ -2582,29 +2379,122 @@ mod tests {
             "{error:?}"
         );
 
-        // Not seen, and past its blockhash: sending again is safe.
-        let signer = Keypair::new();
-        let (wallet, _) = rpc_wallet(&signer, |method| match method {
-            "getBlockHeight" => serde_json::json!({"result": 10}),
-            _ => status(false),
+        // Not seen, past its blockhash, and not at the indexer once it
+        // reached the RPC's slot: sending again is safe.
+        let (wallet, asked) = gone_from_the_cache(&Keypair::new(), |_| {
+            serde_json::json!({"result": {
+                "context": {"blockTime": 0, "slot": 100},
+                "transactions": [],
+            }})
         });
         assert!(matches!(
             wallet.wait_for_transaction(Signature::default().to_string(), Some(5)),
             Err(WalletError::TransactionExpired { .. })
         ));
+        assert!(asked
+            .lock()
+            .unwrap()
+            .contains(&"getShieldedTransactionsBySignature".to_string()));
     }
 
-    /// Without its last valid block height, a transaction never seen cannot
-    /// be told expired, so it ends unknown rather than waiting forever.
+    /// A wallet whose RPC holds no transaction, past every blockhash, and
+    /// whose indexer answers a lookup by signature with `indexer(signature)`.
+    fn gone_from_the_cache(
+        signer: &Keypair,
+        indexer: impl Fn(Signature) -> serde_json::Value + Send + Sync + 'static,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        rpc_wallet_asked(signer, config(), move |method, params| match method {
+            "getSignatureStatuses" => status(false),
+            "getBlockHeight" => serde_json::json!({"result": 10}),
+            "getSlot" => serde_json::json!({"result": 100}),
+            "getShieldedTransactionsBySignature" => {
+                indexer(Signature::from_str(params["txSignature"].as_str().unwrap()).unwrap())
+            }
+            _ => serde_json::json!({"error": {"code": -32601, "message": method}}),
+        })
+    }
+
+    /// The indexer's answer for `signature`, a shielded-pool transaction it
+    /// has.
+    fn indexed_answer(signature: Signature) -> serde_json::Value {
+        let hash = |byte: u8| Pubkey::new_from_array([byte; 32]).to_string();
+        serde_json::json!({"result": {
+            "context": {"blockTime": 0, "slot": 100},
+            "transactions": [{
+                "eventIndex": 0,
+                "transaction": {
+                    "slot": 5,
+                    "txSignature": signature.to_string(),
+                    "txViewingPk": null,
+                    "outputSlots": [{
+                        "viewTag": hash(0),
+                        "outputContext": {
+                            "hash": hash(1),
+                            "tree": pda::tree(0).to_string(),
+                            "treeId": 0,
+                            "leafIndex": 0,
+                        },
+                        "payload": "",
+                    }],
+                    "messages": [],
+                    "nullifiers": [],
+                    "proofless": false,
+                },
+            }],
+        }})
+    }
+
+    /// A transaction that landed long before it is waited for: gone from the
+    /// status cache, past its blockhash, and at the indexer.
+    /// `wait_for_transaction` and `confirm` end done, a spend's notes
+    /// released, without asking the cache for it again. An indexer that
+    /// cannot be read leaves it unknown.
     #[test]
-    fn a_transaction_never_seen_without_its_height_is_unknown() {
-        let unseen = Lookups::new(&[Lookup::Missing], 1_000);
-        assert!(matches!(
-            reconcile(&unseen, Signature::from([3; 64]), None, QUICK),
-            Err(WalletError::TransactionOutcomeUnknown { message, .. })
-                if message.contains("last valid block height")
-        ));
-        assert_eq!(*unseen.asked.lock().unwrap(), QUICK.num_retries + 1);
+    fn a_transaction_gone_from_the_status_cache_is_found_at_the_indexer() {
+        let signer = Keypair::new();
+        let statuses = |asked: &Arc<Mutex<Vec<String>>>| {
+            asked
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|method| *method == "getSignatureStatuses")
+                .count()
+        };
+
+        let (wallet, asked) = gone_from_the_cache(&signer, indexed_answer);
+        let signature = Signature::from([7; 64]).to_string();
+        assert_eq!(
+            wallet.wait_for_transaction(signature.clone(), Some(5)),
+            Ok(())
+        );
+        assert_eq!(statuses(&asked), 1);
+
+        let (wallet, asked) = gone_from_the_cache(&signer, indexed_answer);
+        let pending = PreparedTransaction {
+            operation: Operation::Spend {
+                mint: None,
+                outputs: Vec::new(),
+                created_token_accounts: Vec::new(),
+            },
+            last_valid_block_height: 5,
+            ..unsigned(&signer)
+        };
+        let pending = wallet.reserve(pending, vec![[1; 32]]);
+        let sent = signer.sign_message(&pending.message()).to_string();
+        assert_eq!(wallet.confirm(&pending, sent), Ok(()));
+        assert_eq!(statuses(&asked), 1);
+        assert!(wallet.reservations().reserved.is_empty());
+
+        let (mut wallet, _) = gone_from_the_cache(
+            &signer,
+            |_| serde_json::json!({"error": {"code": -32603, "message": "Internal error"}}),
+        );
+        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
+        let error = wallet.wait_for_transaction(signature, Some(5)).unwrap_err();
+        assert!(
+            matches!(error, WalletError::TransactionOutcomeUnknown { .. }),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -2709,8 +2599,8 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let missing = |wallet: &mut MobileWallet, proving| {
             [
-                wallet.prepare_spend(vec![private(&recipient, 1)], None, None, proving),
-                wallet.prepare_spend(vec![public(&recipient, 1)], None, None, proving),
+                wallet.prepare_spend(vec![private(&recipient, 1)], None, None, proving, None),
+                wallet.prepare_spend(vec![public(&recipient, 1)], None, None, proving, None),
             ]
             .map(|result| result.err() == Some(WalletError::RemoteProverMissing))
         };
@@ -2766,7 +2656,7 @@ mod tests {
             }}),
             _ => serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
         });
-        let pending = wallet.prepare_deposit(None, 100).unwrap();
+        let pending = wallet.prepare_deposit(None, 100, None).unwrap();
         assert_eq!(
             pending.operation(),
             Operation::Deposit {
@@ -2778,6 +2668,85 @@ mod tests {
         assert_eq!(pending.message.instructions().len(), 1);
         assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
         assert_eq!(pending.last_valid_block_height(), 9);
+    }
+
+    /// A prepared transaction pays the priority fee its call names, or else
+    /// the config's, in its v1 header, and keeps it through `refresh`.
+    #[test]
+    fn a_transaction_pays_the_priority_fee_its_call_or_the_config_names() {
+        let signer = Keypair::new();
+        let blockhash = |method: &str| match method {
+            "getLatestBlockhash" => serde_json::json!({"result": {
+                "context": {"slot": 1},
+                "value": {
+                    "blockhash": "11111111111111111111111111111111",
+                    "lastValidBlockHeight": 9
+                }
+            }}),
+            _ => serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
+        };
+        let fee_in_header = |pending: &PreparedTransaction| {
+            let VersionedMessage::V1(message) =
+                wincode::deserialize::<VersionedMessage>(&pending.message()).expect("a message")
+            else {
+                panic!("not a v1 message");
+            };
+            message.config.priority_fee
+        };
+
+        let (mut wallet, _) = rpc_wallet(&signer, blockhash);
+        let pending = wallet.prepare_deposit(None, 100, None).unwrap();
+        assert_eq!(pending.priority_fee_lamports(), 0);
+        assert_eq!(fee_in_header(&pending), None);
+
+        let config = WalletConfig {
+            priority_fee_lamports: Some(5_000),
+            ..config()
+        };
+        let (mut wallet, _) = rpc_wallet_with(&signer, config, blockhash);
+        let pending = wallet.prepare_deposit(None, 100, None).unwrap();
+        assert_eq!(pending.priority_fee_lamports(), 5_000);
+        assert_eq!(fee_in_header(&pending), Some(5_000));
+        let named = wallet.prepare_deposit(None, 100, Some(12_000)).unwrap();
+        assert_eq!(named.priority_fee_lamports(), 12_000);
+        let refreshed = wallet.refresh(&named).unwrap();
+        assert_eq!(fee_in_header(&refreshed), Some(12_000));
+    }
+
+    /// The fee goes into a built message, a proved one included, and changes
+    /// nothing else of it.
+    #[test]
+    fn the_priority_fee_changes_only_the_header() {
+        let wallet = open(&Keypair::new()).unwrap();
+        let built = compile_message(
+            &wallet.owner,
+            &[set_merge_encryption_instruction(
+                wallet.owner,
+                MergeEncryptionScheme::PoseidonCtrV1,
+            )],
+            Default::default(),
+            ComputeBudgetConfig::new(450_000),
+        )
+        .unwrap();
+        let priced = wallet.with_priority_fee(built.clone(), Some(7)).unwrap();
+        let (VersionedMessage::V1(built), VersionedMessage::V1(priced)) = (built, priced) else {
+            panic!("not v1 messages");
+        };
+        assert_eq!(priced.config.priority_fee, Some(7));
+        assert_eq!(priced.config.compute_unit_limit, Some(450_000));
+        assert_eq!(
+            v1::Message {
+                config: built.config.with_priority_fee(7),
+                ..built.clone()
+            },
+            priced
+        );
+        assert_eq!(
+            wallet
+                .with_priority_fee(VersionedMessage::V1(built.clone()), None)
+                .unwrap(),
+            VersionedMessage::V1(built)
+        );
     }
 
     const MINT: Pubkey = Pubkey::new_from_array([7; 32]);
@@ -2855,7 +2824,7 @@ mod tests {
         let other = Keypair::new().pubkey();
         let deposit = |registry, config| {
             let (mut wallet, _) = token_wallet(&signer, registry, config);
-            wallet.prepare_deposit(Some(MINT.to_string()), 100)
+            wallet.prepare_deposit(Some(MINT.to_string()), 100, None)
         };
         let registered = account(
             PROGRAM_ID_PUBKEY,
@@ -2911,7 +2880,9 @@ mod tests {
             protocol_config(false, Keypair::new().pubkey()),
         );
         assert_eq!(
-            wallet.prepare_deposit(Some(MINT.to_string()), 100).err(),
+            wallet
+                .prepare_deposit(Some(MINT.to_string()), 100, None)
+                .err(),
             Some(WalletError::AssetNotSupported {
                 mint: MINT.to_string()
             })
@@ -2924,7 +2895,7 @@ mod tests {
         let (mut wallet, _) =
             token_wallet(&signer, serde_json::Value::Null, serde_json::Value::Null);
         assert!(matches!(
-            wallet.prepare_deposit(Some(MINT.to_string()), 100),
+            wallet.prepare_deposit(Some(MINT.to_string()), 100, None),
             Err(WalletError::Client { message }) if message.contains("protocol config")
         ));
     }
@@ -3054,7 +3025,7 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let spend = |wallet: &mut MobileWallet, outputs| {
             wallet
-                .prepare_spend(outputs, None, None, None)
+                .prepare_spend(outputs, None, None, None, None)
                 .err()
                 .expect("fails before the network")
         };
@@ -3150,6 +3121,11 @@ mod tests {
         let expired = move |method: &str| match method {
             "sendTransaction" => internal(),
             "getBlockHeight" => serde_json::json!({"result": 10}),
+            "getSlot" => serde_json::json!({"result": 100}),
+            "getShieldedTransactionsBySignature" => serde_json::json!({"result": {
+                "context": {"blockTime": 0, "slot": 100},
+                "transactions": [],
+            }}),
             _ => status(false),
         };
         let (wallet, _) = rpc_wallet(&signer, expired);
@@ -3170,7 +3146,7 @@ mod tests {
         assert_eq!(held(&wallet), 0, "expired after the app sent it");
 
         let (mut wallet, _) = rpc_wallet(&signer, move |_| internal());
-        wallet.send_lookup = QUICK;
+        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
         let pending = spend(&wallet);
         assert!(matches!(
             wallet.submit(&pending, signed(&pending)),
@@ -3187,15 +3163,15 @@ mod tests {
         let invalid = Some(WalletError::InvalidPubkey { value: bad.clone() });
         let error = |result: Result<PreparedTransaction, WalletError>| result.err();
         assert_eq!(
-            error(wallet.prepare_spend(vec![private(&bad, 1)], None, None, None)),
+            error(wallet.prepare_spend(vec![private(&bad, 1)], None, None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_spend(vec![public(&bad, 1)], None, None, None)),
+            error(wallet.prepare_spend(vec![public(&bad, 1)], None, None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_spend(vec![private(&recipient, 1)], None, Some(bad), None)),
+            error(wallet.prepare_spend(vec![private(&recipient, 1)], None, Some(bad), None, None)),
             invalid
         );
     }

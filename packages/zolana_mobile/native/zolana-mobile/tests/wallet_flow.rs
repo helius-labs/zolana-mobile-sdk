@@ -27,6 +27,8 @@
 //! asked through the test's transport.
 //!
 //! `ZOLANA_E2E_KEY_DIR` keeps downloaded proving keys between runs.
+//! `ZOLANA_E2E_PRIORITY_FEE` gives every transaction that priority fee, in
+//! lamports.
 //! `ZOLANA_E2E_SENDER_SEED` / `ZOLANA_E2E_RECIPIENT_SEED` (32-byte hex) reuse
 //! funded accounts, such as the example's demo accounts, where airdrops are
 //! rate limited; otherwise fresh accounts are airdropped.
@@ -97,6 +99,9 @@ fn config() -> WalletConfig {
         max_spend_inputs: None,
         reuse_notes_ms: None,
         mints: None,
+        priority_fee_lamports: env::var("ZOLANA_E2E_PRIORITY_FEE")
+            .ok()
+            .map(|fee| fee.parse().expect("priority fee in lamports")),
     }
 }
 
@@ -261,12 +266,15 @@ fn private_transfer(
     amount: u64,
 ) -> PreparedTransaction {
     wallet
-        .prepare_spend(vec![private(recipient, amount)], None, None, None)
+        .prepare_spend(vec![private(recipient, amount)], None, None, None, None)
         .expect("prove transfer")
 }
 
 fn register(wallet: &mut MobileWallet, signer: &Keypair) {
-    if let Some(pending) = wallet.prepare_registration().expect("prepare registration") {
+    if let Some(pending) = wallet
+        .prepare_registration(None)
+        .expect("prepare registration")
+    {
         submit(wallet, &[signer], pending);
     }
     assert_eq!(
@@ -297,7 +305,7 @@ fn register_deposit_transfer_and_receive() {
     let sender_before = private_sol(&mut sender_wallet);
     let recipient_before = private_sol(&mut recipient_wallet);
 
-    let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
+    let pending = sender_wallet.prepare_deposit(None, DEPOSIT, None).unwrap();
     let deposit = submit(&sender_wallet, &[&sender], pending);
     assert_eq!(private_sol(&mut sender_wallet), sender_before + DEPOSIT);
     newest(&mut sender_wallet, &deposit, ActivityKind::Deposit, DEPOSIT);
@@ -367,6 +375,7 @@ fn register_deposit_transfer_and_receive() {
             None,
             Some(recipient.pubkey().to_string()),
             None,
+            None,
         )
         .expect("another session still builds a spendable withdrawal");
     assert_eq!(
@@ -401,7 +410,7 @@ fn register_deposit_transfer_and_receive() {
 
     // Two transfers prepared before either is sent take different notes, so
     // both land: the first reserves the notes it spends.
-    let pending = sender_wallet.prepare_deposit(None, SPLIT).unwrap();
+    let pending = sender_wallet.prepare_deposit(None, SPLIT, None).unwrap();
     submit(&sender_wallet, &[&sender], pending);
     let recipient_before = private_sol(&mut recipient_wallet);
     let first = private_transfer(&mut sender_wallet, &recipient, SPLIT);
@@ -432,6 +441,7 @@ fn register_deposit_transfer_and_receive() {
             None,
             None,
             Some(Proving::Remote),
+            None,
         )
         .err();
     assert_eq!(error, Some(WalletError::ProofInvalid));
@@ -443,6 +453,7 @@ fn register_deposit_transfer_and_receive() {
             None,
             None,
             Some(Proving::Remote),
+            None,
         )
         .expect("prove transfer remotely");
     println!("built and proved remotely in {:?}", started.elapsed());
@@ -611,7 +622,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     let recipient_before = private_tokens(&mut recipient_wallet);
 
     let pending = sender_wallet
-        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT)
+        .prepare_deposit(Some(name.clone()), TOKEN_DEPOSIT, None)
         .unwrap();
     assert_eq!(
         pending.operation(),
@@ -638,6 +649,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         .prepare_spend(
             vec![private(&recipient, TOKEN_TRANSFER)],
             Some(name.clone()),
+            None,
             None,
             None,
         )
@@ -679,6 +691,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
             Some(name.clone()),
             None,
             None,
+            None,
         )
         .expect("prove a token withdrawal");
     let withdrawal = submit(&recipient_wallet, &[&recipient], pending);
@@ -706,7 +719,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     let stranger = Keypair::new();
     let outputs = vec![public(&stranger, TOKEN_PUBLIC_SEND)];
     let pending = sender_wallet
-        .prepare_spend(outputs.clone(), Some(name.clone()), None, None)
+        .prepare_spend(outputs.clone(), Some(name.clone()), None, None, None)
         .expect("prove a public token send to an account without a token account");
     assert_eq!(
         pending.operation(),
@@ -748,7 +761,7 @@ fn pays_two_recipients_in_one_transfer() {
     register(&mut sender_wallet, &sender);
     register(&mut recipient_wallet, &recipient);
     if private_sol(&mut sender_wallet) < SPLIT * 3 {
-        let pending = sender_wallet.prepare_deposit(None, DEPOSIT).unwrap();
+        let pending = sender_wallet.prepare_deposit(None, DEPOSIT, None).unwrap();
         submit(&sender_wallet, &[&sender], pending);
     }
     let sender_before = private_sol(&mut sender_wallet);
@@ -756,7 +769,7 @@ fn pays_two_recipients_in_one_transfer() {
 
     let outputs = vec![private(&recipient, SPLIT), private(&recipient, SPLIT / 4)];
     let pending = sender_wallet
-        .prepare_spend(outputs.clone(), None, None, None)
+        .prepare_spend(outputs.clone(), None, None, None, None)
         .expect("prove a transfer with two outputs");
     assert_eq!(
         pending.operation(),
@@ -797,19 +810,22 @@ fn merges_notes_proved_remotely_and_on_the_device() {
     }
     let mut wallet = open(&owner);
     register(&mut wallet, &owner);
-    if let Some(pending) = wallet.prepare_merging(true).expect("prepare merging") {
+    if let Some(pending) = wallet.prepare_merging(true, None).expect("prepare merging") {
         submit(&wallet, &[&owner], pending);
     }
     assert!(wallet.merging_enabled().unwrap());
     assert_eq!(
-        wallet.prepare_merging(true).unwrap().map(|p| p.operation()),
+        wallet
+            .prepare_merging(true, None)
+            .unwrap()
+            .map(|p| p.operation()),
         None
     );
     for proving in [Proving::Remote, Proving::Local] {
         // Notes to merge on a fresh account too, and after the last merge
         // took them all.
         for _ in 0..2 {
-            let pending = wallet.prepare_deposit(None, SPLIT).unwrap();
+            let pending = wallet.prepare_deposit(None, SPLIT, None).unwrap();
             submit(&wallet, &[&owner], pending);
         }
         let before = private_sol(&mut wallet);
@@ -820,6 +836,7 @@ fn merges_notes_proved_remotely_and_on_the_device() {
                 Some(8),
                 Some(payer.pubkey().to_string()),
                 Some(proving),
+                None,
             )
             .expect("prepare merge");
         println!("merge proved {proving:?} in {:?}", started.elapsed());

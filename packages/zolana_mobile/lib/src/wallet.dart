@@ -271,14 +271,29 @@ class ZolanaWallet {
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
   /// [balances] and [activity] from one read of the indexer, which each of
-  /// them makes on its own: a screen that shows both calls this once.
+  /// them makes on its own: a screen that shows both calls this once. Its
+  /// [native.WalletOverview.unresolvedAssets] lists the assets of notes the
+  /// read found but could not count, which both leave out: while it holds
+  /// any, show the portfolio as incomplete.
   Future<native.WalletOverview> overview() => _serial(_wallet.overview);
 
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with [WalletError.registrationConflict]
   /// when the registry holds other keys; the wallet never replaces them.
-  Future<PreparedTransaction?> prepareRegistration() =>
-      _serial(() => _prepare(_wallet.prepareRegistration()));
+  ///
+  /// Every `prepare` method takes [priorityFeeLamports], the priority fee of
+  /// the whole transaction in lamports, as a v1 message carries it, not a
+  /// price per compute unit; `WalletConfig.priorityFeeLamports` when null,
+  /// and none without either. It is in the message before the call returns,
+  /// so [PreparedTransaction.priorityFeeLamports] is what the fee payer pays
+  /// on top of the base fee of its signatures.
+  Future<PreparedTransaction?> prepareRegistration({
+    BigInt? priorityFeeLamports,
+  }) => _serial(
+    () => _prepare(
+      _wallet.prepareRegistration(priorityFeeLamports: priorityFeeLamports),
+    ),
+  );
 
   /// Whether this account's user record lets merges of its notes run;
   /// `false` before registration.
@@ -289,8 +304,17 @@ class ZolanaWallet {
   /// proved with this wallet's nullifier secret needs no signature of this
   /// account: whoever holds the secret and the notes, such as the prover at
   /// `WalletConfig.proverUrl`, can merge them. A merge cannot move funds.
-  Future<PreparedTransaction?> prepareMerging(bool enabled) =>
-      _serial(() => _prepare(_wallet.prepareMerging(enabled: enabled)));
+  Future<PreparedTransaction?> prepareMerging(
+    bool enabled, {
+    BigInt? priorityFeeLamports,
+  }) => _serial(
+    () => _prepare(
+      _wallet.prepareMerging(
+        enabled: enabled,
+        priorityFeeLamports: priorityFeeLamports,
+      ),
+    ),
+  );
 
   /// Combine the smallest notes of [mint] (SOL when null) on one tree into
   /// one: at most [maxInputs], 24 when null, 54 at most. A spend takes at most
@@ -310,6 +334,7 @@ class ZolanaWallet {
     int? maxInputs,
     String? feePayer,
     native.Proving? proving,
+    BigInt? priorityFeeLamports,
   }) => _serial(
     () => _prepare(
       _wallet.prepareMerge(
@@ -317,6 +342,7 @@ class ZolanaWallet {
         maxInputs: maxInputs,
         feePayer: feePayer,
         proving: proving,
+        priorityFeeLamports: priorityFeeLamports,
       ),
     ),
   );
@@ -331,10 +357,19 @@ class ZolanaWallet {
   /// authority do that fails with [WalletError.assetNotSupported] before
   /// anything is built. Two first deposits of one mint prepared at the same
   /// time both create them, so the second to land fails.
-  Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
-      _serial(
-        () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),
-      );
+  Future<PreparedTransaction> prepareDeposit(
+    BigInt amount, {
+    String? mint,
+    BigInt? priorityFeeLamports,
+  }) => _serial(
+    () => _prepare(
+      _wallet.prepareDeposit(
+        mint: mint,
+        amount: amount,
+        priorityFeeLamports: priorityFeeLamports,
+      ),
+    ),
+  );
 
   /// Spend private funds of [mint] (SOL when null) to [outputs], each
   /// recipient a Solana public key, in one transaction and one proof. An
@@ -381,6 +416,7 @@ class ZolanaWallet {
     String? mint,
     String? feePayer,
     native.Proving? proving,
+    BigInt? priorityFeeLamports,
   }) => _serial(
     () => _prepare(
       _wallet.prepareSpend(
@@ -388,6 +424,7 @@ class ZolanaWallet {
         mint: mint,
         feePayer: feePayer,
         proving: proving,
+        priorityFeeLamports: priorityFeeLamports,
       ),
     ),
   );
@@ -406,8 +443,9 @@ class ZolanaWallet {
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
   /// wait as [confirm] does. Returns the transaction signature. A send that
   /// fails without the chain's verdict, such as a lost confirmation, is
-  /// checked against the signature's status until the blockhash expires. A
-  /// note the chain already spent fails with [WalletError.notesAlreadySpent].
+  /// checked against the signature's status until the blockhash expires, and
+  /// then at the indexer, as [waitForTransaction] does. A note the chain
+  /// already spent fails with [WalletError.notesAlreadySpent].
   ///
   /// A spend's notes are released once the send has an outcome: spent when
   /// it landed, free for the next spend when the chain refused it, it
@@ -456,6 +494,13 @@ class ZolanaWallet {
   /// the prepared transaction's [PreparedTransaction.lastValidBlockHeight]
   /// with its signature: without it, a transaction never seen cannot be told
   /// expired and ends unknown.
+  ///
+  /// The RPC's status cache holds recent transactions only, so one waited
+  /// for long after it was sent may be gone from it though it landed. Past
+  /// [lastValidBlockHeight], a transaction the cache does not hold is looked
+  /// for at the indexer once the indexer reached the RPC's slot: it is
+  /// expired only when the indexer does not have it, and unknown while the
+  /// indexer cannot be read.
   Future<void> waitForTransaction(
     String signature, {
     BigInt? lastValidBlockHeight,
@@ -468,43 +513,72 @@ class ZolanaWallet {
 
   /// [prepareRegistration], signed and submitted. `null` when already
   /// registered.
-  Future<String?> register() => _serial(() async {
-    final transaction = await _prepare(_wallet.prepareRegistration());
+  Future<String?> register({BigInt? priorityFeeLamports}) => _serial(() async {
+    final transaction = await _prepare(
+      _wallet.prepareRegistration(priorityFeeLamports: priorityFeeLamports),
+    );
     return transaction == null ? null : _signAndSubmit(transaction);
   });
 
   /// [prepareMerging], signed and submitted. `null` when the record already
   /// says so.
-  Future<String?> setMerging(bool enabled) => _serial(() async {
-    final transaction = await _prepare(
-      _wallet.prepareMerging(enabled: enabled),
-    );
-    return transaction == null ? null : _signAndSubmit(transaction);
-  });
+  Future<String?> setMerging(bool enabled, {BigInt? priorityFeeLamports}) =>
+      _serial(() async {
+        final transaction = await _prepare(
+          _wallet.prepareMerging(
+            enabled: enabled,
+            priorityFeeLamports: priorityFeeLamports,
+          ),
+        );
+        return transaction == null ? null : _signAndSubmit(transaction);
+      });
 
   /// [prepareMerge], signed and submitted by this account.
   Future<String> merge({
     String? mint,
     int? maxInputs,
     native.Proving? proving,
+    BigInt? priorityFeeLamports,
   }) => _serial(
     () => _send(
-      _wallet.prepareMerge(mint: mint, maxInputs: maxInputs, proving: proving),
+      _wallet.prepareMerge(
+        mint: mint,
+        maxInputs: maxInputs,
+        proving: proving,
+        priorityFeeLamports: priorityFeeLamports,
+      ),
     ),
   );
 
   /// [prepareDeposit], signed and submitted.
-  Future<String> deposit(BigInt amount, {String? mint}) =>
-      _serial(() => _send(_wallet.prepareDeposit(mint: mint, amount: amount)));
+  Future<String> deposit(
+    BigInt amount, {
+    String? mint,
+    BigInt? priorityFeeLamports,
+  }) => _serial(
+    () => _send(
+      _wallet.prepareDeposit(
+        mint: mint,
+        amount: amount,
+        priorityFeeLamports: priorityFeeLamports,
+      ),
+    ),
+  );
 
   /// [prepareSpend], signed and submitted by this account.
   Future<String> spend({
     required List<native.Output> outputs,
     String? mint,
     native.Proving? proving,
+    BigInt? priorityFeeLamports,
   }) => _serial(
     () => _send(
-      _wallet.prepareSpend(outputs: outputs, mint: mint, proving: proving),
+      _wallet.prepareSpend(
+        outputs: outputs,
+        mint: mint,
+        proving: proving,
+        priorityFeeLamports: priorityFeeLamports,
+      ),
     ),
   );
 
