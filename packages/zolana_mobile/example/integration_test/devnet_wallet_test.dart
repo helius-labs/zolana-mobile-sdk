@@ -28,10 +28,14 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 /// ```
 ///
 /// `--dart-define=ZOLANA_E2E_PROVER_URL=...` proves remotely with another
-/// prover than the Helius gateway.
+/// prover than the deployment's.
 const _enabled = bool.fromEnvironment('ZOLANA_E2E');
 const _apiKey = String.fromEnvironment('ZOLANA_API_KEY');
 const _proverUrl = String.fromEnvironment('ZOLANA_E2E_PROVER_URL');
+
+/// devnet-d's attested prover, directly until the Helius gateway serves
+/// devnet-d.
+const _deploymentProver = 'https://d1unet9hn0mci0.cloudfront.net';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -126,7 +130,7 @@ void main() {
       'key downloads: ${transport.sent.where((r) => r.startsWith('GET '))}',
     );
     expect(transport.sent, contains('POST /'));
-    expect(transport.sent, contains('POST /v1/zolana/getMerkleProofs'));
+    expect(transport.sent, anyElement(endsWith('/getMerkleProofs')));
   }, skip: !_enabled);
 
   testWidgets('sends privately from A to B, proved remotely', (tester) async {
@@ -153,9 +157,9 @@ void main() {
       throwsA(const WalletError.remoteProverMissing()),
     );
     await local.close();
-    // By default the Helius gateway, whose base URL is the indexer's.
+    // By default the deployment's attested prover.
     final remote = await sender(
-      proverUrl: _proverUrl.isEmpty ? Network.devnet.indexerUrl : _proverUrl,
+      proverUrl: _proverUrl.isEmpty ? _deploymentProver : _proverUrl,
     );
     addTearDown(remote.close);
     final recipient = await open(demoAccounts[1]);
@@ -183,13 +187,21 @@ void main() {
       'proofs: ${transport.sent.where(_isProof)}',
     );
     expect(transport.sent, contains('POST /'));
-    expect(transport.sent, contains('POST /v1/zolana/getMerkleProofs'));
+    expect(transport.sent, anyElement(endsWith('/getMerkleProofs')));
     expect(
       transport.sent.where((r) => r.startsWith('POST ') && _isProof(r)),
       hasLength(1),
     );
+    // The prover attests before it gets the encrypted request; nothing else
+    // is fetched, no proving key among it.
+    expect(transport.sent, contains('GET /tee/v1/attestation'));
     expect(
-      transport.sent.where((r) => r.startsWith('GET ') && !_isProof(r)),
+      transport.sent.where(
+        (r) =>
+            r.startsWith('GET ') &&
+            !_isProof(r) &&
+            r != 'GET /tee/v1/attestation',
+      ),
       isEmpty,
     );
   }, skip: !_enabled);
@@ -260,7 +272,7 @@ void main() {
     final wallet = await ZolanaWallet.open(
       signer: await DemoSigner.fromSeedHex(demoAccounts[1].seedHex),
       config: await config(
-        proverUrl: _proverUrl.isEmpty ? Network.devnet.indexerUrl : _proverUrl,
+        proverUrl: _proverUrl.isEmpty ? _deploymentProver : _proverUrl,
       ),
       transport: transport.send,
     );

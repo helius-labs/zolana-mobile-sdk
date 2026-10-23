@@ -291,7 +291,7 @@ mod tests {
     };
 
     const REQUEST: &str = include_str!("../../../../../fixtures/prove-request-2x2.json");
-    /// The Helius prover's proof of [`REQUEST`].
+    /// A proof of [`REQUEST`] with the pinned key, as a prover returns it.
     const RESPONSE: &[u8] = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
     const PROVER_URL: &str = "https://prover.example/v1/zolana?api-key=secret";
     const PROVE_URL: &str =
@@ -307,7 +307,10 @@ mod tests {
             + 'static,
     ) -> (ProverClient, Requests) {
         let (transport, requests) = fake(answer);
-        (transport.prover(PROVER_URL.to_string()), requests)
+        (
+            transport.prover(PROVER_URL.to_string()).without_tee(),
+            requests,
+        )
     }
 
     fn sent(requests: &Requests) -> Vec<(String, String)> {
@@ -421,6 +424,7 @@ mod tests {
         });
         let prover = transport
             .prover(PROVER_URL.to_string())
+            .without_tee()
             .with_proof_timeout(std::time::Duration::from_secs(2));
         assert!(prover.prove(&Captured(transfer_2_2_key())).is_err());
         assert_eq!(
@@ -520,10 +524,12 @@ mod tests {
             utxo,
             nullifier_pubkey,
             utxo_hash,
+            tx_viewing_key: None,
             data_hash: None,
             ring_data_hash: None,
             tree_id: 0,
             leaf_index: 0,
+            latest_tree_id: None,
             slot: 0,
             tx_signature: Default::default(),
             slot_index: 0,

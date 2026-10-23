@@ -45,9 +45,9 @@ String _keyOf(String shape) => shape.startsWith('merge-')
 /// account. Nothing of this account is ever sent anywhere.
 const _publicKey = 'GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB';
 const _viewingPrivate =
-    '1fb49d0ea7f1c6fead90b0e1eccd87a9a7d08b3cd450412f685fa4bc88540c2a';
+    '10a58ab612f4b5a1222a7a0819ad626fcfb71995e114300c557ddee98764e571';
 const _viewingPublic =
-    '0299cff79e0e9e5a109e998f3868a1c358eb82e30ee4737ce8271c1e3a473ea0f6';
+    '04cac7262ffb17b01b821f96634f65967caaa6f6ac6095b8a520a5e15236842170';
 const _nullifierPrivate =
     'f172e55a6d39bf1602b0ef9d7276882b68c84dea44867b491091056e36cea1';
 const _nullifierPublic =

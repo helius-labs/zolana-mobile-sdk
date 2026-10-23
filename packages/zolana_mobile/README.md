@@ -346,8 +346,8 @@ final wallet = await ZolanaWallet.openWithKeys(
 
 | Field | Bytes | Encoding |
 |---|---|---|
-| `viewingPrivateKey` | 32 | P-256 scalar, big-endian |
-| `viewingPublicKey` | 33 | compressed SEC1 point |
+| `viewingPrivateKey` | 32 | clamped X25519 secret |
+| `viewingPublicKey` | 33 | `0x04` and the X25519 u-coordinate |
 | `nullifierPrivateKey` | 31 | nullifier secret |
 | `nullifierPublicKey` | 32 | Poseidon hash of the nullifier secret |
 
@@ -527,12 +527,21 @@ await wallet.spend(
   completes or fails.
   The Helius gateway (`https://*.helius-rpc.com/v1/zolana`) routes proofs
   by their body, so for it the paths are `/prove` and `/prove/status`.
-- **The application's backend** serves these two routes as a proxy of a
-  Zolana prover: it forwards the body and the `X-Sync` / `X-Async` header to
-  the same path of the prover, and returns the prover's status and body as
-  they are. The response carries the proof's `provingKeySha256`, which the
-  wallet checks. A Zolana prover that serves these routes can also be
-  `proverUrl` directly.
+- **Attestation**: unless `proverUrl` is the Helius gateway or a loopback
+  prover, the wallet first fetches
+  `GET <proverUrl>/tee/v1/attestation?nonce=<hex>`, checks that the prover
+  runs the enclave the Zolana SDK pins (devnet-d's
+  prover at `https://d1unet9hn0mci0.cloudfront.net`), and encrypts every
+  request body to it, with the `Zolana-Tee`, `Zolana-Tee-Enc` and
+  `Zolana-Tee-Ciphertext` headers. `WalletConfig.proverTee: false` sends
+  plaintext instead, to a backend that runs its own prover; `true` requires
+  the enclave from the gateway and loopback too.
+- **The application's backend** serves these routes as a proxy of a
+  Zolana prover: it forwards the body and the `X-Sync` / `X-Async` and
+  `Zolana-Tee*` headers to the same path of the prover, and returns the
+  prover's status, headers and body as they are. The response carries the
+  proof's `provingKeySha256`, which the wallet checks. A Zolana prover that
+  serves these routes can also be `proverUrl` directly.
 - **Verification on the device**: the wallet verifies the proof against the
   pinned verifying key and the public input it computed itself, before it
   builds the message. A response that is not a proof of the pinned key fails
@@ -547,11 +556,13 @@ await wallet.spend(
   `WalletError.remoteProverMissing`.
 - **Privacy**: the request carries the transaction's full witness: the notes
   it spends and creates, their amounts and owners, and the wallet's nullifier
-  secret (the `nullifierPrivateKey` of `exportKeys()`). The backend and its
-  prover learn the transaction and can recognize later spends of these notes.
-  They cannot move funds: every spend needs the account's signature. Prove on
-  the device when this is not acceptable. With the default transport, `open`
-  refuses a plaintext `proverUrl` off loopback with
+  secret (the `nullifierPrivateKey` of `exportKeys()`). Encrypted to an
+  attested prover, only the enclave reads it; in plaintext, the backend and
+  its prover learn the transaction and can recognize later spends of these
+  notes.
+  None of them can move funds: every spend needs the account's signature.
+  Prove on the device when this is not acceptable. With the default transport,
+  `open` refuses a plaintext `proverUrl` off loopback with
   `WalletError.proverUrlInsecure`.
 - **Retries**: the prover client sends the proof request again only when no
   response arrived. When the status arrived and the body was lost, it fails
@@ -594,7 +605,7 @@ same from one read with the history:
 
 ### Merges
 
-A merge combines up to 54 notes of one asset on one tree into one note of
+A merge combines up to 52 notes of one asset on one tree into one note of
 their sum. Merge when a spend fails with `WalletError.mergeRequired` or
 `WalletError.tooManyInputTrees`, then prepare the spend again; or before
 that, when `TokenBalance.notes` grows past what a spend should take, or
@@ -816,9 +827,9 @@ flutter pub get
 flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
 
-`ZOLANA_API_KEY` is a Helius key: the example reaches Solana RPC and the Zolana
-indexer on Helius devnet with it. It is compiled into that build only; never
-commit it.
+`ZOLANA_API_KEY` is a Helius key: the example reaches Solana devnet RPC through
+Helius with it, and Zolana's devnet-d indexer and prover without it. It is
+compiled into that build only; never commit it.
 
 ### From Xcode
 

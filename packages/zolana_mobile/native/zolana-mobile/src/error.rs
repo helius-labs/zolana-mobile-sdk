@@ -161,7 +161,7 @@ impl From<ClientError> for WalletError {
             | ClientError::MergeViewingKeyMismatch { owner } => Self::RegistrationConflict {
                 owner: owner.to_string(),
             },
-            ClientError::MergeDisabled { .. } => Self::MergingDisabled,
+            ClientError::MergeEncryptionSchemeUnsupported { .. } => Self::MergingDisabled,
             ClientError::IndexerNotCaughtUp {
                 required, indexed, ..
             } => Self::IndexerBehind {
@@ -328,7 +328,7 @@ mod tests {
         );
         let owner = solana_address::Address::new_unique();
         assert_eq!(
-            WalletError::from(ClientError::MergeDisabled { owner }),
+            WalletError::from(ClientError::MergeEncryptionSchemeUnsupported { owner }),
             WalletError::MergingDisabled
         );
         assert_eq!(

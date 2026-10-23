@@ -42,9 +42,10 @@ use solana_transaction_error::TransactionError as ChainError;
 use zeroize::Zeroizing;
 use zolana_client::{
     compile_message,
+    prover::tee::TeePolicy,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
-        resolved_address_from_record, set_merging_enabled_instruction,
+        resolved_address_from_record, set_merge_encryption_instruction,
         try_resolve_registered_address,
     },
     ClientError, ComputeBudgetConfig, IndexerPollConfig, IndexerRpcConfig, MergeSubmission,
@@ -65,6 +66,7 @@ use zolana_transaction::{
     select_merge, select_spend_excluding, AssetBalance, LocalShieldedKeys,
     SpendableDecryptionResult, TransactionError, WalletUtxo,
 };
+use zolana_user_registry_interface::MergeEncryptionScheme;
 
 use crate::{
     activity::{self, ActivityEntry},
@@ -91,6 +93,13 @@ pub struct WalletConfig {
     /// or a Zolana prover. It receives each spend's witness, the wallet's
     /// nullifier secret included.
     pub prover_url: Option<String>,
+    /// Whether the wallet sends proof requests only to a prover that attests
+    /// to the enclave the Zolana SDK pins, encrypted to it. `None`: yes,
+    /// except to a loopback prover and the Helius gateway
+    /// (`https://*.helius-rpc.com/v1/zolana`), which cannot relay encrypted
+    /// requests. `Some(false)`: plaintext to any prover, such as a backend
+    /// that runs its own. `Some(true)`: always.
+    pub prover_tee: Option<bool>,
     /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
     /// A spend that needs more fails with [`WalletError::MergeRequired`]
     /// naming this cap, before proving. Proof time and memory grow with the
@@ -113,6 +122,15 @@ pub struct WalletConfig {
     /// registered: the wallet looks up a mint a call names, and the mints of
     /// notes a read meets.
     pub mints: Option<Vec<MintConfig>>,
+}
+
+/// `prover` as [`WalletConfig::prover_tee`] asks.
+fn remote_prover(prover: ProverClient, tee: Option<bool>) -> Result<ProverClient, WalletError> {
+    Ok(match tee {
+        None => prover,
+        Some(false) => prover.without_tee(),
+        Some(true) => prover.with_tee(TeePolicy::default_deployment().map_err(ClientError::from)?),
+    })
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -276,8 +294,8 @@ impl PreparedTransaction {
 /// signature. They cannot move funds, but they show the wallet's balances and
 /// history and link its spends.
 ///
-/// - `viewing_private_key`: 32 bytes, the P-256 scalar, big-endian.
-/// - `viewing_public_key`: 33 bytes, its compressed SEC1 point.
+/// - `viewing_private_key`: 32 bytes, the clamped X25519 secret.
+/// - `viewing_public_key`: 33 bytes, `0x04` and the X25519 u-coordinate.
 /// - `nullifier_private_key`: 31 bytes.
 /// - `nullifier_public_key`: 32 bytes, the Poseidon hash of the private key.
 pub struct WalletKeys {
@@ -487,9 +505,10 @@ impl MobileWallet {
         let owner = parse_pubkey(&solana_pubkey)?;
         let viewing_secret = Zeroizing::new(keys.viewing_private_key);
         let nullifier_secret = Zeroizing::new(keys.nullifier_private_key);
-        let viewing_key =
-            ViewingKey::from_bytes(viewing_secret.as_slice().try_into().map_err(invalid_keys)?)
-                .map_err(invalid_keys)?;
+        let viewing_key = ViewingKey::from_canonical_bytes(
+            viewing_secret.as_slice().try_into().map_err(invalid_keys)?,
+        )
+        .map_err(invalid_keys)?;
         let nullifier_key = NullifierKey::from_secret(
             nullifier_secret
                 .as_slice()
@@ -557,7 +576,11 @@ impl MobileWallet {
             send_lookup: SEND_LOOKUP,
             proving_keys,
             native_prover,
-            remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
+            remote_prover: config
+                .prover_url
+                .map(|url| remote_prover(transport.prover(url), config.prover_tee))
+                .transpose()?
+                .map(Arc::new),
             client,
         })
     }
@@ -599,13 +622,8 @@ impl MobileWallet {
     /// with [`WalletError::RegistrationConflict`] when it holds other keys:
     /// this wallet never replaces them.
     pub fn prepare_registration(&self) -> Result<Option<PreparedTransaction>, WalletError> {
-        let message = build_registration_transaction_sync(
-            &self.client,
-            self.owner,
-            &self.address,
-            None,
-            None,
-        )?;
+        let message =
+            build_registration_transaction_sync(&self.client, self.owner, &self.address, None)?;
         message
             .map(|message| self.pending(Operation::Registration, message))
             .transpose()
@@ -616,7 +634,7 @@ impl MobileWallet {
     pub fn merging_enabled(&self) -> Result<bool, WalletError> {
         Ok(
             fetch_user_record_optional_checked(&self.client, self.owner)?
-                .is_some_and(|record| record.merging_enabled),
+                .is_some_and(|record| record.merge_encryption != MergeEncryptionScheme::Disabled),
         )
     }
 
@@ -632,7 +650,12 @@ impl MobileWallet {
         if self.merging_enabled()? == enabled {
             return Ok(None);
         }
-        let instruction = set_merging_enabled_instruction(self.owner, enabled);
+        let scheme = if enabled {
+            MergeEncryptionScheme::PoseidonCtrV1
+        } else {
+            MergeEncryptionScheme::Disabled
+        };
+        let instruction = set_merge_encryption_instruction(self.owner, scheme);
         self.pending(
             Operation::Merging { enabled },
             self.message(&[instruction])?,
@@ -749,7 +772,7 @@ impl MobileWallet {
             depositor: self.owner,
             deposits: vec![AssetDeposit {
                 asset: deposit_asset,
-                view_tag: self.address.viewing_pubkey.x(),
+                view_tag: self.address.viewing_pubkey.u(),
                 owner: self.address.owner_hash()?,
                 amount,
                 memo: None,
@@ -1772,6 +1795,7 @@ mod tests {
             proving_key_url: None,
             proving: None,
             prover_url: None,
+            prover_tee: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
@@ -2209,10 +2233,12 @@ mod tests {
             nullifier_pubkey: [0; 32],
             utxo_hash: [nullifier; 32],
             nullifier: [nullifier; 32],
+            tx_viewing_key: None,
             data_hash: None,
             ring_data_hash: None,
             tree_id,
             leaf_index: 0,
+            latest_tree_id: None,
             slot: 0,
             tx_signature: Signature::default(),
             slot_index: 0,
@@ -2727,6 +2753,7 @@ mod tests {
         let config = |prover_url: Option<&str>| WalletConfig {
             proving: Some(Proving::Remote),
             prover_url: prover_url.map(str::to_string),
+            prover_tee: None,
             ..config()
         };
         let mut remote = open_with(&signer, config(None)).unwrap();
@@ -2734,6 +2761,26 @@ mod tests {
         assert_eq!(missing(&mut remote, Some(Proving::Local)), [false; 2]);
         let mut remote = open_with(&signer, config(Some("https://prover.example"))).unwrap();
         assert_eq!(missing(&mut remote, None), [false; 2]);
+    }
+
+    /// A remote prover gets attested, encrypted requests unless the config
+    /// says otherwise; the Helius gateway and a loopback prover get plaintext.
+    #[test]
+    fn prover_tee_decides_whether_proof_requests_are_encrypted() {
+        let transport = unreachable();
+        let tee = |url: &str, tee| {
+            remote_prover(transport.prover(url.to_string()), tee)
+                .unwrap()
+                .has_tee()
+        };
+        assert!(tee("https://prover.example", None));
+        assert!(!tee("https://prover.example", Some(false)));
+        assert!(!tee(
+            "https://beta-devnet.helius-rpc.com/v1/zolana?api-key=k",
+            None
+        ));
+        assert!(!tee("http://127.0.0.1:3001", None));
+        assert!(tee("http://127.0.0.1:3001", Some(true)));
     }
 
     /// A deposit is one instruction this account pays for and signs, and the

@@ -2,6 +2,13 @@
 
 Unreleased.
 
+* Built on Zolana v0.5.0-alpha, which devnet-d runs: shielded pool
+  `spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt`, user registry
+  `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`. The viewing key is an X25519
+  key.
+* Remote proof requests go only to a prover that attests to the enclave the
+  Zolana SDK pins, encrypted to it, except to the Helius gateway and a
+  loopback prover; `WalletConfig.proverTee` overrides that.
 * On Android the package requests `android.permission.INTERNET`, which
   Flutter's template grants only to debug and profile builds: a release
   app without it could not download a proving key.
@@ -54,7 +61,7 @@ Unreleased.
   `confirm` for applications that sign and send transactions themselves.
   `feePayer` lets another account pay the network fee of a spend.
 * Merges: `setMerging` / `prepareMerging` and `mergingEnabled()` for the
-  account's opt-in, and `merge` / `prepareMerge` to combine up to 54 notes of
+  account's opt-in, and `merge` / `prepareMerge` to combine up to 52 notes of
   one asset on one tree into one, proved on the device or by `proverUrl`.
   A merge needs only the fee payer's signature and expires ten minutes after
   it is prepared.

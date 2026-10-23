@@ -909,7 +909,7 @@ mod tests {
             wide.iter()
                 .filter(|name| name.starts_with("merge_"))
                 .collect::<Vec<_>>(),
-            ["merge_8_1.key", "merge_24_1.key", "merge_54_1.key"]
+            ["merge_8_1.key", "merge_24_1.key", "merge_52_1.key"]
         );
         assert_eq!(
             needed(1, vec![17], 0).unwrap_err(),
@@ -1215,7 +1215,7 @@ mod tests {
         let store = KeyStore::new(&root, None, unreachable());
         let status = store.status();
         assert!(status.iter().all(|key| is_wallet_key(&key.name)));
-        assert!(status.iter().any(|key| key.name == "merge_54_1.key"));
+        assert!(status.iter().any(|key| key.name == "merge_52_1.key"));
         assert!(!status.iter().any(|key| key.name.contains("ring")));
         assert!(status.windows(2).all(|pair| pair[0].size <= pair[1].size));
         let dir = root.join(key_set());

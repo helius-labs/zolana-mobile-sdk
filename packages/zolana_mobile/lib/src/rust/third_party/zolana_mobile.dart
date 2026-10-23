@@ -944,6 +944,14 @@ class WalletConfig {
   /// nullifier secret included.
   final String? proverUrl;
 
+  /// Whether the wallet sends proof requests only to a prover that attests
+  /// to the enclave the Zolana SDK pins, encrypted to it. `None`: yes,
+  /// except to a loopback prover and the Helius gateway
+  /// (`https://*.helius-rpc.com/v1/zolana`), which cannot relay encrypted
+  /// requests. `Some(false)`: plaintext to any prover, such as a backend
+  /// that runs its own. `Some(true)`: always.
+  final bool? proverTee;
+
   /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
   /// A spend that needs more fails with [`WalletError::MergeRequired`]
   /// naming this cap, before proving. Proof time and memory grow with the
@@ -976,6 +984,7 @@ class WalletConfig {
     this.provingKeyUrl,
     this.proving,
     this.proverUrl,
+    this.proverTee,
     this.maxSpendInputs,
     this.reuseNotesMs,
     this.mints,
@@ -989,6 +998,7 @@ class WalletConfig {
       provingKeyUrl.hashCode ^
       proving.hashCode ^
       proverUrl.hashCode ^
+      proverTee.hashCode ^
       maxSpendInputs.hashCode ^
       reuseNotesMs.hashCode ^
       mints.hashCode;
@@ -1004,6 +1014,7 @@ class WalletConfig {
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
           proverUrl == other.proverUrl &&
+          proverTee == other.proverTee &&
           maxSpendInputs == other.maxSpendInputs &&
           reuseNotesMs == other.reuseNotesMs &&
           mints == other.mints;
@@ -1260,8 +1271,8 @@ sealed class WalletError with _$WalletError implements FrbException {
 /// signature. They cannot move funds, but they show the wallet's balances and
 /// history and link its spends.
 ///
-/// - `viewing_private_key`: 32 bytes, the P-256 scalar, big-endian.
-/// - `viewing_public_key`: 33 bytes, its compressed SEC1 point.
+/// - `viewing_private_key`: 32 bytes, the clamped X25519 secret.
+/// - `viewing_public_key`: 33 bytes, `0x04` and the X25519 u-coordinate.
 /// - `nullifier_private_key`: 31 bytes.
 /// - `nullifier_public_key`: 32 bytes, the Poseidon hash of the private key.
 class WalletKeys {
