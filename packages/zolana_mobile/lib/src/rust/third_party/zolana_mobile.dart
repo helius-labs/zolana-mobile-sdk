@@ -56,8 +56,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<List<ActivityEntry>> activity();
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the configured mints, each with what prepared spends
-  /// reserve of it and the most one spend can take per proof width.
+  /// held in SOL and the mints the wallet knows, each with what prepared
+  /// spends reserve of it and the most one spend can take per proof width.
   Future<List<TokenBalance>> balances();
 
   /// Wait for a transaction the application sent itself, as
@@ -121,6 +121,14 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
+  ///
+  /// The first deposit of a mint into the pool creates the mint's registry
+  /// entry and vault in the same transaction, signed and paid for by this
+  /// account; [`Operation::Deposit`] says so. A pool whose protocol config
+  /// lets only its authority create them refuses with
+  /// [`WalletError::AssetNotSupported`] before the blockhash is read. Two
+  /// first deposits of one mint prepared at the same time both create
+  /// them, so the second to land fails.
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
@@ -171,9 +179,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// a zero amount with [`WalletError::AmountZero`]. Then, beside the note
   /// selection, an unregistered private recipient fails with
   /// [`WalletError::RecipientNotRegistered`] instead of being paid
-  /// publicly, and a public token recipient without an associated token
-  /// account with [`WalletError::RecipientTokenAccountMissing`]; the
-  /// application creates the account with its own Solana client.
+  /// publicly. A public token recipient without an associated token
+  /// account for the mint gets one: the transaction creates it ahead of
+  /// the spend, the fee payer pays its rent, and
+  /// [`Operation::Spend`]'s `created_token_accounts` names the recipient.
   ///
   /// The private outputs and the change take the proof's output slots,
   /// public outputs none: a spend with `k` private outputs proves with
@@ -472,16 +481,28 @@ sealed class Operation with _$Operation {
   const factory Operation.registration() = Operation_Registration;
 
   /// Moves public funds into the private balance. Public: sender, asset,
-  /// amount.
-  const factory Operation.deposit({String? mint, required BigInt amount}) =
-      Operation_Deposit;
+  /// amount. `creates_spl_interface` when it is the mint's first deposit
+  /// into the pool: the transaction first creates the mint's registry
+  /// entry and vault, and this account pays their rent.
+  const factory Operation.deposit({
+    String? mint,
+    required BigInt amount,
+    required bool createsSplInterface,
+  }) = Operation_Deposit;
 
   /// Spends private funds of one asset to `outputs`, in the order given.
   /// Public: this account, the asset, each public output's recipient and
   /// amount, and the Solana address each private output's note is tagged
   /// with. Hidden: the private amounts and the change.
-  const factory Operation.spend({String? mint, required List<Output> outputs}) =
-      Operation_Spend;
+  ///
+  /// `created_token_accounts` are the public token recipients that had no
+  /// associated token account for the mint: the transaction creates each,
+  /// and the fee payer pays its rent.
+  const factory Operation.spend({
+    String? mint,
+    required List<Output> outputs,
+    required List<String> createdTokenAccounts,
+  }) = Operation_Spend;
 
   /// Turns merges of this account's notes on or off. Public: the account
   /// and the setting.
@@ -512,7 +533,8 @@ sealed class Output with _$Output {
   }) = Output_Private;
 
   /// Public funds to a Solana account, tokens to its associated token
-  /// account. Recipient and amount are public.
+  /// account, which the transaction creates when it does not exist.
+  /// Recipient and amount are public.
   const factory Output.public({
     required String recipient,
     required BigInt amount,
@@ -940,11 +962,12 @@ class WalletConfig {
   final BigInt? reuseNotesMs;
 
   /// The SPL mints the wallet holds, each with its token program. A call
-  /// that names another mint fails with [`WalletError::MintNotConfigured`].
-  /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
-  /// are left out, as the Zolana SDK leaves out assets its registry does
-  /// not hold.
-  final List<MintConfig> mints;
+  /// that names another mint fails with [`WalletError::MintNotConfigured`],
+  /// and [`MobileWallet::balances`] reports SOL and these only; notes in
+  /// other mints are left out. `None` holds every mint the shielded pool
+  /// registered: the wallet looks up a mint a call names, and the mints of
+  /// notes a read meets.
+  final List<MintConfig>? mints;
 
   const WalletConfig({
     required this.rpcUrl,
@@ -955,7 +978,7 @@ class WalletConfig {
     this.proverUrl,
     this.maxSpendInputs,
     this.reuseNotesMs,
-    required this.mints,
+    this.mints,
   });
 
   @override
@@ -1049,19 +1072,15 @@ sealed class WalletError with _$WalletError implements FrbException {
     required String recipient,
   }) = WalletError_RecipientNotRegistered;
 
-  /// `recipient` has no associated token account for `mint`. The
-  /// application's Solana client creates it.
-  const factory WalletError.recipientTokenAccountMissing({
-    required String recipient,
-    required String mint,
-  }) = WalletError_RecipientTokenAccountMissing;
-
   /// The user registry holds other keys for `owner`. The wallet never
   /// replaces them.
   const factory WalletError.registrationConflict({required String owner}) =
       WalletError_RegistrationConflict;
 
-  /// The shielded pool has not registered `mint`.
+  /// The shielded pool has not registered `mint`, so it has no notes to
+  /// spend or merge, or its registry entry does not decode. A deposit
+  /// registers it, unless the pool's protocol config lets only its
+  /// authority do so.
   const factory WalletError.assetNotSupported({required String mint}) =
       WalletError_AssetNotSupported;
 

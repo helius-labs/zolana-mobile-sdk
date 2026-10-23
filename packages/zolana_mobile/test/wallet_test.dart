@@ -15,7 +15,6 @@ const config = WalletConfig(
   rpcUrl: 'https://rpc.example',
   indexerUrl: 'https://indexer.example',
   provingKeyDir: '/keys',
-  mints: [],
 );
 
 final savedKeys = WalletKeys(
@@ -204,7 +203,11 @@ class FakeWallet implements MobileWallet {
     required BigInt amount,
   }) async => FakePending(
     Uint8List.fromList([1, 2]),
-    operation: Operation.deposit(mint: mint, amount: amount),
+    operation: Operation.deposit(
+      mint: mint,
+      amount: amount,
+      createsSplInterface: false,
+    ),
   );
 
   @override
@@ -223,7 +226,11 @@ class FakeWallet implements MobileWallet {
     return FakePending(
       Uint8List.fromList([7, 8]),
       signers: spendSigners,
-      operation: Operation.spend(mint: mint, outputs: outputs),
+      operation: Operation.spend(
+        mint: mint,
+        outputs: outputs,
+        createdTokenAccounts: const [],
+      ),
     );
   }
 
@@ -546,7 +553,6 @@ void main() {
       provingKeyDir: config.provingKeyDir,
       provingKeyUrl: keys,
       proverUrl: prover,
-      mints: const [],
     );
     const plaintext = 'http://10.0.2.2:8899/?api-key=secret';
     // The error names the URL without its key.
@@ -612,7 +618,6 @@ void main() {
         provingKeyDir: '/keys',
         proving: Proving.remote,
         proverUrl: 'https://backend.example/zolana?api-key=secret',
-        mints: [],
       );
       final opened = FakeBackend(FakeWallet());
       await ZolanaWallet.open(
@@ -1007,7 +1012,7 @@ void main() {
     expect(await wallet.deposit(BigInt.one), 'signature');
     expect(
       signer.requests.single.$2?.operation,
-      Operation.deposit(amount: BigInt.one),
+      Operation.deposit(amount: BigInt.one, createsSplInterface: false),
     );
     await expectLater(
       ZolanaWallet.openWithKeys(
@@ -1099,6 +1104,7 @@ void main() {
         outputs: [
           Output.private(recipient: 'Recipient', amount: BigInt.from(5)),
         ],
+        createdTokenAccounts: const [],
       ),
     );
     expect(native.submitted.single.$2.single, [8, 7]);
@@ -1122,6 +1128,7 @@ void main() {
           outputs: [
             Output.private(recipient: 'Recipient', amount: BigInt.from(5)),
           ],
+          createdTokenAccounts: const [],
         ),
         owner,
       ),
@@ -1200,7 +1207,11 @@ void main() {
     await wallet.spend(outputs: outputs, mint: 'Mint');
     expect(
       signer.requests.last.$2?.operation,
-      Operation.spend(mint: 'Mint', outputs: outputs),
+      Operation.spend(
+        mint: 'Mint',
+        outputs: outputs,
+        createdTokenAccounts: const [],
+      ),
     );
   });
 

@@ -33,8 +33,8 @@ use std::{
 };
 
 use solana_commitment_config::CommitmentConfig;
-use solana_instruction::Instruction;
-use solana_message::VersionedMessage;
+use solana_instruction::{AccountMeta, Instruction};
+use solana_message::{v1, VersionedMessage};
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
@@ -51,10 +51,11 @@ use zolana_client::{
     ProverClient, Rpc, SignedPrivateTransaction, SolanaRpc, Submission, UnsignedMessage, UtxoScan,
     UtxoScanResult, ZolanaClient,
 };
-use zolana_interface::{pda, MAX_INPUT_TREES};
+use zolana_interface::{pda, state::ProtocolConfig, MAX_INPUT_TREES, PROGRAM_ID_PUBKEY};
 use zolana_keypair::{derivation, Curve, NullifierKey, PublicKey, ShieldedAddress, ViewingKey};
 use zolana_program::instruction::{
-    AssetDeposit, Deposit, DepositAsset, DepositSplAccounts, TransactInterfaceTransferAccounts,
+    AssetDeposit, CreateAssociatedTokenAccount, CreateSplInterface, Deposit, DepositAsset,
+    DepositSplAccounts, TransactInterfaceTransferAccounts,
 };
 use zolana_transaction::{
     instructions::{
@@ -67,7 +68,7 @@ use zolana_transaction::{
 
 use crate::{
     activity::{self, ActivityEntry},
-    asset::{mint_name, Asset, Assets, MintConfig},
+    asset::{mint_name, registrations, Asset, Assets, MintConfig},
     error::{client_message, settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
@@ -106,11 +107,12 @@ pub struct WalletConfig {
     /// read would.
     pub reuse_notes_ms: Option<u64>,
     /// The SPL mints the wallet holds, each with its token program. A call
-    /// that names another mint fails with [`WalletError::MintNotConfigured`].
-    /// [`MobileWallet::balances`] reports SOL and these. Notes in other mints
-    /// are left out, as the Zolana SDK leaves out assets its registry does
-    /// not hold.
-    pub mints: Vec<MintConfig>,
+    /// that names another mint fails with [`WalletError::MintNotConfigured`],
+    /// and [`MobileWallet::balances`] reports SOL and these only; notes in
+    /// other mints are left out. `None` holds every mint the shielded pool
+    /// registered: the wallet looks up a mint a call names, and the mints of
+    /// notes a read meets.
+    pub mints: Option<Vec<MintConfig>>,
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -140,15 +142,26 @@ pub enum Operation {
     /// Publishes the wallet's shielded address so others can pay it.
     Registration,
     /// Moves public funds into the private balance. Public: sender, asset,
-    /// amount.
-    Deposit { mint: Option<String>, amount: u64 },
+    /// amount. `creates_spl_interface` when it is the mint's first deposit
+    /// into the pool: the transaction first creates the mint's registry
+    /// entry and vault, and this account pays their rent.
+    Deposit {
+        mint: Option<String>,
+        amount: u64,
+        creates_spl_interface: bool,
+    },
     /// Spends private funds of one asset to `outputs`, in the order given.
     /// Public: this account, the asset, each public output's recipient and
     /// amount, and the Solana address each private output's note is tagged
     /// with. Hidden: the private amounts and the change.
+    ///
+    /// `created_token_accounts` are the public token recipients that had no
+    /// associated token account for the mint: the transaction creates each,
+    /// and the fee payer pays its rent.
     Spend {
         mint: Option<String>,
         outputs: Vec<Output>,
+        created_token_accounts: Vec<String>,
     },
     /// Turns merges of this account's notes on or off. Public: the account
     /// and the setting.
@@ -172,7 +185,8 @@ pub enum Output {
     /// note is tagged with the recipient's Solana address on chain.
     Private { recipient: String, amount: u64 },
     /// Public funds to a Solana account, tokens to its associated token
-    /// account. Recipient and amount are public.
+    /// account, which the transaction creates when it does not exist.
+    /// Recipient and amount are public.
     Public { recipient: String, amount: u64 },
 }
 
@@ -199,6 +213,9 @@ enum Leg {
     Public {
         recipient: Pubkey,
         amount: u64,
+        /// A token recipient without its associated token account, which the
+        /// transaction creates.
+        creates_token_account: bool,
     },
 }
 
@@ -408,7 +425,7 @@ pub struct MobileWallet {
     /// Completes the spent inputs' nullifiers when proving.
     nullifier_key: NullifierKey,
     viewing_key: ViewingKey,
-    /// SOL and the configured mints.
+    /// SOL and the mints the wallet knows.
     assets: Mutex<Assets>,
     reservations: Mutex<Reservations>,
     /// [`WalletConfig::max_spend_inputs`].
@@ -685,12 +702,34 @@ impl MobileWallet {
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
     /// its own private balance. Deposits carry no proof.
+    ///
+    /// The first deposit of a mint into the pool creates the mint's registry
+    /// entry and vault in the same transaction, signed and paid for by this
+    /// account; [`Operation::Deposit`] says so. A pool whose protocol config
+    /// lets only its authority create them refuses with
+    /// [`WalletError::AssetNotSupported`] before the blockhash is read. Two
+    /// first deposits of one mint prepared at the same time both create
+    /// them, so the second to land fails.
     pub fn prepare_deposit(
         &mut self,
         mint: Option<String>,
         amount: u64,
     ) -> Result<PreparedTransaction, WalletError> {
-        let asset = self.asset(mint)?;
+        let (asset, registered) = self
+            .assets()
+            .resolve_for_deposit(&self.client, mint.as_deref())?;
+        let mut instructions = Vec::with_capacity(2);
+        if let (false, Some(token_program)) = (registered, asset.token_program) {
+            self.check_spl_interface_creation(asset.mint)?;
+            instructions.push(
+                CreateSplInterface {
+                    authority: self.owner,
+                    mint: asset.mint,
+                    token_program,
+                }
+                .instruction(),
+            );
+        }
         let deposit_asset = match asset.token_program {
             None => DepositAsset::Sol,
             Some(token_program) => DepositAsset::Spl(DepositSplAccounts {
@@ -717,18 +756,42 @@ impl MobileWallet {
             }],
         }
         .instruction()?;
+        instructions.push(deposit);
         self.pending(
             Operation::Deposit {
                 mint: mint_name(&asset.mint),
                 amount,
+                creates_spl_interface: !registered,
             },
-            self.message(&[deposit])?,
+            self.message(&instructions)?,
         )
     }
 
+    /// Whether this account may create `mint`'s registry entry and vault, as
+    /// the pool's `create_spl_interface` decides: anyone when the protocol
+    /// config allows it, else only the protocol authority.
+    fn check_spl_interface_creation(&self, mint: Pubkey) -> Result<(), WalletError> {
+        let address = pda::protocol_config();
+        let account = self
+            .client
+            .get_account(address)?
+            .filter(|account| account.owner == PROGRAM_ID_PUBKEY)
+            .ok_or(ClientError::ProtocolConfigNotFound(address))?;
+        let config = ProtocolConfig::from_account_bytes(&account.data)
+            .map_err(|failure| ClientError::InvalidProtocolConfig(format!("{failure:?}")))?;
+        if config.allows_permissionless_spl_interface_creation()
+            || config.check_protocol_authority(&self.owner).is_ok()
+        {
+            return Ok(());
+        }
+        Err(WalletError::AssetNotSupported {
+            mint: mint.to_string(),
+        })
+    }
+
     /// Spendable private balances, read from the indexer now: one per asset
-    /// held in SOL and the configured mints, each with what prepared spends
-    /// reserve of it and the most one spend can take per proof width.
+    /// held in SOL and the mints the wallet knows, each with what prepared
+    /// spends reserve of it and the most one spend can take per proof width.
     pub fn balances(&mut self) -> Result<Vec<TokenBalance>, WalletError> {
         let spendable = self.spendable()?;
         self.token_balances(&spendable)
@@ -762,7 +825,9 @@ impl MobileWallet {
     /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
     /// the indexer now.
     pub fn private_balance(&mut self, mint: Option<String>) -> Result<u64, WalletError> {
-        let asset = self.asset(mint)?;
+        // A mint the pool has not registered holds nothing: zero, not a
+        // failure.
+        let asset = self.assets().asset(&self.client, mint.as_deref())?;
         Ok(self
             .spendable()?
             .balances
@@ -793,9 +858,10 @@ impl MobileWallet {
     /// a zero amount with [`WalletError::AmountZero`]. Then, beside the note
     /// selection, an unregistered private recipient fails with
     /// [`WalletError::RecipientNotRegistered`] instead of being paid
-    /// publicly, and a public token recipient without an associated token
-    /// account with [`WalletError::RecipientTokenAccountMissing`]; the
-    /// application creates the account with its own Solana client.
+    /// publicly. A public token recipient without an associated token
+    /// account for the mint gets one: the transaction creates it ahead of
+    /// the spend, the fee payer pays its rent, and
+    /// [`Operation::Spend`]'s `created_token_accounts` names the recipient.
     ///
     /// The private outputs and the change take the proof's output slots,
     /// public outputs none: a spend with `k` private outputs proves with
@@ -848,6 +914,7 @@ impl MobileWallet {
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
         let mut settlements = Vec::new();
+        let mut created = Vec::new();
         for leg in legs {
             match leg {
                 Leg::Private { address, amount } => {
@@ -856,27 +923,53 @@ impl MobileWallet {
                         Some(_) => transaction.transfer(&address, asset.mint, amount),
                     }?;
                 }
-                Leg::Public { recipient, amount } => settlements.push(transaction.withdraw_to(
-                    asset.mint,
-                    amount,
+                Leg::Public {
                     recipient,
-                    asset.token_program,
-                )?),
+                    amount,
+                    creates_token_account,
+                } => {
+                    if creates_token_account && !created.contains(&recipient) {
+                        created.push(recipient);
+                    }
+                    settlements.push(transaction.withdraw_to(
+                        asset.mint,
+                        amount,
+                        recipient,
+                        asset.token_program,
+                    )?);
+                }
             }
         }
+        let setup: Vec<Instruction> = match asset.token_program {
+            Some(token_program) => created
+                .iter()
+                .map(|&owner| {
+                    CreateAssociatedTokenAccount {
+                        payer,
+                        owner,
+                        mint: asset.mint,
+                        token_program,
+                    }
+                    .instruction()
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        let unsigned = self.prove(transaction, settlements, payer, proving)?;
         let pending = self.proved(
             Operation::Spend {
                 mint: mint_name(&asset.mint),
                 outputs,
+                created_token_accounts: created.iter().map(ToString::to_string).collect(),
             },
-            self.prove(transaction, settlements, payer, proving)?,
+            with_setup(unsigned, &payer, &setup)?,
         );
         Ok(self.reserve(pending, spends))
     }
 
     /// `outputs` with each recipient checked on chain: a private recipient
-    /// is registered, a public recipient of a token has its associated token
-    /// account. SOL needs no account.
+    /// is registered, and a public recipient of a token has its associated
+    /// token account or gets one. SOL needs no account.
     fn legs(
         &self,
         asset: Asset,
@@ -892,15 +985,15 @@ impl MobileWallet {
                     amount,
                 }),
                 Output::Public { amount, .. } => {
-                    if let Some(token_account) = asset.token_account(&recipient) {
-                        if self.client.get_account(token_account)?.is_none() {
-                            return Err(WalletError::RecipientTokenAccountMissing {
-                                recipient: recipient.to_string(),
-                                mint: asset.mint.to_string(),
-                            });
-                        }
-                    }
-                    Ok(Leg::Public { recipient, amount })
+                    let creates_token_account = match asset.token_account(&recipient) {
+                        Some(token_account) => self.client.get_account(token_account)?.is_none(),
+                        None => false,
+                    };
+                    Ok(Leg::Public {
+                        recipient,
+                        amount,
+                        creates_token_account,
+                    })
                 }
             })
             .collect()
@@ -1067,7 +1160,7 @@ impl MobileWallet {
         })
     }
 
-    /// SOL for `None`, otherwise a configured mint.
+    /// SOL for `None`, otherwise a configured or discovered mint.
     fn asset(&self, mint: Option<String>) -> Result<Asset, WalletError> {
         self.assets().resolve(&self.client, mint.as_deref())
     }
@@ -1078,23 +1171,42 @@ impl MobileWallet {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The wallet's spendable notes, in SOL and every configured mint, once
+    /// The wallet's spendable notes, in SOL and every mint it knows, once
     /// the indexer has caught up with the RPC.
     fn spendable(&self) -> Result<SpendableDecryptionResult, WalletError> {
         Ok(self.scan()?.spendable)
     }
 
-    /// The wallet's notes and history, in SOL and every configured mint, once
+    /// The wallet's notes and history, in SOL and every mint it knows, once
     /// the indexer has caught up with the RPC. Kept for the spends
-    /// [`WalletConfig::reuse_notes_ms`] lets take their notes from it.
+    /// [`WalletConfig::reuse_notes_ms`] lets take their notes from it. A
+    /// discovering wallet that meets notes in mints it does not know learns
+    /// the registered ones and reads once more.
     fn scan(&self) -> Result<UtxoScanResult, WalletError> {
         let indexed = self.indexed()?;
         let scan = {
             let mut assets = self.assets();
-            let registry = assets.registry(&self.client)?;
-            UtxoScan::new(&self.keys, registry)
-                .with_indexer_config(indexed)
-                .fetch(&self.client)?
+            let read = |assets: &mut Assets| -> Result<UtxoScanResult, WalletError> {
+                let registry = assets.registry(&self.client)?;
+                Ok(UtxoScan::new(&self.keys, registry)
+                    .with_indexer_config(indexed)
+                    .fetch(&self.client)?)
+            };
+            let scan = read(&mut assets)?;
+            let unknown = &scan.history;
+            if assets.discovers()
+                && !(unknown.unknown_asset_ids.is_empty() && unknown.unknown_mints.is_empty())
+                && assets.learn(
+                    &self.client,
+                    &registrations(self.client.rpc())?,
+                    &unknown.unknown_asset_ids,
+                    &unknown.unknown_mints,
+                )?
+            {
+                read(&mut assets)?
+            } else {
+                scan
+            }
         };
         if !self.reuse_notes.is_zero() {
             *self.recent() = Some(RecentRead {
@@ -1529,6 +1641,74 @@ fn send_status(
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
+/// Compute units each created associated token account adds to a message's
+/// limit: SPL's `CreateIdempotent` stays well under it, for SPL Token and
+/// Token-2022 alike.
+const CREATE_TOKEN_ACCOUNT_UNITS: u32 = 40_000;
+
+/// The most compute units a transaction can ask for.
+const MAX_COMPUTE_UNITS: u32 = 1_400_000;
+
+/// `unsigned` with `setup` ahead of its instructions and its compute limit
+/// raised for them. The client builds a v1 message of static keys, so its
+/// instructions decompile exactly and compile again behind `setup`; the
+/// blockhash, and with it the last valid block height, stay. The program
+/// checks the accounts of its own instruction, not its position.
+fn with_setup(
+    unsigned: UnsignedMessage,
+    payer: &Pubkey,
+    setup: &[Instruction],
+) -> Result<UnsignedMessage, WalletError> {
+    if setup.is_empty() {
+        return Ok(unsigned);
+    }
+    let VersionedMessage::V1(message) = &unsigned.message else {
+        return Err(ClientError::UnsupportedTransactionVersion.into());
+    };
+    let header = message.header;
+    let signers = usize::from(header.num_required_signatures);
+    let writable_signers = signers - usize::from(header.num_readonly_signed_accounts);
+    let writable_accounts =
+        message.account_keys.len() - usize::from(header.num_readonly_unsigned_accounts);
+    let account = |index: u8| {
+        let index = usize::from(index);
+        AccountMeta {
+            pubkey: message.account_keys[index],
+            is_signer: index < signers,
+            is_writable: if index < signers {
+                index < writable_signers
+            } else {
+                index < writable_accounts
+            },
+        }
+    };
+    let instructions: Vec<Instruction> = setup
+        .iter()
+        .cloned()
+        .chain(message.instructions.iter().map(|compiled| Instruction {
+            program_id: message.account_keys[usize::from(compiled.program_id_index)],
+            accounts: compiled.accounts.iter().copied().map(account).collect(),
+            data: compiled.data.clone(),
+        }))
+        .collect();
+    let mut config = message.config;
+    if let Some(limit) = config.compute_unit_limit {
+        let added = CREATE_TOKEN_ACCOUNT_UNITS.saturating_mul(setup.len() as u32);
+        config.compute_unit_limit = Some(limit.saturating_add(added).min(MAX_COMPUTE_UNITS));
+    }
+    let rebuilt = v1::Message::try_compile_with_config(
+        payer,
+        &instructions,
+        message.lifetime_specifier,
+        config,
+    )
+    .map_err(|error| ClientError::TransactionCompile(error.to_string()))?;
+    Ok(UnsignedMessage {
+        message: VersionedMessage::V1(rebuilt),
+        last_valid_block_height: unsigned.last_valid_block_height,
+    })
+}
+
 fn wait_for_confirmation(rpc: &impl Rpc, signature: Signature) -> Result<(), WalletError> {
     let poll = IndexerPollConfig::default();
     for delay in std::iter::once(Default::default()).chain(poll.backoff()) {
@@ -1594,7 +1774,7 @@ mod tests {
             prover_url: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
-            mints: Vec::new(),
+            mints: None,
         }
     }
 
@@ -1688,12 +1868,21 @@ mod tests {
         config: WalletConfig,
         answer: impl Fn(&str) -> serde_json::Value + Send + Sync + 'static,
     ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        rpc_wallet_asked(signer, config, move |method, _| answer(method))
+    }
+
+    /// [`rpc_wallet_with`], answering each method by its params too.
+    fn rpc_wallet_asked(
+        signer: &Keypair,
+        config: WalletConfig,
+        answer: impl Fn(&str, &serde_json::Value) -> serde_json::Value + Send + Sync + 'static,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&asked);
         let (transport, _) = crate::transport::tests::fake(move |request| {
             let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
             let method = body["method"].as_str().unwrap_or_default().to_string();
-            let mut reply = answer(&method);
+            let mut reply = answer(&method, &body["params"]);
             reply["jsonrpc"] = "2.0".into();
             reply["id"] = body["id"].clone();
             log.lock().unwrap().push(method);
@@ -2567,12 +2756,275 @@ mod tests {
             pending.operation(),
             Operation::Deposit {
                 mint: None,
-                amount: 100
+                amount: 100,
+                creates_spl_interface: false,
             }
         );
         assert_eq!(pending.message.instructions().len(), 1);
         assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
         assert_eq!(pending.last_valid_block_height(), 9);
+    }
+
+    const MINT: Pubkey = Pubkey::new_from_array([7; 32]);
+
+    /// An account for `getAccountInfo`, its data in base64.
+    fn account(owner: Pubkey, data: &[u8]) -> serde_json::Value {
+        use base64::Engine;
+        serde_json::json!({
+            "lamports": 1_000_000,
+            "data": [base64::engine::general_purpose::STANDARD.encode(data), "base64"],
+            "owner": owner.to_string(),
+            "executable": false,
+            "rentEpoch": 0,
+            "space": data.len(),
+        })
+    }
+
+    /// The pool's protocol config: `permissionless` mint registration, and
+    /// `authority` its protocol authority.
+    fn protocol_config(permissionless: bool, authority: Pubkey) -> serde_json::Value {
+        let config = ProtocolConfig {
+            discriminator: zolana_interface::state::discriminator::PROTOCOL_CONFIG,
+            protocol_authority: authority,
+            tree_creation_authority: authority,
+            forester_authority: authority,
+            ring_creation_authority: authority,
+            fee_authority: authority,
+            tree_creation_is_permissionless: 0,
+            ring_activation_is_permissionless: 0,
+            spl_interface_creation_is_permissionless: u8::from(permissionless),
+            next_tree_id: 1,
+        };
+        account(PROGRAM_ID_PUBKEY, bytemuck::bytes_of(&config))
+    }
+
+    /// A wallet holding [`MINT`], its registry entry `registry` (`null` for
+    /// none), and the pool's `config`; the methods it was asked.
+    fn token_wallet(
+        signer: &Keypair,
+        registry: serde_json::Value,
+        pool_config: serde_json::Value,
+    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
+        let wallet_config = WalletConfig {
+            mints: Some(vec![MintConfig {
+                mint: MINT.to_string(),
+                token_program: pda::spl_token_program_id().to_string(),
+            }]),
+            ..config()
+        };
+        let registry_address = pda::spl_asset_registry(&MINT).to_string();
+        let config_address = pda::protocol_config().to_string();
+        let answers = (registry, pool_config);
+        rpc_wallet_asked(signer, wallet_config, move |method, params| {
+            let value = match (method, params[0].as_str()) {
+                ("getAccountInfo", Some(address)) if address == registry_address => {
+                    answers.0.clone()
+                }
+                ("getAccountInfo", Some(address)) if address == config_address => answers.1.clone(),
+                ("getLatestBlockhash", _) => serde_json::json!({
+                    "blockhash": "11111111111111111111111111111111",
+                    "lastValidBlockHeight": 9
+                }),
+                _ => return serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
+            };
+            serde_json::json!({"result": {"context": {"slot": 1}, "value": value}})
+        })
+    }
+
+    /// The first deposit of a mint the pool has not registered creates its
+    /// registry entry and vault first, in the same transaction this account
+    /// signs; once registered, a deposit is one instruction again.
+    #[test]
+    fn a_first_token_deposit_creates_the_mints_registry_entry_and_vault() {
+        let signer = Keypair::new();
+        let other = Keypair::new().pubkey();
+        let deposit = |registry, config| {
+            let (mut wallet, _) = token_wallet(&signer, registry, config);
+            wallet.prepare_deposit(Some(MINT.to_string()), 100)
+        };
+        let registered = account(
+            PROGRAM_ID_PUBKEY,
+            &zolana_interface::state::SplAssetRegistry::account_bytes(MINT, 2),
+        );
+        // Lamports sent to the registry address make no registry entry.
+        let lamports_only = account(Pubkey::default(), &[]);
+        for (registry, config, creates) in [
+            (serde_json::Value::Null, protocol_config(true, other), true),
+            (lamports_only, protocol_config(true, other), true),
+            (
+                serde_json::Value::Null,
+                protocol_config(false, signer.pubkey()),
+                true,
+            ),
+            (registered, serde_json::Value::Null, false),
+        ] {
+            let pending = deposit(registry, config).unwrap();
+            assert_eq!(
+                pending.operation(),
+                Operation::Deposit {
+                    mint: Some(MINT.to_string()),
+                    amount: 100,
+                    creates_spl_interface: creates,
+                }
+            );
+            let instructions = pending.message.instructions();
+            assert_eq!(instructions.len(), if creates { 2 } else { 1 });
+            let keys = pending.message.static_account_keys();
+            if creates {
+                let create = &instructions[0];
+                assert_eq!(
+                    keys[usize::from(create.program_id_index)],
+                    PROGRAM_ID_PUBKEY
+                );
+                assert_eq!(
+                    create.data,
+                    [zolana_interface::instruction::tag::CREATE_SPL_INTERFACE]
+                );
+            }
+            assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
+        }
+    }
+
+    /// A pool that lets only its authority register mints refuses another
+    /// account's first deposit before the blockhash is read.
+    #[test]
+    fn a_first_token_deposit_the_pool_restricts_is_refused_before_the_blockhash() {
+        let signer = Keypair::new();
+        let (mut wallet, asked) = token_wallet(
+            &signer,
+            serde_json::Value::Null,
+            protocol_config(false, Keypair::new().pubkey()),
+        );
+        assert_eq!(
+            wallet.prepare_deposit(Some(MINT.to_string()), 100).err(),
+            Some(WalletError::AssetNotSupported {
+                mint: MINT.to_string()
+            })
+        );
+        assert!(!asked
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|method| method == "getLatestBlockhash"));
+        let (mut wallet, _) =
+            token_wallet(&signer, serde_json::Value::Null, serde_json::Value::Null);
+        assert!(matches!(
+            wallet.prepare_deposit(Some(MINT.to_string()), 100),
+            Err(WalletError::Client { message }) if message.contains("protocol config")
+        ));
+    }
+
+    /// A public token recipient without its associated token account gets
+    /// one in the spend; a recipient that has one, and SOL, need none.
+    #[test]
+    fn a_public_token_recipient_without_its_account_gets_one() {
+        let mint = Pubkey::new_unique();
+        let token = Asset {
+            mint,
+            token_program: Some(pda::spl_token_program_id()),
+        };
+        let (without, with) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let existing = token.token_account(&with).unwrap().to_string();
+        let (transport, _) = crate::transport::tests::fake(move |request| {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            assert_eq!(body["method"], "getAccountInfo");
+            let value = if body["params"][0] == existing.as_str() {
+                serde_json::json!({
+                    "data": ["", "base64"], "executable": false, "lamports": 2_039_280,
+                    "owner": pda::spl_token_program_id().to_string(), "rentEpoch": 0, "space": 0
+                })
+            } else {
+                serde_json::Value::Null
+            };
+            crate::transport::tests::ok(
+                &serde_json::json!({
+                    "jsonrpc": "2.0", "id": body["id"],
+                    "result": {"context": {"slot": 1}, "value": value}
+                })
+                .to_string(),
+            )
+        });
+        let signer = Keypair::new();
+        let pubkey = signer.pubkey().to_string();
+        let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());
+        let wallet =
+            MobileWallet::open(config(), pubkey, signature.as_ref().to_vec(), transport).unwrap();
+        let creates = |asset: Asset, recipient: Pubkey| {
+            let legs = wallet
+                .legs(asset, &[public(&recipient.to_string(), 1)], &[recipient])
+                .unwrap();
+            match legs[..] {
+                [Leg::Public {
+                    creates_token_account,
+                    ..
+                }] => creates_token_account,
+                _ => panic!("one public leg"),
+            }
+        };
+        assert!(creates(token, without));
+        assert!(!creates(token, with));
+        let sol = Asset {
+            mint: zolana_transaction::SOL_MINT,
+            token_program: None,
+        };
+        assert!(!creates(sol, without));
+    }
+
+    /// The created accounts go ahead of the proved message, which compiles
+    /// again unchanged behind them: the same blockhash, the transact
+    /// instruction's accounts and roles, and a compute limit raised for each
+    /// account, at most to the ceiling.
+    #[test]
+    fn created_token_accounts_go_ahead_of_the_proved_message() {
+        let payer = Pubkey::new_unique();
+        let transact = Instruction {
+            program_id: Pubkey::new_unique(),
+            accounts: vec![
+                AccountMeta::new(payer, true),
+                AccountMeta::new_readonly(Pubkey::new_unique(), true),
+                AccountMeta::new(Pubkey::new_unique(), false),
+                AccountMeta::new_readonly(Pubkey::new_unique(), false),
+            ],
+            data: vec![1, 2, 3],
+        };
+        let create = CreateAssociatedTokenAccount {
+            payer,
+            owner: Pubkey::new_unique(),
+            mint: Pubkey::new_unique(),
+            token_program: pda::spl_token_2022_program_id(),
+        }
+        .instruction();
+        let blockhash = Default::default();
+        let proved = |limit: u32| UnsignedMessage {
+            message: compile_message(
+                &payer,
+                core::slice::from_ref(&transact),
+                blockhash,
+                ComputeBudgetConfig::new(limit),
+            )
+            .unwrap(),
+            last_valid_block_height: 9,
+        };
+        let expected = |limit: u32| {
+            compile_message(
+                &payer,
+                &[create.clone(), transact.clone()],
+                blockhash,
+                ComputeBudgetConfig::new(limit),
+            )
+            .unwrap()
+        };
+
+        let rebuilt =
+            with_setup(proved(1_000_000), &payer, core::slice::from_ref(&create)).unwrap();
+        assert_eq!(rebuilt.message, expected(1_040_000));
+        assert_eq!(rebuilt.last_valid_block_height, 9);
+        let capped = with_setup(proved(1_390_000), &payer, core::slice::from_ref(&create)).unwrap();
+        assert_eq!(capped.message, expected(MAX_COMPUTE_UNITS));
+        assert_eq!(
+            with_setup(proved(1_000_000), &payer, &[]).unwrap().message,
+            proved(1_000_000).message
+        );
     }
 
     /// The outputs are checked before anything is asked of the network: no
@@ -2656,6 +3108,7 @@ mod tests {
                 operation: Operation::Spend {
                     mint: None,
                     outputs: Vec::new(),
+                    created_token_accounts: Vec::new(),
                 },
                 last_valid_block_height: 5,
                 ..unsigned(&signer)

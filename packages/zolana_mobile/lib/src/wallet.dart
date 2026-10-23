@@ -77,10 +77,13 @@ abstract interface class WalletBackend {
 /// A private wallet for SOL and SPL tokens that proves on the device.
 ///
 /// Amounts are in base units: lamports for SOL, the mint's smallest unit for
-/// a token. `mint` is the base58 mint address, or `null` for SOL. A token
-/// works when `WalletConfig.mints` lists its mint, with its token program, and
-/// the shielded pool has registered it; otherwise calls fail with
-/// [WalletError.mintNotConfigured] or [WalletError.assetNotSupported].
+/// a token. `mint` is the base58 mint address, or `null` for SOL. The wallet
+/// looks up each mint it meets; when `WalletConfig.mints` lists mints, it
+/// holds those only and other mints fail with
+/// [WalletError.mintNotConfigured]. A mint the shielded pool has not
+/// registered yet has no balance and no history, and its first deposit
+/// registers it; spends and merges of it fail with
+/// [WalletError.assetNotSupported].
 ///
 /// Every failure throws a [WalletError], one variant per failure with its
 /// data: the amounts of a short balance, the account a conflict is about. It
@@ -239,7 +242,8 @@ class ZolanaWallet {
       _serial(_wallet.registrationStatus);
 
   /// Spendable private balances, read from the indexer now: one per asset
-  /// held in SOL and the mints of `WalletConfig.mints`.
+  /// held in SOL and the mints the wallet knows: those of
+  /// `WalletConfig.mints`, or, without the list, the ones it has met.
   ///
   /// Each [native.TokenBalance.amount] is what the indexer has confirmed,
   /// [native.TokenBalance.reserved] included: the notes this wallet's
@@ -254,7 +258,8 @@ class ZolanaWallet {
   /// `outputs: 4`. The limits include any application fee the spend pays.
   Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
 
-  /// Spendable private balance of [mint], read from the indexer now.
+  /// Spendable private balance of [mint], read from the indexer now: zero
+  /// for a mint the pool has not registered.
   Future<BigInt> privateBalance({String? mint}) =>
       _serial(() => _wallet.privateBalance(mint: mint));
 
@@ -318,6 +323,14 @@ class ZolanaWallet {
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
+  ///
+  /// The first deposit of a mint into the pool also creates the mint's
+  /// registry entry and vault, in the same transaction, and this account pays
+  /// their rent: `Operation.deposit` then has `createsSplInterface` set, for
+  /// the approval screen. A pool whose protocol config lets only its
+  /// authority do that fails with [WalletError.assetNotSupported] before
+  /// anything is built. Two first deposits of one mint prepared at the same
+  /// time both create them, so the second to land fails.
   Future<PreparedTransaction> prepareDeposit(BigInt amount, {String? mint}) =>
       _serial(
         () => _prepare(_wallet.prepareDeposit(mint: mint, amount: amount)),
@@ -338,10 +351,11 @@ class ZolanaWallet {
   /// Fails before anything is asked with [WalletError.noOutputs] for an
   /// empty list and [WalletError.amountZero] for a zero amount; then with
   /// [WalletError.recipientNotRegistered] for a private recipient without a
-  /// shielded address, which a public output pays instead, and with
-  /// [WalletError.recipientTokenAccountMissing] for a public token recipient
-  /// without an associated token account, which the application creates with
-  /// its own Solana client. A spend with `k` private outputs proves with
+  /// shielded address, which a public output pays instead. A public token
+  /// recipient without an associated token account gets one: the transaction
+  /// creates it ahead of the spend, the fee payer pays its rent, and
+  /// [native.Operation_Spend.createdTokenAccounts] names the recipient. A
+  /// spend with `k` private outputs proves with
   /// `k + 1` outputs, its change included, and public outputs take no slot,
   /// so it takes at most 40 notes for `k <= 1`, 24 for `k <= 3`, 16 for
   /// `k <= 7` and 8 for `k <= 15`, within `WalletConfig.maxSpendInputs`.

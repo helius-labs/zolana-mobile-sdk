@@ -7,9 +7,9 @@
 //! is sent, and a transfer proved by a remote prover. Each step is the newest
 //! entry of its wallets' history. Another test merges notes, and another
 //! deposits, transfers and withdraws an SPL token: `ZOLANA_E2E_MINT`, a mint
-//! the sender is the mint authority of, or a new mint the test registers with
-//! the shielded pool, on a cluster that allows that without the protocol
-//! authority, as devnet does.
+//! the sender is the mint authority of, or a new mint whose first deposit
+//! registers it with the shielded pool, on a cluster that allows that without
+//! the protocol authority, as devnet does.
 //!
 //! Run against a Zolana localnet (`just` in the zolana repository starts
 //! surfpool, Photon, the prover and the programs), or any cluster that runs the
@@ -40,7 +40,7 @@ use solana_pubkey::Pubkey;
 use solana_signer::Signer;
 use zolana_client::{ComputeBudgetConfig, Rpc, SolanaRpc};
 use zolana_interface::{
-    SPL_TOKEN_INITIALIZE_MINT2_DISCRIMINATOR, SPL_TOKEN_MINT_ACCOUNT_LEN,
+    pda, SPL_TOKEN_INITIALIZE_MINT2_DISCRIMINATOR, SPL_TOKEN_MINT_ACCOUNT_LEN,
     SPL_TOKEN_MINT_TO_DISCRIMINATOR, SPL_TOKEN_PROGRAM_ID,
 };
 use zolana_mobile::{
@@ -48,7 +48,7 @@ use zolana_mobile::{
     PreparedTransaction, Proving, RegistrationStatus, Transport, TransportFailure,
     TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
 };
-use zolana_program::instruction::{CreateAssociatedTokenAccount, CreateSplInterface};
+use zolana_program::instruction::CreateAssociatedTokenAccount;
 
 const FUNDING: u64 = 1_000_000_000;
 const DEPOSIT: u64 = 50_000_000;
@@ -96,7 +96,7 @@ fn config() -> WalletConfig {
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
         max_spend_inputs: None,
         reuse_notes_ms: None,
-        mints: Vec::new(),
+        mints: None,
     }
 }
 
@@ -373,7 +373,8 @@ fn register_deposit_transfer_and_receive() {
         pending.operation(),
         Operation::Spend {
             mint: None,
-            outputs
+            outputs,
+            created_token_accounts: Vec::new(),
         }
     );
     let withdrawal = submit(&stale, &[&recipient, &sender], pending);
@@ -461,6 +462,12 @@ const TOKEN_WITHDRAWAL: u64 = 1_000_000;
 /// The application's fee on the token withdrawal: a private output to the
 /// sender's wallet, as to a registered collector.
 const TOKEN_FEE: u64 = 100_000;
+/// Tokens sent publicly to an account without a token account, which the
+/// spend creates.
+const TOKEN_PUBLIC_SEND: u64 = 500_000;
+/// The rent of an SPL Token account, which the fee payer of a spend that
+/// creates one pays.
+const TOKEN_ACCOUNT_RENT: u64 = 2_039_280;
 
 fn send_instructions(
     rpc: &SolanaRpc,
@@ -478,8 +485,7 @@ fn send_instructions(
 }
 
 /// `ZOLANA_E2E_MINT`, an SPL Token mint `authority` mints, or a new one the
-/// shielded pool registers. The cluster must allow permissionless SPL
-/// registration, as devnet does.
+/// shielded pool has not registered yet: its first deposit registers it.
 fn test_mint(rpc: &SolanaRpc, authority: &Keypair) -> Pubkey {
     if let Ok(mint) = env::var("ZOLANA_E2E_MINT") {
         return mint.parse().expect("ZOLANA_E2E_MINT is a base58 key");
@@ -517,17 +523,6 @@ fn test_mint(rpc: &SolanaRpc, authority: &Keypair) -> Pubkey {
                 data: initialize,
             },
         ],
-    );
-    send_instructions(
-        rpc,
-        authority,
-        &[authority],
-        &[CreateSplInterface {
-            authority: authority.pubkey(),
-            mint: mint.pubkey(),
-            token_program,
-        }
-        .instruction()],
     );
     println!("test mint {}, reuse it with ZOLANA_E2E_MINT", mint.pubkey());
     mint.pubkey()
@@ -582,21 +577,23 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
     let sender = account("ZOLANA_E2E_SENDER_SEED");
     let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
     let mut rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
-    for (signer, needed) in [(&sender, FEES), (&recipient, FEES)] {
+    for (signer, needed) in [(&sender, FEES + TOKEN_ACCOUNT_RENT), (&recipient, FEES)] {
         if rpc.get_balance(signer.pubkey()).expect("balance") < needed {
             rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
         }
     }
+    // A new mint is not registered yet, and its first deposit registers it.
+    let new_mint = env::var("ZOLANA_E2E_MINT").is_err();
     let mint = test_mint(&rpc, &sender);
     let sender_tokens = token_account(&rpc, &sender, sender.pubkey(), mint);
     mint_to(&rpc, &sender, mint, sender_tokens, TOKEN_DEPOSIT);
     let recipient_tokens = token_account(&rpc, &sender, recipient.pubkey(), mint);
 
     let with_mint = || WalletConfig {
-        mints: vec![MintConfig {
+        mints: Some(vec![MintConfig {
             mint: mint.to_string(),
             token_program: Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID).to_string(),
-        }],
+        }]),
         ..config()
     };
     let mut sender_wallet = open_with(&sender, with_mint());
@@ -617,6 +614,7 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         Operation::Deposit {
             mint: Some(name.clone()),
             amount: TOKEN_DEPOSIT,
+            creates_spl_interface: new_mint,
         }
     );
     let deposit = submit(&sender_wallet, &[&sender], pending);
@@ -656,6 +654,14 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         Some(&name),
         TOKEN_TRANSFER,
     );
+    // A wallet given no mints learns the token from the notes it reads.
+    let discovered = open_with(&recipient, config())
+        .balances()
+        .unwrap()
+        .into_iter()
+        .find(|balance| balance.mint.as_deref() == Some(name.as_str()))
+        .expect("the received token is discovered");
+    assert_eq!(discovered.amount, recipient_before + TOKEN_TRANSFER);
 
     // Tokens to the recipient's own token account and the application's fee
     // to the sender's wallet, in one proof.
@@ -691,6 +697,33 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
         Some(&name),
         TOKEN_WITHDRAWAL + TOKEN_FEE,
     );
+    // Tokens to an account that has never held this mint: the spend creates
+    // its token account, the sender paying the rent.
+    let stranger = Keypair::new();
+    let outputs = vec![public(&stranger, TOKEN_PUBLIC_SEND)];
+    let pending = sender_wallet
+        .prepare_spend(outputs.clone(), Some(name.clone()), None, None)
+        .expect("prove a public token send to an account without a token account");
+    assert_eq!(
+        pending.operation(),
+        Operation::Spend {
+            mint: Some(name.clone()),
+            outputs,
+            created_token_accounts: vec![stranger.pubkey().to_string()],
+        }
+    );
+    submit(&sender_wallet, &[&sender], pending);
+    let stranger_tokens = pda::associated_token_address_with_program(
+        &stranger.pubkey(),
+        &mint,
+        &Pubkey::new_from_array(SPL_TOKEN_PROGRAM_ID),
+    );
+    assert_eq!(public_tokens(&rpc, stranger_tokens), TOKEN_PUBLIC_SEND);
+    assert_eq!(
+        private_tokens(&mut sender_wallet),
+        sender_before + TOKEN_DEPOSIT - TOKEN_TRANSFER + TOKEN_FEE - TOKEN_PUBLIC_SEND
+    );
+
     // The SOL balance is not touched by token flows.
     assert!(sender_wallet
         .balances()
@@ -725,7 +758,8 @@ fn pays_two_recipients_in_one_transfer() {
         pending.operation(),
         Operation::Spend {
             mint: None,
-            outputs
+            outputs,
+            created_token_accounts: Vec::new(),
         }
     );
     let transfer = submit(&sender_wallet, &[&sender], pending);

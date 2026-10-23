@@ -1,15 +1,27 @@
-//! SOL and the SPL Token / Token-2022 mints the application configured, each
-//! with its token program. The wallet reads nothing about a mint but the asset
-//! id the shielded pool registered for it.
+//! SOL and the SPL Token / Token-2022 mints the wallet holds, each with its
+//! token program. The application lists the mints, or the wallet discovers
+//! the ones the shielded pool registered as it meets them. Of a mint the
+//! wallet reads only the asset id the pool registered for it and, when it
+//! discovers the mint, the token program that owns it.
 
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{BTreeSet, HashMap},
+    str::FromStr,
+};
 
+use solana_account::Account;
 use solana_pubkey::Pubkey;
-use zolana_client::{fetch_asset_id, ClientError, Rpc};
-use zolana_interface::pda;
+use zolana_client::{fetch_asset_id, ClientError, ProgramAccountsFilter, Rpc, SolanaRpc};
+use zolana_interface::{
+    pda,
+    state::{discriminator::SPL_ASSET_REGISTRY, SplAssetRegistry},
+};
 use zolana_transaction::{AssetRegistry, SOL_MINT};
 
 use crate::error::WalletError;
+
+/// The most accounts one `getMultipleAccounts` request may name.
+const MAX_ACCOUNTS_PER_READ: usize = 100;
 
 /// An SPL mint the wallet holds, and the token program that owns it: SPL
 /// Token or Token-2022. Both base58.
@@ -33,24 +45,29 @@ impl Asset {
     }
 }
 
-/// The configured mints, and the asset ids read for them so far.
+/// The mints the wallet may use, with their token programs, and the asset ids
+/// read for them so far.
 pub(crate) struct Assets {
+    /// The configured mints, or the ones discovered so far.
     token_programs: HashMap<Pubkey, Pubkey>,
+    /// Whether a mint outside `token_programs` is looked up rather than
+    /// refused.
+    discover: bool,
     registry: AssetRegistry,
 }
 
 impl Assets {
-    pub fn new(mints: Vec<MintConfig>) -> Result<Self, WalletError> {
+    /// The listed mints only, or, for `None`, every mint the pool registered.
+    pub fn new(mints: Option<Vec<MintConfig>>) -> Result<Self, WalletError> {
+        let discover = mints.is_none();
         let token_programs = mints
+            .unwrap_or_default()
             .into_iter()
             .map(|config| {
                 let mint = parse_mint(&config.mint)?;
                 let token_program = Pubkey::from_str(&config.token_program)
                     .ok()
-                    .filter(|program| {
-                        *program == pda::spl_token_program_id()
-                            || *program == pda::spl_token_2022_program_id()
-                    })
+                    .filter(is_token_program)
                     .ok_or(WalletError::InvalidTokenProgram {
                         mint: config.mint,
                         token_program: config.token_program,
@@ -60,13 +77,46 @@ impl Assets {
             .collect::<Result<_, WalletError>>()?;
         Ok(Self {
             token_programs,
+            discover,
             registry: AssetRegistry::default(),
         })
     }
 
-    /// SOL for `None`, otherwise a configured mint, its asset id read the
-    /// first time it is used.
+    pub fn discovers(&self) -> bool {
+        self.discover
+    }
+
+    /// SOL for `None`, otherwise a known mint, its asset id read the first
+    /// time it is used. A mint the pool has not registered fails with
+    /// [`WalletError::AssetNotSupported`].
     pub fn resolve(&mut self, rpc: &impl Rpc, mint: Option<&str>) -> Result<Asset, WalletError> {
+        let asset = self.asset(rpc, mint)?;
+        if asset.token_program.is_some() && !self.registered(rpc, asset.mint)? {
+            return Err(WalletError::AssetNotSupported {
+                mint: asset.mint.to_string(),
+            });
+        }
+        Ok(asset)
+    }
+
+    /// SOL for `None`, otherwise a known mint, with whether the pool has
+    /// registered it: a deposit of a mint it has not registered creates the
+    /// mint's registry entry and vault first.
+    pub fn resolve_for_deposit(
+        &mut self,
+        rpc: &impl Rpc,
+        mint: Option<&str>,
+    ) -> Result<(Asset, bool), WalletError> {
+        let asset = self.asset(rpc, mint)?;
+        let registered = asset.token_program.is_none() || self.registered(rpc, asset.mint)?;
+        Ok((asset, registered))
+    }
+
+    /// SOL for `None`, otherwise a known mint and its token program, without
+    /// a request. When the wallet discovers, it reads an unknown mint's token
+    /// program once: the program that owns the mint account, which must be
+    /// SPL Token or Token-2022.
+    pub fn asset(&mut self, rpc: &impl Rpc, mint: Option<&str>) -> Result<Asset, WalletError> {
         let Some(name) = mint else {
             return Ok(Asset {
                 mint: SOL_MINT,
@@ -74,44 +124,123 @@ impl Assets {
             });
         };
         let mint = parse_mint(name)?;
-        let token_program = *self
-            .token_programs
-            .get(&mint)
-            .ok_or_else(|| WalletError::MintNotConfigured { mint: name.into() })?;
-        self.register(rpc, mint)?;
+        let token_program = match self.token_programs.get(&mint) {
+            Some(program) => *program,
+            None if self.discover => {
+                let program = rpc
+                    .get_account(mint)?
+                    .map(|account| account.owner)
+                    .filter(is_token_program)
+                    .ok_or_else(|| WalletError::AssetNotSupported { mint: name.into() })?;
+                self.token_programs.insert(mint, program);
+                program
+            }
+            None => return Err(WalletError::MintNotConfigured { mint: name.into() }),
+        };
         Ok(Asset {
             mint,
             token_program: Some(token_program),
         })
     }
 
-    /// SOL and every configured mint, each asset id read once.
+    /// SOL and the known mints the pool has registered, each asset id read
+    /// once. A mint without a usable registry entry has no notes, so it is
+    /// left out rather than failing the read, and asked again next time,
+    /// since a deposit may register it.
     pub fn registry(&mut self, rpc: &impl Rpc) -> Result<&AssetRegistry, WalletError> {
         let mints: Vec<Pubkey> = self.token_programs.keys().copied().collect();
         for mint in mints {
-            self.register(rpc, mint)?;
+            match self.registered(rpc, mint) {
+                Ok(_) | Err(WalletError::AssetNotSupported { .. }) => {}
+                Err(failure) => return Err(failure),
+            }
         }
         Ok(&self.registry)
     }
 
-    fn register(&mut self, rpc: &impl Rpc, mint: Pubkey) -> Result<(), WalletError> {
-        if self.registry.asset_id(&mint).is_ok() {
-            return Ok(());
+    /// Learns, from the pool's asset `registrations`, the `asset_ids` and
+    /// `mints` a scan met but did not know, each mint with its token program.
+    /// Registrations the pool does not own, and mints no token program owns,
+    /// are passed over. Whether it learned any.
+    pub fn learn(
+        &mut self,
+        rpc: &impl Rpc,
+        registrations: &[(Pubkey, Account)],
+        asset_ids: &BTreeSet<u64>,
+        mints: &BTreeSet<Pubkey>,
+    ) -> Result<bool, WalletError> {
+        let met: Vec<(u64, Pubkey)> = registrations
+            .iter()
+            .filter(|(_, account)| account.owner == pda::shielded_pool_program_id())
+            .filter_map(|(address, account)| {
+                let registration = SplAssetRegistry::from_account_bytes(&account.data).ok()?;
+                let (asset_id, mint) = (registration.asset_id, registration.mint);
+                let named = asset_ids.contains(&asset_id) || mints.contains(&mint);
+                let known = self.registry.resolve(asset_id).is_ok()
+                    || self.registry.asset_id(&mint).is_ok();
+                (*address == pda::spl_asset_registry(&mint) && named && !known)
+                    .then_some((asset_id, mint))
+            })
+            .collect();
+        let mut learned = false;
+        for batch in met.chunks(MAX_ACCOUNTS_PER_READ) {
+            let accounts =
+                rpc.get_multiple_accounts(batch.iter().map(|(_, mint)| *mint).collect())?;
+            for (&(asset_id, mint), account) in batch.iter().zip(accounts) {
+                let Some(program) = account
+                    .map(|account| account.owner)
+                    .filter(is_token_program)
+                else {
+                    continue;
+                };
+                if self.registry.insert(asset_id, mint).is_ok() {
+                    self.token_programs.insert(mint, program);
+                    learned = true;
+                }
+            }
         }
-        let asset_id = fetch_asset_id(rpc, mint).map_err(|failure| match failure {
-            ClientError::SplAssetNotRegistered { .. }
-            | ClientError::InvalidSplAssetRegistry { .. } => WalletError::AssetNotSupported {
-                mint: mint.to_string(),
-            },
-            failure => failure.into(),
-        })?;
-        Ok(self.registry.insert(asset_id, mint)?)
+        Ok(learned)
     }
+
+    /// Whether the pool has registered `mint`, reading its asset id the
+    /// first time. `false` when there is no registry entry, including an
+    /// account at the registry address that only holds lamports, which the
+    /// pool's create path accepts. An entry the pool owns but that does not
+    /// decode as this mint's fails with [`WalletError::AssetNotSupported`].
+    fn registered(&mut self, rpc: &impl Rpc, mint: Pubkey) -> Result<bool, WalletError> {
+        if self.registry.asset_id(&mint).is_ok() {
+            return Ok(true);
+        }
+        let asset_id = match fetch_asset_id(rpc, mint) {
+            Ok(asset_id) => asset_id,
+            Err(ClientError::SplAssetNotRegistered { .. }) => return Ok(false),
+            Err(ClientError::InvalidSplAssetRegistry { .. }) => {
+                return Err(WalletError::AssetNotSupported {
+                    mint: mint.to_string(),
+                })
+            }
+            Err(failure) => return Err(failure.into()),
+        };
+        self.registry.insert(asset_id, mint)?;
+        Ok(true)
+    }
+}
+
+/// Every asset registration the shielded pool holds, for
+/// [`Assets::learn`].
+pub(crate) fn registrations(rpc: &SolanaRpc) -> Result<Vec<(Pubkey, Account)>, WalletError> {
+    let filter =
+        ProgramAccountsFilter::new(SplAssetRegistry::SIZE).with_memcmp(0, [SPL_ASSET_REGISTRY]);
+    Ok(rpc.get_program_accounts_filtered(pda::shielded_pool_program_id(), &filter)?)
 }
 
 /// `None` for SOL, the base58 mint otherwise: how assets cross to Dart.
 pub(crate) fn mint_name(mint: &Pubkey) -> Option<String> {
     (*mint != SOL_MINT).then(|| mint.to_string())
+}
+
+fn is_token_program(program: &Pubkey) -> bool {
+    *program == pda::spl_token_program_id() || *program == pda::spl_token_2022_program_id()
 }
 
 fn parse_mint(mint: &str) -> Result<Pubkey, WalletError> {
@@ -121,9 +250,6 @@ fn parse_mint(mint: &str) -> Result<Pubkey, WalletError> {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-
-    use solana_account::Account;
-    use zolana_interface::state::SplAssetRegistry;
 
     use super::*;
 
@@ -136,16 +262,7 @@ mod tests {
 
     impl Accounts {
         fn with(mut self, address: Pubkey, owner: Pubkey, data: Vec<u8>) -> Self {
-            self.accounts.insert(
-                address,
-                Account {
-                    lamports: 1,
-                    data,
-                    owner,
-                    executable: false,
-                    rent_epoch: 0,
-                },
-            );
+            self.accounts.insert(address, account(owner, data));
             self
         }
     }
@@ -154,6 +271,27 @@ mod tests {
         fn get_account(&self, address: Pubkey) -> Result<Option<Account>, ClientError> {
             self.reads.set(self.reads.get() + 1);
             Ok(self.accounts.get(&address).cloned())
+        }
+
+        fn get_multiple_accounts(
+            &self,
+            addresses: Vec<Pubkey>,
+        ) -> Result<Vec<Option<Account>>, ClientError> {
+            self.reads.set(self.reads.get() + 1);
+            Ok(addresses
+                .iter()
+                .map(|address| self.accounts.get(address).cloned())
+                .collect())
+        }
+    }
+
+    fn account(owner: Pubkey, data: Vec<u8>) -> Account {
+        Account {
+            lamports: 1,
+            data,
+            owner,
+            executable: false,
+            rent_epoch: 0,
         }
     }
 
@@ -168,10 +306,10 @@ mod tests {
     }
 
     fn configured(token_program: Pubkey) -> Assets {
-        Assets::new(vec![MintConfig {
+        Assets::new(Some(vec![MintConfig {
             mint: MINT.to_string(),
             token_program: token_program.to_string(),
-        }])
+        }]))
         .unwrap()
     }
 
@@ -210,12 +348,55 @@ mod tests {
             token_program: system.clone(),
         };
         assert_eq!(
-            Assets::new(vec![config()]).err(),
+            Assets::new(Some(vec![config()])).err(),
             Some(WalletError::InvalidTokenProgram {
                 mint: MINT.to_string(),
                 token_program: system.clone(),
             })
         );
+    }
+
+    /// A configured mint without a usable registry entry has no notes: the
+    /// registry leaves it out instead of failing, and asks again next time.
+    /// A deposit learns whether it must register the mint first.
+    #[test]
+    fn leaves_out_a_mint_the_pool_has_not_registered() {
+        let mint = MINT.to_string();
+        let lamports_only = Accounts::default().with(
+            pda::spl_asset_registry(&MINT),
+            Pubkey::default(),
+            Vec::new(),
+        );
+        let invalid = Accounts::default().with(
+            pda::spl_asset_registry(&MINT),
+            pda::shielded_pool_program_id(),
+            vec![1, 2, 3],
+        );
+        for (rpc, registers) in [
+            (Accounts::default(), Some(false)),
+            (lamports_only, Some(false)),
+            (invalid, None),
+        ] {
+            let mut assets = configured(pda::spl_token_program_id());
+            assert!(assets.registry(&rpc).unwrap().asset_id(&MINT).is_err());
+            assets.registry(&rpc).unwrap();
+            assert_eq!(rpc.reads.get(), 2, "asked again on the next read");
+            let deposit = assets.resolve_for_deposit(&rpc, Some(&mint));
+            match registers {
+                Some(registered) => assert_eq!(deposit.unwrap().1, registered),
+                None => assert_eq!(
+                    deposit.unwrap_err(),
+                    WalletError::AssetNotSupported { mint: mint.clone() }
+                ),
+            }
+        }
+        let mut assets = configured(pda::spl_token_program_id());
+        let rpc = registered(2);
+        assert!(assets.resolve_for_deposit(&rpc, Some(&mint)).unwrap().1);
+        assert_eq!(assets.registry(&rpc).unwrap().asset_id(&MINT).unwrap(), 2);
+        assert_eq!(rpc.reads.get(), 1);
+        let (sol, registered) = assets.resolve_for_deposit(&rpc, None).unwrap();
+        assert!(sol.token_program.is_none() && registered);
     }
 
     #[test]
@@ -240,5 +421,103 @@ mod tests {
             vec![1, 2, 3],
         );
         assert_eq!(resolve(&invalid), unsupported);
+    }
+
+    /// The pool's registration of `mint` as `asset_id`, at its address.
+    fn registration(mint: Pubkey, asset_id: u64) -> (Pubkey, Account) {
+        (
+            pda::spl_asset_registry(&mint),
+            account(
+                pda::shielded_pool_program_id(),
+                SplAssetRegistry::account_bytes(mint, asset_id).to_vec(),
+            ),
+        )
+    }
+
+    #[test]
+    fn discovers_a_mint_a_call_names() {
+        let mut assets = Assets::new(None).unwrap();
+        assert!(assets.discovers());
+        let rpc = registered(2).with(MINT, pda::spl_token_2022_program_id(), Vec::new());
+        let mint = MINT.to_string();
+        let asset = assets.resolve(&rpc, Some(&mint)).unwrap();
+        assert_eq!(asset.token_program, Some(pda::spl_token_2022_program_id()));
+        assert_eq!(assets.resolve(&rpc, Some(&mint)).unwrap(), asset);
+        assert_eq!(assets.registry(&rpc).unwrap().asset_id(&MINT).unwrap(), 2);
+        assert_eq!(
+            rpc.reads.get(),
+            2,
+            "the token program and the asset id, once"
+        );
+
+        let unsupported = WalletError::AssetNotSupported { mint: mint.clone() };
+        let discover = |rpc: &Accounts| Assets::new(None).unwrap().resolve(rpc, Some(&mint));
+        assert_eq!(discover(&Accounts::default()), Err(unsupported.clone()));
+        let not_a_token = registered(2).with(MINT, Pubkey::new_from_array([9; 32]), Vec::new());
+        assert_eq!(discover(&not_a_token), Err(unsupported));
+        let unregistered = Accounts::default().with(MINT, pda::spl_token_program_id(), Vec::new());
+        let (asset, registered) = Assets::new(None)
+            .unwrap()
+            .resolve_for_deposit(&unregistered, Some(&mint))
+            .unwrap();
+        assert_eq!(asset.token_program, Some(pda::spl_token_program_id()));
+        assert!(!registered, "its first deposit registers it");
+        assert!(!configured(pda::spl_token_program_id()).discovers());
+    }
+
+    #[test]
+    fn learns_the_registered_assets_a_scan_met() {
+        let named = Pubkey::new_from_array([10; 32]);
+        let not_met = Pubkey::new_from_array([11; 32]);
+        let forged = Pubkey::new_from_array([12; 32]);
+        let misplaced = Pubkey::new_from_array([13; 32]);
+        let not_a_token = Pubkey::new_from_array([14; 32]);
+        let rpc = [named, MINT, not_met, forged, misplaced]
+            .into_iter()
+            .fold(Accounts::default(), |rpc, mint| {
+                rpc.with(mint, pda::spl_token_program_id(), Vec::new())
+            })
+            .with(not_a_token, Pubkey::new_from_array([9; 32]), Vec::new());
+        let (forged_address, mut forged_account) = registration(forged, 5);
+        forged_account.owner = Pubkey::new_from_array([9; 32]);
+        let (_, misplaced_account) = registration(misplaced, 6);
+        let registrations = [
+            registration(MINT, 2),
+            registration(named, 3),
+            registration(not_met, 4),
+            (forged_address, forged_account),
+            (pda::spl_asset_registry(&named), misplaced_account),
+            registration(not_a_token, 7),
+        ];
+        let asset_ids = BTreeSet::from([2, 5, 6, 7, 99]);
+        let mints = BTreeSet::from([named]);
+
+        let mut assets = Assets::new(None).unwrap();
+        assert!(assets
+            .learn(&rpc, &registrations, &asset_ids, &mints)
+            .unwrap());
+        assert_eq!(
+            rpc.reads.get(),
+            1,
+            "one read for every mint's token program"
+        );
+        let registry = assets.registry(&rpc).unwrap();
+        assert_eq!(registry.resolve(2).unwrap().asset, MINT);
+        assert_eq!(registry.asset_id(&named).unwrap(), 3);
+        for unknown in [4, 5, 6, 7, 99] {
+            assert!(registry.resolve(unknown).is_err(), "asset id {unknown}");
+        }
+        let asset = assets.resolve(&rpc, Some(&named.to_string())).unwrap();
+        assert_eq!(asset.token_program, Some(pda::spl_token_program_id()));
+        assert_eq!(rpc.reads.get(), 1);
+
+        assert!(!assets
+            .learn(&rpc, &registrations, &asset_ids, &mints)
+            .unwrap());
+        assert_eq!(
+            rpc.reads.get(),
+            2,
+            "only the passed-over mint is read again"
+        );
     }
 }
