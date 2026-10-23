@@ -2641,6 +2641,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "memmap2"
+version = "0.9.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b0ca1155a9ecc25aa12e8313a119f32edf0255fea2f44839c4ac0a12b2ac157"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "metal"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6898,6 +6907,7 @@ dependencies = [
  "futures-executor",
  "http",
  "log",
+ "memmap2",
  "mopro-ffi",
  "oslog",
  "reqwest",
@@ -6991,12 +7001,12 @@ dependencies = [
 [[package]]
 name = "zopro-bn254"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f#4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f"
 
 [[package]]
 name = "zopro-core"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f#4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f"
 dependencies = [
  "futures-channel",
  "getrandom 0.2.17",
@@ -7017,7 +7027,7 @@ dependencies = [
 [[package]]
 name = "zopro-metal"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f#4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f"
 dependencies = [
  "log",
  "metal",
@@ -7029,7 +7039,7 @@ dependencies = [
 [[package]]
 name = "zopro-prover"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f#4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f"
 dependencies = [
  "js-sys",
  "log",
@@ -7042,7 +7052,7 @@ dependencies = [
 [[package]]
 name = "zopro-wgpu"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f#4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f"
 dependencies = [
  "futures-channel",
  "log",
@@ -7056,7 +7066,7 @@ dependencies = [
 [[package]]
 name = "zopro-zolana"
 version = "0.1.0"
-source = "git+https://github.com/helius-labs/zk-tools.git?rev=3e38efca5c8b8005b01868e125cdf24ca62a7dae#3e38efca5c8b8005b01868e125cdf24ca62a7dae"
+source = "git+https://github.com/helius-labs/zk-tools.git?rev=4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f#4c0f88f3163a7cd7737dea5ee8d3a46e3cdb200f"
 dependencies = [
  "js-sys",
  "serde_json",
