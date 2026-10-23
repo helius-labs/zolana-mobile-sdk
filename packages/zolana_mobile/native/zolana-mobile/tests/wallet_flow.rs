@@ -807,13 +807,13 @@ fn merges_notes_proved_remotely_and_on_the_device() {
         wallet.prepare_merging(true).unwrap().map(|p| p.operation()),
         None
     );
-    // Notes to merge on a fresh account too.
-    for _ in 0..2 {
-        let pending = wallet.prepare_deposit(None, SPLIT).unwrap();
-        submit(&wallet, &[&owner], pending);
-    }
-
     for proving in [Proving::Remote, Proving::Local] {
+        // Notes to merge on a fresh account too, and after the last merge
+        // took them all.
+        for _ in 0..2 {
+            let pending = wallet.prepare_deposit(None, SPLIT).unwrap();
+            submit(&wallet, &[&owner], pending);
+        }
         let before = private_sol(&mut wallet);
         let started = std::time::Instant::now();
         let pending = wallet
