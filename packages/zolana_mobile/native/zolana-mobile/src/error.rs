@@ -107,8 +107,6 @@ pub enum WalletError {
     ProverClosed,
     /// The prover state of this process is unusable.
     ProverUnavailable,
-    /// gnark could not be initialized.
-    ProverInitFailed,
     /// The proving key could not be loaded into gnark.
     ProverLoadFailed,
     /// The prepared circuit's shape is not one the wallet proves.

@@ -241,11 +241,7 @@ List<String> getArtifactNames({
     if (aritifactType == AritifactType.staticlib) {
       return ['lib$libraryName.a'];
     } else {
-      return [
-        'lib$libraryName.so',
-        // On Android the Go prover is a separate shared library.
-        if (target.android != null) 'libgnark.so',
-      ];
+      return ['lib$libraryName.so'];
     }
   } else {
     throw Exception("Unsupported target: ${target.rust}");

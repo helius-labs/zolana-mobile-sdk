@@ -1,9 +1,9 @@
 # Zolana Flutter SDK
 
-A private Zolana wallet for Flutter that proves on the device, plus the local
-Groth16 prover it is built on: Mopro's native gnark backend (gnark 0.16.3). Android
-and iOS are supported. The package contains its Rust and Go sources; it does not
-require a sibling Zolana checkout.
+A private Zolana wallet for Flutter that proves on the device with zopro, a
+Groth16 prover in Rust for gnark's proving keys, on the GPU where there is
+one. Android and iOS are supported. The package contains its Rust sources; it
+does not require a sibling Zolana checkout.
 
 **Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). On phones, in release builds, one note proves in 0.18 s on a Samsung Galaxy S25, 0.21 s on an iPhone 17 Pro, 0.30 s to 0.35 s on an iPhone 15, an iPhone 12 and a Galaxy A56, and 1.2 s on a Galaxy A16; eight notes in 1.2 s to 2.0 s, 7.0 s on the A16; twenty-four in 3.6 s to 5.9 s, 25 s on the A16. A key loads from its image in under 0.3 s, up to 0.74 s on the A16. CI benches release builds on these six phones for every pull request and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
@@ -14,14 +14,14 @@ require a sibling Zolana checkout.
 - Android: the NDK named by the app's `android.ndkVersion`.
 - iOS: Xcode with its license accepted. The app may use Swift Package Manager
   or CocoaPods.
-- Android API 24 or newer and iOS 15 or newer, the Flutter minimums. The Go
-  prover archive targets iOS 13. CI runs the clean consumer on Android API 26
-  and 35 emulators, and checks that every object in the iOS native library runs
-  on iOS 16.
-- Matching `.r1cs`, `.pk`, and `.vk` files from a trusted, checksum-verified
-  circuit release. Do not load keys supplied by an untrusted proof request.
+- Android API 24 or newer and iOS 15 or newer, the Flutter minimums. CI runs
+  the clean consumer on Android API 26 and 35 emulators, and checks that every
+  object in the iOS native library runs on iOS 16.
+- A zopro key (`<key>.zopro`) from a trusted, checksum-verified release for
+  each shape proved with `LocalProver`; the wallet downloads its own, pinned
+  by its lockfile. Do not load keys supplied by an untrusted proof request.
 
-Rust and Go are needed only for a build from source, see
+Rust is needed only for a build from source, see
 [Native libraries](#native-libraries).
 
 The Dart runtime, Rust runtime, and generated Flutter Rust Bridge code are pinned
@@ -44,11 +44,11 @@ this repository:
 Each file is signed. Cargokit checks the signature with the Ed25519 public key
 in `rust/cargokit.yaml` and ignores a file with an invalid signature.
 
-The release name contains a hash of the Rust and Go sources of the plugin. If no
+The release name contains a hash of the Rust sources of the plugin. If no
 release matches the sources, for example after a local change, the plugin builds
 the library from source. A build from source needs:
 
-- Rust stable with the target of the platform, and Go 1.27.1 or newer.
+- Rust stable with the target of the platform.
 - Android: an installed NDK. Set `ANDROID_NDK_HOME` and `ANDROID_NDK_ROOT` to its
   directory if the SDK installation cannot be discovered automatically.
 - iOS: rustup's default `~/.cargo` and `~/.rustup`. Flutter runs the build hook
@@ -142,15 +142,18 @@ await wallet.spend(
   transport use a plaintext URL off loopback, is only for a local test
   cluster.
 
-- **Proving keys** download from the Zolana key host into `provingKeyDir`
-  (through the transport, see [Networking](#networking)), and are used only
-  after they match the proving-key lockfile of the pinned Zolana revision.
-  The wallet picks the circuit shape, so the first spend of a new shape
-  downloads its key, 9 MB for one note and up to 380 MB for the widest spends
-  and merges, unless it is already on the device:
+- **Proving keys** are zopro keys, each built offline from the gnark proving
+  key of the pinned Zolana revision with the same name. They download from
+  the Zolana key host into `provingKeyDir` (through the transport, see
+  [Networking](#networking)), and are used only after they match
+  `zopro-keys.lock`, which pins each file's size and sha256 beside the gnark
+  key's sha256 that proofs report. The wallet picks the circuit shape, so the
+  first spend of a new shape downloads its key, 7 MB for one note and up to
+  315 MB for the widest spends and merges, unless it is already on the
+  device:
 
   ```dart
-  // On Wi-Fi after onboarding: spends of up to four notes, about 80 MB.
+  // On Wi-Fi after onboarding: spends of up to four notes, about 60 MB.
   wallet.prefetchProvingKeys(maxInputs: 4).listen(
     (update) => showProgress(update.downloaded, update.total),
   );
@@ -165,11 +168,13 @@ await wallet.spend(
   `WalletError.provingKeyDownloadFailed`. Keep the directory across launches:
   the keys of one lockfile live in a directory of their own there, and the
   wallet removes the directories of other lockfiles when it opens. A key
-  that was checked once is not hashed again unless its file changed. After
-  its first load, the key's proving key is kept beside it in the device's
-  memory layout (`<key>.image`, about twice the key's size): later loads map
-  that file instead of decompressing the key, and the system can page the
-  key out under memory pressure instead of ending the app.
+  that was checked once is not hashed again unless its file changed. A
+  key's first load writes its image beside it (`<key>.zopro.zopro-raw-3.solver2`,
+  about three times the key's size): its points as the prover reads them and
+  its solver. Later loads map the image instead of decompressing the key and
+  building its solver, and the system may drop and read again its pages under
+  memory pressure rather than counting them against the app. A device that
+  cannot write the image proves from the key file.
   `clearProvingKeys()` removes the images with the keys.
 - **Tokens**: the wallet holds every SPL Token or Token-2022 mint the
   shielded pool registered. It reads a mint's asset id and token program the
@@ -294,7 +299,7 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `proofInvalid` | | the proof does not verify against the pinned verifying key |
 | `proofFailed` | | the device prover could not prove the request |
 | `proverBusy`, `proverClosed`, `proverUnavailable` | | the prepared prover slot is taken, released or unusable |
-| `proverInitFailed`, `proverLoadFailed` | | gnark or the proving key could not be loaded |
+| `proverLoadFailed` | | the proving key could not be loaded |
 | `unsupportedCircuit` | | the prepared circuit's shape is not one the wallet proves |
 | `provingKeyUnknown`, `provingKeyMismatch` | `name` | the lockfile does not pin the key the client expects |
 | `provingKeyDownloadFailed`, `provingKeyCorrupt` | `name` | the key could not be downloaded, or does not hash to the pinned value |
@@ -735,11 +740,7 @@ final wallet = await ZolanaWallet.open(
 import 'package:zolana_mobile/zolana_mobile.dart';
 
 await initZolanaMobile();
-final prover = await LocalProver.load(
-  circuitPath: r1csPath,
-  provingKeyPath: provingKeyPath,
-  verifyingKeyPath: verifyingKeyPath,
-);
+final prover = await LocalProver.load(keyPath: zoproKeyPath);
 try {
   final result = await prover.prove(requestJson: requestJson);
   useProofIfWalletSessionIsStillAuthorized(result.proofJson);
@@ -749,7 +750,7 @@ try {
 ```
 
 `requestJson` is a structured Zolana `/prove` request built from real wallet
-state, not a seed or an invented input balance. The adapter builds its witness
+state, not a seed or an invented input balance. The prover builds its witness
 locally and returns the canonical `{ar, bs, krs}` proof JSON consumed by Zolana.
 It verifies the proof locally before returning. The SDK does not acquire wallet
 state, authorize a transaction, sign, or submit it; `ZolanaWallet` does all of
@@ -757,16 +758,16 @@ that except signing.
 
 Load the native library with `initZolanaMobile()` before any other call.
 
-The structured adapter supports `transfer-confidential`, `transfer-ring`,
-`transfer-ring-authority`, `merge`, and `merge-ring`, with a matching supported
-key shape. Other circuit types fail closed. The bundled demo stages only 2→2;
+The prover supports `transfer-confidential`, `transfer-ring`,
+`transfer-ring-authority`, `merge`, and `merge-ring`, each with the key of its
+shape. Other circuit types fail closed. The bundled demo stages only 2→2;
 provide the matching trusted keys for other shapes.
 
 Only one prepared native prover is loaded at a time per process, and each
 `LocalProver` runs one proof at a time; another fails with
 `WalletError.proverBusy`, and so do the wallet's own proofs while a
-`LocalProver` is loaded. Close it before loading another circuit.
-The key/circuit files are deserialized once by `load`, not on every warm proof.
+`LocalProver` is loaded. Close it before loading another key.
+The key is read once by `load`, not on every warm proof.
 `loadMs` measures preparation separately from job timings. Parsed keys are held
 until `close`; deleting or replacing their source files does not rotate an
 already-loaded prover. Close and reload explicitly to change circuit versions.
@@ -821,10 +822,8 @@ commit it.
 
 ### From Xcode
 
-Install Go 1.27.1 or newer (`brew install go`) and Flutter; the build hook
-builds the Rust and Go sources when no release matches them, and finds Go in its
-standard install locations outside Xcode's `PATH`. Then, with the workspace
-closed:
+Install Flutter; the build hook builds the Rust sources when no release
+matches them. Then, with the workspace closed:
 
 ```sh
 cd packages/zolana_mobile/example

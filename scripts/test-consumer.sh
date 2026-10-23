@@ -47,7 +47,7 @@ flutter:
     - assets/proving/
 YAML
 mkdir -p "$consumer/assets/proving" "$consumer/integration_test"
-cp "$repo_root/packages/zolana_mobile/example/assets/proving/transfer_confidential_2_2."{pk,vk,r1cs} "$consumer/assets/proving/"
+cp "$repo_root/packages/zolana_mobile/example/assets/proving/transfer_confidential_2_2.zopro" "$consumer/assets/proving/"
 cp "$repo_root"/fixtures/prove-request-*.json "$consumer/assets/proving/"
 cp "$repo_root/scripts/consumer_fixture/prover_test.dart" "$consumer/integration_test/"
 # The proof timing harness, run on the consumer so that CI builds one app.

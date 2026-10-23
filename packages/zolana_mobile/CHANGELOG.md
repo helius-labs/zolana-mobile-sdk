@@ -81,9 +81,11 @@ Unreleased.
   stops when its subscription is cancelled; `provingKeys()` lists the keys
   and how much of each is on the device; `clearProvingKeys()` removes them.
 * Proving keys load once per device: the first load writes the key's
-  proving key beside it in the device's memory layout (`<key>.image`),
-  and later loads map that file instead of decompressing the key, so a
-  restart costs no key preparation.
+  image beside it (`<key>.zopro.zopro-raw-3.solver2`: its points in the
+  device's memory layout and its solver), and later loads map that file
+  instead of decompressing the key, so a restart costs no key preparation
+  and the system may drop the points' pages under memory pressure rather
+  than the app holding them.
 * `proveRequest(keyName, requestJson)` proves a Zolana `/prove` request
   with a pinned key through the wallet's key store and reports where the
   time went: the key's download, its load, the witness, the proof and

@@ -1,5 +1,10 @@
 //! Proving keys, fetched on first use or ahead of it, and pinned by the
-//! Zolana proving-key lockfile.
+//! The wallet's proving keys: zopro keys, one per gnark proving key.
+//!
+//! `proving-keys.lock` is the upstream lockfile at the pinned Zolana
+//! revision: the keys' names, sizes and digests, which the client pins.
+//! `zopro-keys.lock` names the zopro key built from each, with its own size
+//! and digest; a key without one cannot be proved with on the device yet.
 //!
 //! `proving-keys.lock` is the upstream lockfile at the pinned Zolana revision,
 //! copied verbatim (`scripts/check-upstream.sh` checks it). Its version prefix
@@ -13,9 +18,9 @@
 //! `<key>.partial`, so an interrupted download resumes where it stopped, and
 //! is moved into place once it hashes to the lockfile. `<key>.verified` then
 //! records its size and modification time, so a later process uses it without
-//! hashing it again. `<key>.image` is the key's proving key in the device's
-//! memory layout, written by the native prover at the first load and mapped
-//! at later ones; it goes with its key.
+//! hashing it again. `<key>.solver<N>` is the kernel's solver image, written
+//! by the native prover at the first load and read at later ones; it goes
+//! with its key.
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -42,6 +47,7 @@ use crate::ProvedRequest;
 pub const DEFAULT_PROVING_KEYS_URL: &str = "https://d3gbdb0egjwcw9.cloudfront.net";
 
 const LOCKFILE: &str = include_str!("../proving-keys.lock");
+const ZOPRO_LOCKFILE: &str = include_str!("../zopro-keys.lock");
 
 /// Bytes per ranged request of a download: what a resumed download repeats
 /// at most, and how often progress is reported and a cancel is seen.
@@ -54,18 +60,47 @@ const SET_MARKER: &str = ".zolana-proving-keys";
 #[derive(Deserialize)]
 struct Lockfile {
     prefix: String,
-    keys: HashMap<String, LockEntry>,
+    keys: HashMap<String, KeyEntry>,
+}
+
+/// A gnark proving key as upstream pins it.
+#[derive(Deserialize)]
+struct KeyEntry {
+    /// Only the tests read it: they check the zopro lockfile and the
+    /// program's verifying keys against it.
+    #[cfg_attr(not(test), allow(dead_code))]
+    sha256: String,
+    size: u64,
 }
 
 #[derive(Deserialize)]
+struct Artifacts {
+    prefix: String,
+    keys: HashMap<String, LockEntry>,
+}
+
+/// A zopro key, by the name of the gnark proving key it was built from
+/// (`transfer_confidential_2_2.key`, as the client names keys).
+#[derive(Clone, Deserialize)]
 struct LockEntry {
+    /// The zopro key's file name.
+    file: String,
     sha256: String,
     size: u64,
+    /// The gnark proving key's digest, which the client pins.
+    key_sha256: String,
 }
 
 fn lockfile() -> &'static Lockfile {
     static LOCK: OnceLock<Lockfile> = OnceLock::new();
     LOCK.get_or_init(|| serde_json::from_str(LOCKFILE).expect("embedded lockfile is valid JSON"))
+}
+
+fn artifacts() -> &'static Artifacts {
+    static LOCK: OnceLock<Artifacts> = OnceLock::new();
+    LOCK.get_or_init(|| {
+        serde_json::from_str(ZOPRO_LOCKFILE).expect("embedded zopro lockfile is valid JSON")
+    })
 }
 
 /// The directory name of this lockfile's keys: the last part of its prefix.
@@ -157,11 +192,9 @@ impl ProvingKeys {
         }
         let mut names: Vec<String> = names.into_iter().collect();
         for name in &names {
-            if !lockfile().keys.contains_key(name) {
-                return Err(WalletError::ProvingKeyUnknown { name: name.clone() });
-            }
+            entry(name)?;
         }
-        names.sort_by_key(|name| lockfile().keys[name].size);
+        names.sort_by_key(|name| artifacts().keys[name].size);
         Ok(names)
     }
 
@@ -203,7 +236,7 @@ impl ProvingKeys {
         request_json: String,
     ) -> Result<ProvedRequest, WalletError> {
         let request_json = Zeroizing::new(request_json);
-        let sha256 = sha256_bytes(&entry(&key_name)?.sha256).ok_or_else(|| {
+        let sha256 = sha256_bytes(&entry(&key_name)?.key_sha256).ok_or_else(|| {
             WalletError::ProvingKeyUnknown {
                 name: key_name.clone(),
             }
@@ -274,7 +307,7 @@ impl KeyStore {
     pub fn ensure(&self, key: &ExpectedProvingKey) -> Result<(PathBuf, u64), WalletError> {
         let name = key.name.as_str();
         let entry = entry(name)?;
-        if entry.sha256 != hex(&key.sha256) {
+        if entry.key_sha256 != hex(&key.sha256) {
             return Err(WalletError::ProvingKeyMismatch { name: name.into() });
         }
         let on_device = self.on_disk(name, entry);
@@ -289,10 +322,18 @@ impl KeyStore {
             .keys
             .iter()
             .filter(|(name, _)| is_wallet_key(name))
-            .map(|(name, entry)| ProvingKeyStatus {
-                name: name.clone(),
-                size: entry.size,
-                downloaded: self.on_disk(name, entry),
+            .map(|(name, key)| match artifacts().keys.get(name) {
+                Some(entry) => ProvingKeyStatus {
+                    name: name.clone(),
+                    size: entry.size,
+                    downloaded: self.on_disk(name, entry),
+                },
+                // Not built yet: nothing to download.
+                None => ProvingKeyStatus {
+                    name: name.clone(),
+                    size: key.size,
+                    downloaded: 0,
+                },
             })
             .collect();
         keys.sort_by(|a, b| a.size.cmp(&b.size).then_with(|| a.name.cmp(&b.name)));
@@ -301,7 +342,7 @@ impl KeyStore {
 
     /// Bytes of key `name` on disk, without hashing it.
     fn on_disk(&self, name: &str, entry: &LockEntry) -> u64 {
-        let path = self.dir.join(name);
+        let path = self.dir.join(&entry.file);
         if self.is_verified(name) || Verified::matches(&path, entry) {
             return entry.size;
         }
@@ -320,7 +361,8 @@ impl KeyStore {
         let mut pending = Vec::new();
         for &(name, entry) in keys {
             let on_disk = self.on_disk(name, entry);
-            let done = self.is_verified(name) || Verified::matches(&self.dir.join(name), entry);
+            let done =
+                self.is_verified(name) || Verified::matches(&self.dir.join(&entry.file), entry);
             if !done {
                 pending.push((name, entry, on_disk));
             }
@@ -403,14 +445,14 @@ impl KeyStore {
                 .or_default(),
         );
         let _key = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        let path = self.dir.join(name);
+        let path = self.dir.join(&entry.file);
         if self.is_verified(name) || Verified::matches(&path, entry) {
             return Ok(self.verified(name, path));
         }
         if !matches_entry(name, &path, entry)? {
             // A key that is replaced takes its image with it.
             let _ = fs::remove_file(&path);
-            let _ = fs::remove_file(image_path(&path));
+            let _ = fs::remove_file(crate::prover::image_path(&path));
             self.create_dir()?;
             if !self.download(name, entry, &path, progress)? {
                 return Ok(None);
@@ -451,7 +493,7 @@ impl KeyStore {
         progress: &mut dyn FnMut(u64) -> bool,
     ) -> Result<bool, WalletError> {
         let partial = partial(path);
-        let part = path.with_extension("key.part");
+        let part = sidecar(path, "part");
         let failed = || WalletError::ProvingKeyDownloadFailed { name: name.into() };
         let mut offset = fs::metadata(&partial).map_or(0, |m| m.len());
         if offset > entry.size {
@@ -468,7 +510,7 @@ impl KeyStore {
                 .transport
                 .send_blocking(TransportRequest {
                     method: "GET".to_string(),
-                    url: format!("{}/{}/{name}", self.base_url, lockfile().prefix),
+                    url: format!("{}/{}/{}", self.base_url, artifacts().prefix, entry.file),
                     headers: HashMap::from([(
                         "range".to_string(),
                         format!("bytes={offset}-{end}"),
@@ -520,22 +562,35 @@ impl KeyStore {
     }
 }
 
+/// The gnark key digest a proof with `name`'s zopro key reports.
+#[cfg(test)]
+pub(crate) fn key_sha256(name: &str) -> Option<&'static str> {
+    artifacts()
+        .keys
+        .get(name)
+        .map(|entry| entry.key_sha256.as_str())
+}
+
+/// The zopro key of gnark key `name`: unknown until one is built.
 fn entry(name: &str) -> Result<&'static LockEntry, WalletError> {
-    lockfile()
+    artifacts()
         .keys
         .get(name)
         .ok_or_else(|| WalletError::ProvingKeyUnknown { name: name.into() })
 }
 
 fn partial(path: &Path) -> PathBuf {
-    path.with_extension("key.partial")
+    sidecar(path, "partial")
 }
 
-/// Where the native prover keeps the key's proving key in the device's
-/// memory layout after the first load (see its image.go): about twice the
-/// key's size, loaded by mapping it instead of decompressing the key.
-pub(crate) fn image_path(key: &Path) -> PathBuf {
-    key.with_extension("key.image")
+/// A file beside `path`: its name with `.suffix` appended.
+fn sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(format!(".{suffix}"));
+    path.with_file_name(name)
 }
 
 /// The bytes of a lowercase hex SHA-256, as the lockfile writes it.
@@ -593,7 +648,7 @@ struct Verified;
 
 impl Verified {
     fn path(key: &Path) -> PathBuf {
-        key.with_extension("key.verified")
+        sidecar(key, "verified")
     }
 
     fn stamp(key: &Path, entry: &LockEntry) -> Option<String> {
@@ -712,8 +767,10 @@ mod tests {
     fn key() -> (Vec<u8>, LockEntry) {
         let data: Vec<u8> = (0..100).collect();
         let entry = LockEntry {
+            file: "k.key".into(),
             sha256: hex(&Sha256::digest(&data)),
             size: data.len() as u64,
+            key_sha256: hex(&Sha256::digest(&data)),
         };
         (data, entry)
     }
@@ -789,6 +846,22 @@ mod tests {
             if let Some(entry) = lockfile().keys.get(*name) {
                 assert_eq!(entry.sha256, hex(sha256), "{name}");
             }
+        }
+    }
+
+    /// Every zopro key is built from a pinned gnark key, with its digest.
+    #[test]
+    fn zopro_keys_are_built_from_the_pinned_keys() {
+        assert!(!artifacts().keys.is_empty());
+        assert_eq!(artifacts().prefix, lockfile().prefix);
+        for (name, entry) in &artifacts().keys {
+            let key = lockfile()
+                .keys
+                .get(name)
+                .unwrap_or_else(|| panic!("{name} is not pinned"));
+            assert_eq!(entry.key_sha256, key.sha256, "{name}");
+            assert_eq!(entry.file, name.replace(".key", ".zopro"), "{name}");
+            assert!(is_wallet_key(name), "{name}");
         }
     }
 
@@ -1001,8 +1074,8 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// A key replaced by a download takes its image with it; the image of a
-    /// key that only lost its record stays, as the key does.
+    /// A key replaced by a download takes its image with it; the image of
+    /// a key that only lost its record stays, as the key does.
     #[test]
     fn a_replaced_key_takes_its_image_with_it() {
         let root = scratch("image");
@@ -1012,8 +1085,15 @@ mod tests {
             .fetch("k.key", &entry, &mut |_| true)
             .unwrap()
             .unwrap();
-        let image = image_path(&path);
-        assert_eq!(image, root.join(key_set()).join("k.key.image"));
+        let image = crate::prover::image_path(&path);
+        assert_eq!(
+            image,
+            root.join(key_set()).join(format!(
+                "k.key.{}.solver{}",
+                zopro_zolana::zopro_prover::raw::FORMAT,
+                zopro_zolana::zopro_core::solver_image_version()
+            ))
+        );
         fs::write(&image, b"image").unwrap();
 
         fs::remove_file(Verified::path(&path)).unwrap();
@@ -1067,8 +1147,16 @@ mod tests {
         store.fetch("k.key", &entry, &mut |_| true).unwrap();
         requests.lock().unwrap().clear();
         let mut updates = Vec::new();
+        let l = LockEntry {
+            file: "l.key".into(),
+            ..entry.clone()
+        };
+        let m = LockEntry {
+            file: "m.key".into(),
+            ..entry.clone()
+        };
         let done = store
-            .prefetch(&[("k.key", &entry), ("l.key", &entry)], |update| {
+            .prefetch(&[("k.key", &entry), ("l.key", &l)], |update| {
                 updates.push((update.name.clone(), update.keys_done, update.downloaded));
                 true
             })
@@ -1088,7 +1176,7 @@ mod tests {
         assert_eq!(requests.lock().unwrap().len(), 4);
 
         let stopped = store
-            .prefetch(&[("m.key", &entry)], |update| update.downloaded == 0)
+            .prefetch(&[("m.key", &m)], |update| update.downloaded == 0)
             .unwrap();
         assert!(!stopped);
         fs::remove_dir_all(&root).unwrap();
@@ -1132,7 +1220,11 @@ mod tests {
         assert!(status.windows(2).all(|pair| pair[0].size <= pair[1].size));
         let dir = root.join(key_set());
         fs::create_dir_all(&dir).unwrap();
-        fs::write(partial(&dir.join("transfer_confidential_1_2.key")), [0; 7]).unwrap();
+        fs::write(
+            partial(&dir.join("transfer_confidential_1_2.zopro")),
+            [0; 7],
+        )
+        .unwrap();
         let first = &store.status()[0];
         assert_eq!(
             (first.name.as_str(), first.downloaded),

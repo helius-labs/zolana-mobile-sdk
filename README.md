@@ -3,19 +3,18 @@
 A Flutter SDK for private Zolana payments on Android and iOS. `ZolanaWallet`
 registers, shields, sends privately and unshields, building every
 transaction with the Zolana Rust client and proving it on the device with
-Mopro/gnark Groth16, or through the application's backend with the proof
-verified on the device. The Solana key stays with the application's signer.
+zopro, a Groth16 prover in Rust for gnark's keys (on the GPU where there is
+one), or through the application's backend with the proof verified on the
+device. The Solana key stays with the application's signer.
 
 ## Layout
 
-- `packages/zolana_mobile/native/zolana-mobile`: the native wallet, on-device
-  prover, proving-key store, and lower-level prover handles.
-- `packages/zolana_mobile/native/rust-gnark`: vendored Mopro backend, including
-  prepared keys, `.key` loading, and the structured request adapter.
+- `packages/zolana_mobile/native/zolana-mobile`: the native wallet, the
+  on-device prover and the proving-key store.
 - `packages/zolana_mobile`: the Flutter plugin, and an example devnet wallet.
 - `fixtures`: a 2→2 `/prove` request built with the Zolana prover's test
   helpers, and the Helius prover's response to it.
-- `scripts`: asset staging and the upstream drift check.
+- `scripts`: asset staging.
 
 The generated native library keeps Mopro's internal
 `mopro_flutter_bindings` stem. Applications import the public Dart package as
@@ -53,8 +52,7 @@ indexer on Helius devnet with it. It is compiled into that build only; do not
 commit it.
 
 The build uses the precompiled native libraries (see below). When no release
-matches the sources, it builds them from source with Rust and Go 1.27.1 or
-newer. Android source builds need the NDK version Flutter selects (28.2.13676358
+matches the sources, it builds them from source with Rust. Android source builds need the NDK version Flutter selects (28.2.13676358
 for Flutter 3.47), installed through Android Studio's SDK Manager. Set both
 variables to its directory before running Flutter:
 
@@ -63,10 +61,8 @@ export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/28.2.13676358"
 export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 ```
 
-`stage-demo-assets.sh` downloads one checksum-locked packed Zolana key and
-splits its `.pk`, `.vk`, and `.r1cs` sections at verified offsets for the
-benchmark. The wallet itself downloads upstream `.key` files on demand and uses
-them unsplit.
+`stage-demo-assets.sh` downloads the benchmark's checksum-locked zopro key.
+The wallet itself downloads the zopro key of each shape on demand.
 
 ## Validation
 
@@ -90,29 +86,21 @@ cargo test -p zolana-mobile proves_the_staged_request -- --ignored
 ## Rust dependencies
 
 The Flutter-facing crate pins `mopro-ffi` to `sergeytimoshin/mopro` revision
-`c1071f96fa5a28dca8e567dd3944331047450a2b`. The gnark backend from that revision
-is vendored with local fixes documented in its provenance file so the pub package
-includes its complete source build; it is built against gnark 0.16.3, the version
-the Zolana prover uses. Protocol crates `zolana-hasher`, `zolana-keypair`, and
-`zolana-transaction`, the vendored Go circuits, and the staged proving key are all
-pinned to one Zolana revision, `[workspace.metadata.upstream]` in `Cargo.toml`,
+`c1071f96fa5a28dca8e567dd3944331047450a2b`. The prover is `zopro-prover`: the
+request to the circuit's inputs, the arithmetic, and the proof verified and
+encoded as gnark's verifier reads it; gnark itself runs only offline, where
+the circuits are compiled and the keys made. Protocol crates `zolana-hasher`,
+`zolana-keypair`, and `zolana-transaction` are pinned to one Zolana revision,
 which must be on Zolana `main`.
-
-`scripts/check-upstream.sh` fails if any of these drift from that revision; CI
-runs it on every push. To move to a newer Zolana revision, re-vendor
-`go/protocol` from `prover/server`, regenerate its `UPSTREAM_FILES.sha256`, bump
-the Cargo pins and the key checksums in `stage-demo-assets.sh`, and regenerate
-the 2→2 fixtures as described in the rust-gnark provenance file.
 
 ## Precompiled binaries
 
 The `Precompiled binaries` workflow runs on every push to `main`:
 
 1. It computes the crate hash of `packages/zolana_mobile/rust` and its path
-   dependencies (`native/zolana-mobile`, `native/rust-gnark` with the Go
-   sources).
-2. It builds the library with the Go prover for Android (`aarch64`, `armv7`,
-   `x86_64`) and iOS (device, `arm64` and `x86_64` simulator).
+   dependency `native/zolana-mobile`.
+2. It builds the library for Android (`aarch64`, `armv7`, `x86_64`) and iOS
+   (device, `arm64` and `x86_64` simulator).
 3. It signs every file and uploads it to the release `precompiled_<hash>`.
    Targets that the release already has are skipped.
 4. It builds the example app for Android and iOS without Rust, from the
@@ -154,7 +142,7 @@ A local cluster started by `just` in the zolana repository works as well.
 
 See `packages/zolana_mobile/README.md` for the ownership, lock/discard, completion,
 and prepared-key lifetime contract. Closing drains work; it does not promise
-instant native cancellation or secure erasure of all Dart/Go copies.
+instant native cancellation or secure erasure of all Dart copies.
 
 ## Distribution checks
 

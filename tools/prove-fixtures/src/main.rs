@@ -181,11 +181,17 @@ impl Trees {
         let nullifier_pubkey = owner.nullifier_key.pubkey().expect("nullifier pubkey");
         (0..count)
             .map(|index| {
+                // 32 bytes of index + 1, below the field from the 49th note
+                // on (0x31... is not): the smaller fixtures keep theirs.
+                let mut blinding = [index as u8 + 1; 32];
+                if blinding[0] >= 0x30 {
+                    blinding[0] = 0;
+                }
                 let utxo = Utxo {
                     owner: owner.signing_pubkey(),
                     asset: Mint::SOL,
                     amount: 1_000 + index as u64,
-                    blinding: [index as u8 + 1; 32],
+                    blinding,
                     ring_program_id: None,
                     data: Data::default(),
                 };

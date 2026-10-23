@@ -1,0 +1,251 @@
+{
+  "prefix": "proving-keys/3a1c88f90f609eb1",
+  "keys": {
+    "merge_24_1.key": {
+      "file": "merge_24_1.zopro",
+      "size": 139209614,
+      "sha256": "24139001106323dc541600e001dc4a0506d3eb5462ca5ad14231169ba16f2ee0",
+      "key_sha256": "a0dfaa1e73d2d9e1159d2ebab82baa6d0602482d75f24dcbff596322dc389c88"
+    },
+    "merge_54_1.key": {
+      "file": "merge_54_1.zopro",
+      "size": 315287079,
+      "sha256": "5e671e50ce4d37acd504025d1fb924186d992dd9a562c04bba3dca957641c6eb",
+      "key_sha256": "951ec83dc53d112a46a1eb9cd308e6abd933291eb3109647a479e2321fce7423"
+    },
+    "merge_8_1.key": {
+      "file": "merge_8_1.zopro",
+      "size": 41780065,
+      "sha256": "9a69e6538598bdffe160e2daae2d29cbc4818bd2a7340d9bb104721f6001ce2d",
+      "key_sha256": "f59571876452541eaf20cfc583a082b9b6cc788bf85719bd337398b2d962ad23"
+    },
+    "transfer_confidential_12_2.key": {
+      "file": "transfer_confidential_12_2.zopro",
+      "size": 70117741,
+      "sha256": "1a30b8ecc8ab6469b22bb64d7e1adf2052e741196699f3576eec9b943c396263",
+      "key_sha256": "3415363ec3ae33b730c7445aeb7850aa1bc044443e6ef8a7731e2c56fd1df6e7"
+    },
+    "transfer_confidential_12_4.key": {
+      "file": "transfer_confidential_12_4.zopro",
+      "size": 70978670,
+      "sha256": "3f992e6e4017bee239272cdc3164e478041264af1f8bb55992e81c60d252c30e",
+      "key_sha256": "36519896a5e5b4d1ef008d6883548944027eb21ea3e6bc72ba00fde9ea9efa4a"
+    },
+    "transfer_confidential_12_8.key": {
+      "file": "transfer_confidential_12_8.zopro",
+      "size": 72958479,
+      "sha256": "b0337f276ff963cdef48d071b0cb171514ae83d8fba92aeb1191c83e84d1681d",
+      "key_sha256": "131973e42165b1222ecfd2692796cfb035d5aa4a08ce7bf5e545795283ee344d"
+    },
+    "transfer_confidential_16_2.key": {
+      "file": "transfer_confidential_16_2.zopro",
+      "size": 88339592,
+      "sha256": "10b34a04b2e0fc648b8fe70ba53cdca61fd7d2295065750b34c1031d5968d3a2",
+      "key_sha256": "27370f44f8b9c0c05f9d2c6738ab5294582fd40c869114baf0d7fb15e6d08e2a"
+    },
+    "transfer_confidential_16_4.key": {
+      "file": "transfer_confidential_16_4.zopro",
+      "size": 89215109,
+      "sha256": "29b9ceff296931d98ce13f471e28c2d5cc9fcfa15d6a68cba4eb978fb51a3754",
+      "key_sha256": "7cdef518b59307d578c2eecb71e811945ee56b1906283e8c70fe0924343dfb2a"
+    },
+    "transfer_confidential_16_8.key": {
+      "file": "transfer_confidential_16_8.zopro",
+      "size": 91179574,
+      "sha256": "9178038a6a29d89c2e6965837cf4dc68c30f574bad1d8fe7e9142b57c963ae56",
+      "key_sha256": "d8052824a163d41ddf8540bc72dbfe94b5c52be21b6a0f3039b2f01f7380641f"
+    },
+    "transfer_confidential_1_16.key": {
+      "file": "transfer_confidential_1_16.zopro",
+      "size": 13610533,
+      "sha256": "4b2743b128bfb6231125403b8a7d87d7eb8dcad3eb142ae09a15b6bbb8fa4b20",
+      "key_sha256": "aecae052aeb709ef4656d6da110bd1403d21bc5891e60691ee9cbc0ebb46dcb9"
+    },
+    "transfer_confidential_1_2.key": {
+      "file": "transfer_confidential_1_2.zopro",
+      "size": 6866897,
+      "sha256": "5c46969e7909c0848f5ad746603f19094e9fff0ceacc1a56adc3a59314e5c53a",
+      "key_sha256": "7ef987966b0dfba5d86eab7c67068be00dbe581d823d45cdbbf6d338bfacb640"
+    },
+    "transfer_confidential_1_4.key": {
+      "file": "transfer_confidential_1_4.zopro",
+      "size": 8618363,
+      "sha256": "b0cf8ffa6c2845eabcffaa490494861ff8ac7d9cbaf35d7d6de5eaaafeea28be",
+      "key_sha256": "94bddced9e46a0e0c4fbf6bc59c6d083e1d577a60bf4d8520129f41505f4f1dd"
+    },
+    "transfer_confidential_1_8.key": {
+      "file": "transfer_confidential_1_8.zopro",
+      "size": 10283702,
+      "sha256": "b0595768cce2f6992a719735663d22ca49d755191457d508178cccb9596cd66f",
+      "key_sha256": "3471ab2908cbe15b757164db5bb7c7f82a89036c557fc26fe66a7148a4338f58"
+    },
+    "transfer_confidential_24_2.key": {
+      "file": "transfer_confidential_24_2.zopro",
+      "size": 145352079,
+      "sha256": "72ddca688f8bc0edf74c1119fd58dd85c877b17adf41c360f9a8a69d9182d561",
+      "key_sha256": "7b98beac6e0f89d568a30f569c690267bc37fcb8472ad88c292b89433c2f91d9"
+    },
+    "transfer_confidential_24_4.key": {
+      "file": "transfer_confidential_24_4.zopro",
+      "size": 146226895,
+      "sha256": "74753526b96757a2624e570493c87f4afccdd6fa6300171d728e426b322f1056",
+      "key_sha256": "4e3c664a197a7b2cc5616b7c01dc463e92fa666f2990ee42ceb2d7ae81f1ece4"
+    },
+    "transfer_confidential_2_16.key": {
+      "file": "transfer_confidential_2_16.zopro",
+      "size": 20124565,
+      "sha256": "7004cb438c3e4a17fe90ed8ab45e7606ebb8a64f219790a2450ff8ee8bbde19b",
+      "key_sha256": "27ef8be4d400bb9c724f79a4928f7f6ff4dc95a970f17c365b38430267986bfd"
+    },
+    "transfer_confidential_2_2.key": {
+      "file": "transfer_confidential_2_2.zopro",
+      "size": 12181684,
+      "sha256": "767f1ad5a935e2fcba0094053922ae8e71020e1ea97051f84386440c18b3fa0a",
+      "key_sha256": "e810d52962f4558b0bd50b768a89490759e15a0623d4c2c43318f541b8cc61ff"
+    },
+    "transfer_confidential_2_4.key": {
+      "file": "transfer_confidential_2_4.zopro",
+      "size": 12890160,
+      "sha256": "53ca7a05f3310525bd738f77b2833f9e51d09345c7eb6fd9080a5b6a41fb7864",
+      "key_sha256": "c93338402cdc8fd8ec2f70f2de9fa29ee3e35b064ca803f8ad4d18070e4861fe"
+    },
+    "transfer_confidential_2_8.key": {
+      "file": "transfer_confidential_2_8.zopro",
+      "size": 16699327,
+      "sha256": "51ccfe39959467a666ed6e17658f4fceec0f2e6fb51ba435e839765f88458e75",
+      "key_sha256": "a38085e7a38b725909e7fe81be544c6e5a1b4ec3561cc07f941eac15825c578a"
+    },
+    "transfer_confidential_32_2.key": {
+      "file": "transfer_confidential_32_2.zopro",
+      "size": 186210883,
+      "sha256": "1706957b802a21c046d3b8e82e2a4e02d25e48026ce6d44e1467e7beb41f2842",
+      "key_sha256": "70f4a61a248d240ca6b20730e6ab8a88acb9f4153c1e4688f6861bf6339a5a0b"
+    },
+    "transfer_confidential_3_2.key": {
+      "file": "transfer_confidential_3_2.zopro",
+      "size": 18428830,
+      "sha256": "e264d05a2d88a41eac4993841b50c70f273e37788d0d8feffe507e758f3439b2",
+      "key_sha256": "0537e6669e6dae3304648bd427bf3f9ec3e5aaa66134d15e0ff142794f2e966b"
+    },
+    "transfer_confidential_3_4.key": {
+      "file": "transfer_confidential_3_4.zopro",
+      "size": 19151803,
+      "sha256": "67fc3a824c6aea8d6271a64859c8d27e9c1fc9d13e642d416c15041ec2f8e488",
+      "key_sha256": "4710053ed9a08908c419ede4c9a3138d9f78e6d185c6846a2a9c2f4f846c0d4d"
+    },
+    "transfer_confidential_3_8.key": {
+      "file": "transfer_confidential_3_8.zopro",
+      "size": 20898708,
+      "sha256": "4a58d330817684cb65906756729a0369e17429cdcd39866b888fcc945860957f",
+      "key_sha256": "e559f7256c67be5dc857f601b22c0e929ba615f91032da09db32c00cd98255d1"
+    },
+    "transfer_confidential_40_2.key": {
+      "file": "transfer_confidential_40_2.zopro",
+      "size": 225113063,
+      "sha256": "93ece1106db97082ed057b925a36cd3d0ed9ada84dc6e92b632e6434b0b2e0ce",
+      "key_sha256": "530779155340a05cbd90dedc5e94c5960cf5105f2866bdb041e3a56d06c9bb8b"
+    },
+    "transfer_confidential_48_2.key": {
+      "file": "transfer_confidential_48_2.zopro",
+      "size": 297271251,
+      "sha256": "4743626085465342aaa4f2f2c4f62ad376c1c9fa36d3bf83441606e9df2923c1",
+      "key_sha256": "4738674f40f19233f1963954ae4f96a763d11f1adcd82b4828ca8c420cc5b049"
+    },
+    "transfer_confidential_49_2.key": {
+      "file": "transfer_confidential_49_2.zopro",
+      "size": 302016296,
+      "sha256": "74b44c3154b79c18b054e03a0fc1966dbcd06ce1b1c50940d2e83e392045ed8b",
+      "key_sha256": "e39b30ba966198a03158276989d91f1b2fb05f695e56550fec6452d8a3110b6b"
+    },
+    "transfer_confidential_4_16.key": {
+      "file": "transfer_confidential_4_16.zopro",
+      "size": 28654108,
+      "sha256": "a7083c5eb41d6368dfc1c3e3a6bfe20cf2f220f1c8010736d744ef2b70066340",
+      "key_sha256": "917cf5f0976d245b08756b1147e04a1f0924c5f5b800d57bd57d305b43e8f432"
+    },
+    "transfer_confidential_4_2.key": {
+      "file": "transfer_confidential_4_2.zopro",
+      "size": 22606224,
+      "sha256": "1c63a202faadaaa5e457ae2484f3054e2caf9e6d996a994525d8f297a6e86861",
+      "key_sha256": "aea0c474e4c67499c45f11f30d2d03e53ee5dd7c6b7940a0f61cfefa2e61e38e"
+    },
+    "transfer_confidential_4_4.key": {
+      "file": "transfer_confidential_4_4.zopro",
+      "size": 23346742,
+      "sha256": "73402981802abfdd840ffdd3473ae239a9f1f51923c6d3df927da080272132e1",
+      "key_sha256": "6d83eef0b16f03b8f2b2a469441d67264bc34932d8b261f344f5bb39f29a1fbe"
+    },
+    "transfer_confidential_4_8.key": {
+      "file": "transfer_confidential_4_8.zopro",
+      "size": 25125588,
+      "sha256": "8e777ad89d823c3ce39e44b56fd8d939ba4fdda323454bd0f869dd915ec36476",
+      "key_sha256": "27fe418512ee0be5cb2f82290eab4ab20ed2d32549e1d8d7bfa1fa5b45df62e9"
+    },
+    "transfer_confidential_5_16.key": {
+      "file": "transfer_confidential_5_16.zopro",
+      "size": 37267056,
+      "sha256": "4e4fd03094d9bf4026c10b81adf90e41c26865afba8a9aa99b9cb6b6ce1a3e1f",
+      "key_sha256": "1faf95183f53bd29610ebda52703244ef63f45a2d26706e88bfd3197132bc20e"
+    },
+    "transfer_confidential_5_2.key": {
+      "file": "transfer_confidential_5_2.zopro",
+      "size": 26905088,
+      "sha256": "a669d834150e8d5de55e11e394ea7f7f56e9e5177d8c5ceb0b7c1e3ba7fa2a30",
+      "key_sha256": "ae6699a19d810a7e0ef663dff3fc32e0b8e4bdeae9089c583746f95ae3b0e1e9"
+    },
+    "transfer_confidential_5_4.key": {
+      "file": "transfer_confidential_5_4.zopro",
+      "size": 27670299,
+      "sha256": "01ffd6c3c9c20034d8d1f74c2ffd61ec43e2634be7229788f5990694e3794f15",
+      "key_sha256": "6779a069f3abc85f853b754ff2b58021532d26fe9642eb9ba42744da91733517"
+    },
+    "transfer_confidential_5_8.key": {
+      "file": "transfer_confidential_5_8.zopro",
+      "size": 33697003,
+      "sha256": "8530b65e10d5dba1eb3b84957d4656f4c8e579496643ac1c25a0a2e79c82a531",
+      "key_sha256": "2806aff6bc7bd34233a2ff42a42e5524c680930944c3fc84d6d58e773c033cb5"
+    },
+    "transfer_confidential_6_2.key": {
+      "file": "transfer_confidential_6_2.zopro",
+      "size": 35308721,
+      "sha256": "9ec7c1bd5ee95d72df62f3ab097319eb1eea9315ebb5507faaaf333bfd5a7dd4",
+      "key_sha256": "fe62dff0397662cb25d89ac9de976cc3d23adfd2b7a72f5f8ad8671d677da605"
+    },
+    "transfer_confidential_6_4.key": {
+      "file": "transfer_confidential_6_4.zopro",
+      "size": 36084278,
+      "sha256": "fd7e42826a23a9484888a3147f62d74d33af6501d1b563ac327b78bbc0daecea",
+      "key_sha256": "116a3d4030047d182eedcc9effa66dd9c66ed9bd3ad9d82c2242dc47eef1f244"
+    },
+    "transfer_confidential_6_8.key": {
+      "file": "transfer_confidential_6_8.zopro",
+      "size": 37946143,
+      "sha256": "2294a07cc60e570640388ffa1512a3355fdb2fb90ed588d3768e114610be41e6",
+      "key_sha256": "79281967e4aac47dc187d3a6555ab54800cef3928e5696969dcf4afb69b339da"
+    },
+    "transfer_confidential_8_16.key": {
+      "file": "transfer_confidential_8_16.zopro",
+      "size": 50271711,
+      "sha256": "a28bae4cf9f1e3d92acb6dfb65cd965ef1d9999b0fbd0159df5ce1f5899a6829",
+      "key_sha256": "8adc64d3886619e3b8e65b3b0c98eaac61bfdfbc8a51aa6ba05166b853feb328"
+    },
+    "transfer_confidential_8_2.key": {
+      "file": "transfer_confidential_8_2.zopro",
+      "size": 43928060,
+      "sha256": "a5573f885df7cc40e249a141424bc507e227a4db68a5a057ea6a6526a0b865ff",
+      "key_sha256": "24250fd74a86f1a07847e9dbb769cf9b2bebf20d29f18018186ea7900f69bbe4"
+    },
+    "transfer_confidential_8_4.key": {
+      "file": "transfer_confidential_8_4.zopro",
+      "size": 44739560,
+      "sha256": "da8e43756dd44474fe1620a28bcbd254dc951f4d5c1e911c850f987a9d10a9a1",
+      "key_sha256": "82975fe1145c827a76f8b76e229bb9c8501f993b1a4f7709446b7717f30bd07a"
+    },
+    "transfer_confidential_8_8.key": {
+      "file": "transfer_confidential_8_8.zopro",
+      "size": 46662538,
+      "sha256": "0d0cdd773dde8a40927c6a769d2834512c113014b8be07e97b4073f8c1498a62",
+      "key_sha256": "f8972d03f57baef87702aaddb87a3b831d2377723e930fb25675fe3e473d8aec"
+    }
+  }
+}

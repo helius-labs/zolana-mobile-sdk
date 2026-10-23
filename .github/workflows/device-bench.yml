@@ -36,10 +36,6 @@ jobs:
       DEVICEFARM_RUN_FILE: ${{ github.workspace }}/devicefarm-run
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
       - uses: nttld/setup-ndk@v1
@@ -61,9 +57,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/.cache/go-build
-          key: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-android-sccache0.18.0-go1.27.1-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-android-sccache0.18.0-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('Cargo.lock', 'packages/zolana_mobile/rust/Cargo.lock') }}
+          restore-keys: native-android-sccache0.18.0-ndk-r27c-rust${{ steps.rust.outputs.cachekey }}-
       - run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh
       - name: Build the bench app and its instrumentation
@@ -114,10 +109,6 @@ jobs:
       - run: |
           echo "ZOLANA_CONSUMER_DIR=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
           echo "ZOLANA_BENCH_DIR=$RUNNER_TEMP/ipa" >> "$GITHUB_ENV"
-      - uses: actions/setup-go@v7
-        with:
-          go-version: 1.27.1
-          cache: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust
         with:
@@ -145,9 +136,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/sccache
-            ~/Library/Caches/go-build
-          key: native-ios-device-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock', 'packages/zolana_mobile/native/rust-gnark/go/go.sum') }}
-          restore-keys: native-ios-device-sccache0.18.0-go1.27.1-rust${{ steps.rust.outputs.cachekey }}-
+          key: native-ios-device-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-${{ hashFiles('packages/zolana_mobile/rust/Cargo.lock') }}
+          restore-keys: native-ios-device-sccache0.18.0-rust${{ steps.rust.outputs.cachekey }}-
       - if: steps.precompiled.outputs.found != 'true'
         run: sccache --start-server
       - run: ./scripts/stage-demo-assets.sh

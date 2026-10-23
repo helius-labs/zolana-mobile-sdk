@@ -18,18 +18,11 @@ void main() {
       );
       LocalProver? prover;
       try {
-        for (final extension in ['pk', 'vk', 'r1cs']) {
-          final name = 'transfer_confidential_2_2.$extension';
-          final data = await rootBundle.load('assets/proving/$name');
-          await File('${directory.path}/$name')
-              .writeAsBytes(data.buffer.asUint8List());
-        }
-        final basename = '${directory.path}/transfer_confidential_2_2';
-        prover = await LocalProver.load(
-          circuitPath: '$basename.r1cs',
-          provingKeyPath: '$basename.pk',
-          verifyingKeyPath: '$basename.vk',
-        );
+        const name = 'transfer_confidential_2_2.zopro';
+        final data = await rootBundle.load('assets/proving/$name');
+        final keyPath = '${directory.path}/$name';
+        await File(keyPath).writeAsBytes(data.buffer.asUint8List());
+        prover = await LocalProver.load(keyPath: keyPath);
         final request = await rootBundle.loadString(
           'assets/proving/prove-request-2x2.json',
         );
