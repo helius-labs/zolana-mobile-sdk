@@ -179,9 +179,11 @@ await wallet.spend(
 - **Tokens**: the wallet holds every SPL Token or Token-2022 mint the
   shielded pool registered. It reads a mint's asset id and token program the
   first time a call names the mint, and when a read meets notes in a mint it
-  does not know yet, it reads the pool's registrations and the notes again. To
-  hold only some mints, list each in `WalletConfig.mints` with the token
-  program that owns it, as your Solana SDK reads it:
+  does not know yet, it reads the pool's registrations once and decrypts the
+  transactions it already fetched again. Notes in an asset the pool has not
+  registered are left out. To hold only some mints, list each in
+  `WalletConfig.mints` with the token program that owns it, as your Solana SDK
+  reads it:
 
   ```dart
   mints: [
