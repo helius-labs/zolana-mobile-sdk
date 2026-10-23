@@ -2094,12 +2094,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool dco_decode_box_autoadd_bool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as bool;
-  }
-
-  @protected
   Proving dco_decode_box_autoadd_proving(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_proving(raw);
@@ -2316,12 +2310,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             raw,
           );
-  }
-
-  @protected
-  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
   }
 
   @protected
@@ -2579,8 +2567,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   WalletConfig dco_decode_wallet_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 10)
-      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return WalletConfig(
       rpcUrl: dco_decode_String(arr[0]),
       indexerUrl: dco_decode_String(arr[1]),
@@ -2588,10 +2576,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       provingKeyUrl: dco_decode_opt_String(arr[3]),
       proving: dco_decode_opt_box_autoadd_proving(arr[4]),
       proverUrl: dco_decode_opt_String(arr[5]),
-      proverTee: dco_decode_opt_box_autoadd_bool(arr[6]),
-      maxSpendInputs: dco_decode_opt_box_autoadd_u_32(arr[7]),
-      reuseNotesMs: dco_decode_opt_box_autoadd_u_64(arr[8]),
-      mints: dco_decode_opt_list_mint_config(arr[9]),
+      maxSpendInputs: dco_decode_opt_box_autoadd_u_32(arr[6]),
+      reuseNotesMs: dco_decode_opt_box_autoadd_u_64(arr[7]),
+      mints: dco_decode_opt_list_mint_config(arr[8]),
     );
   }
 
@@ -3032,12 +3019,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return (sse_decode_bool(deserializer));
-  }
-
-  @protected
   Proving sse_decode_box_autoadd_proving(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_proving(deserializer));
@@ -3343,17 +3324,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
         deserializer,
       ));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
-  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_box_autoadd_bool(deserializer));
     } else {
       return null;
     }
@@ -3673,7 +3643,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_provingKeyUrl = sse_decode_opt_String(deserializer);
     var var_proving = sse_decode_opt_box_autoadd_proving(deserializer);
     var var_proverUrl = sse_decode_opt_String(deserializer);
-    var var_proverTee = sse_decode_opt_box_autoadd_bool(deserializer);
     var var_maxSpendInputs = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_reuseNotesMs = sse_decode_opt_box_autoadd_u_64(deserializer);
     var var_mints = sse_decode_opt_list_mint_config(deserializer);
@@ -3684,7 +3653,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       provingKeyUrl: var_provingKeyUrl,
       proving: var_proving,
       proverUrl: var_proverUrl,
-      proverTee: var_proverTee,
       maxSpendInputs: var_maxSpendInputs,
       reuseNotesMs: var_reuseNotesMs,
       mints: var_mints,
@@ -4203,12 +4171,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_bool(self, serializer);
-  }
-
-  @protected
   void sse_encode_box_autoadd_proving(Proving self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_proving(self, serializer);
@@ -4514,16 +4476,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_box_autoadd_bool(self, serializer);
-    }
-  }
-
-  @protected
   void sse_encode_opt_box_autoadd_proving(
     Proving? self,
     SseSerializer serializer,
@@ -4792,7 +4744,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_String(self.provingKeyUrl, serializer);
     sse_encode_opt_box_autoadd_proving(self.proving, serializer);
     sse_encode_opt_String(self.proverUrl, serializer);
-    sse_encode_opt_box_autoadd_bool(self.proverTee, serializer);
     sse_encode_opt_box_autoadd_u_32(self.maxSpendInputs, serializer);
     sse_encode_opt_box_autoadd_u_64(self.reuseNotesMs, serializer);
     sse_encode_opt_list_mint_config(self.mints, serializer);

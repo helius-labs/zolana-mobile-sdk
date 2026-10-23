@@ -7,8 +7,8 @@ Unreleased.
   `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`. The viewing key is an X25519
   key.
 * Remote proof requests go only to a prover that attests to the enclave the
-  Zolana SDK pins, encrypted to it, except to the Helius gateway and a
-  loopback prover; `WalletConfig.proverTee` overrides that.
+  Zolana SDK pins, encrypted to it, the Helius gateway included; only a
+  loopback prover gets plaintext.
 * On Android the package requests `android.permission.INTERNET`, which
   Flutter's template grants only to debug and profile builds: a release
   app without it could not download a proving key.

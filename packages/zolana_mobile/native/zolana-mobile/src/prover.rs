@@ -293,10 +293,11 @@ mod tests {
     const REQUEST: &str = include_str!("../../../../../fixtures/prove-request-2x2.json");
     /// A proof of [`REQUEST`] with the pinned key, as a prover returns it.
     const RESPONSE: &[u8] = include_bytes!("../../../../../fixtures/prove-response-2x2.json");
-    const PROVER_URL: &str = "https://prover.example/v1/zolana?api-key=secret";
+    /// A loopback prover, the one kind the SDK sends plaintext requests to.
+    const PROVER_URL: &str = "http://prover.localhost/v1/zolana?api-key=secret";
     const PROVE_URL: &str =
-        "https://prover.example/v1/zolana/prove/transfer_confidential_2_2?api-key=secret";
-    const STATUS_URL: &str = "https://prover.example/v1/zolana/prove/transfer_confidential_2_2/status?api-key=secret&jobId=job-1";
+        "http://prover.localhost/v1/zolana/prove/transfer_confidential_2_2?api-key=secret";
+    const STATUS_URL: &str = "http://prover.localhost/v1/zolana/prove/transfer_confidential_2_2/status?api-key=secret&jobId=job-1";
 
     /// The SDK's prover client of [`PROVER_URL`], through a transport that
     /// answers each request with `answer`.
@@ -307,10 +308,7 @@ mod tests {
             + 'static,
     ) -> (ProverClient, Requests) {
         let (transport, requests) = fake(answer);
-        (
-            transport.prover(PROVER_URL.to_string()).without_tee(),
-            requests,
-        )
+        (transport.prover(PROVER_URL.to_string()), requests)
     }
 
     fn sent(requests: &Requests) -> Vec<(String, String)> {
@@ -424,7 +422,6 @@ mod tests {
         });
         let prover = transport
             .prover(PROVER_URL.to_string())
-            .without_tee()
             .with_proof_timeout(std::time::Duration::from_secs(2));
         assert!(prover.prove(&Captured(transfer_2_2_key())).is_err());
         assert_eq!(
