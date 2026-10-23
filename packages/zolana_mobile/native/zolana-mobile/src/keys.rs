@@ -66,6 +66,9 @@ struct Lockfile {
 /// A gnark proving key as upstream pins it.
 #[derive(Deserialize)]
 struct KeyEntry {
+    /// Only the tests read it: they check the zopro lockfile and the
+    /// program's verifying keys against it.
+    #[cfg_attr(not(test), allow(dead_code))]
     sha256: String,
     size: u64,
 }
