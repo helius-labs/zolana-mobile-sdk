@@ -62,8 +62,8 @@ const WITHDRAWAL_FEE: u64 = 500_000;
 const SPLIT: u64 = 1_000_000;
 const FEES: u64 = 20_000_000;
 /// A prover the test's transport answers itself, with a real proof of another
-/// transaction.
-const REPLAYING_PROVER: &str = "https://replaying-prover.invalid";
+/// transaction. A loopback host, so the wallet sends it plaintext.
+const REPLAYING_PROVER: &str = "http://replaying-prover.localhost";
 
 fn required(name: &str) -> String {
     env::var(name).unwrap_or_else(|_| panic!("set {name}"))
@@ -94,7 +94,6 @@ fn config() -> WalletConfig {
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
-        prover_tee: None,
         max_spend_inputs: None,
         reuse_notes_ms: None,
         mints: None,
@@ -424,7 +423,6 @@ fn register_deposit_transfer_and_receive() {
     let signature = sender.sign_message(&derivation_message(pubkey.clone()).unwrap());
     let replaying = WalletConfig {
         prover_url: Some(REPLAYING_PROVER.to_string()),
-        prover_tee: Some(false),
         ..config()
     };
     let error = MobileWallet::open(replaying, pubkey, signature.as_ref().to_vec(), transport())

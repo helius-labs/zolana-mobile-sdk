@@ -939,18 +939,11 @@ class WalletConfig {
   final Proving? proving;
 
   /// The prover [`Proving::Remote`] asks, through the transport: the
-  /// application's backend as a proxy of the prover's `/prove/<key>` routes,
-  /// or a Zolana prover. It receives each spend's witness, the wallet's
-  /// nullifier secret included.
+  /// application's backend as a proxy of the prover's routes, or a Zolana
+  /// prover. It receives each spend's witness, the wallet's nullifier
+  /// secret included, encrypted to the enclave the Zolana SDK pins once the
+  /// prover attests to it; only a loopback prover gets it in plaintext.
   final String? proverUrl;
-
-  /// Whether the wallet sends proof requests only to a prover that attests
-  /// to the enclave the Zolana SDK pins, encrypted to it. `None`: yes,
-  /// except to a loopback prover and the Helius gateway
-  /// (`https://*.helius-rpc.com/v1/zolana`), which cannot relay encrypted
-  /// requests. `Some(false)`: plaintext to any prover, such as a backend
-  /// that runs its own. `Some(true)`: always.
-  final bool? proverTee;
 
   /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
   /// A spend that needs more fails with [`WalletError::MergeRequired`]
@@ -984,7 +977,6 @@ class WalletConfig {
     this.provingKeyUrl,
     this.proving,
     this.proverUrl,
-    this.proverTee,
     this.maxSpendInputs,
     this.reuseNotesMs,
     this.mints,
@@ -998,7 +990,6 @@ class WalletConfig {
       provingKeyUrl.hashCode ^
       proving.hashCode ^
       proverUrl.hashCode ^
-      proverTee.hashCode ^
       maxSpendInputs.hashCode ^
       reuseNotesMs.hashCode ^
       mints.hashCode;
@@ -1014,7 +1005,6 @@ class WalletConfig {
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
           proverUrl == other.proverUrl &&
-          proverTee == other.proverTee &&
           maxSpendInputs == other.maxSpendInputs &&
           reuseNotesMs == other.reuseNotesMs &&
           mints == other.mints;

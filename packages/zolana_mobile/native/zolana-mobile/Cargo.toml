@@ -47,14 +47,14 @@ solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70", features = ["std"] }
-zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70", features = ["borsh"] }
-zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70" }
-zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70" }
-zolana-api = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70" }
-zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70", features = ["client"] }
-zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70" }
-zolana-user-registry-interface = { git = "https://github.com/helius-labs/zolana", rev = "88854ef0429d318f0b27d72e17bbce0fdc67fa70" }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4", features = ["std"] }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4", features = ["borsh"] }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4" }
+zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4" }
+zolana-api = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4" }
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4", features = ["client"] }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4" }
+zolana-user-registry-interface = { git = "https://github.com/helius-labs/zolana", rev = "0e63ff3672c0eb648c02f4a429376e95845a05b4" }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "683c0bb3b66c059dd0c0699f44a763cecb309012", features = ["metal"] }
