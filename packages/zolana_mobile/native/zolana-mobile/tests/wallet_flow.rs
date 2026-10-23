@@ -23,7 +23,7 @@
 //! ```
 //!
 //! The remote proof comes from the prover at `ZOLANA_E2E_PROVER_URL`, such as
-//! the Helius gateway (`https://beta-devnet.helius-rpc.com/v1/zolana?api-key=...`),
+//! devnet-d's attested prover (`https://d1unet9hn0mci0.cloudfront.net`),
 //! asked through the test's transport.
 //!
 //! `ZOLANA_E2E_KEY_DIR` keeps downloaded proving keys between runs.
@@ -94,6 +94,7 @@ fn config() -> WalletConfig {
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
+        prover_tee: None,
         max_spend_inputs: None,
         reuse_notes_ms: None,
         mints: None,
@@ -423,6 +424,7 @@ fn register_deposit_transfer_and_receive() {
     let signature = sender.sign_message(&derivation_message(pubkey.clone()).unwrap());
     let replaying = WalletConfig {
         prover_url: Some(REPLAYING_PROVER.to_string()),
+        prover_tee: Some(false),
         ..config()
     };
     let error = MobileWallet::open(replaying, pubkey, signature.as_ref().to_vec(), transport())
@@ -582,9 +584,13 @@ fn deposits_transfers_and_withdraws_an_spl_token() {
             rpc.airdrop(&signer.pubkey(), FUNDING).expect("airdrop");
         }
     }
-    // A new mint is not registered yet, and its first deposit registers it.
-    let new_mint = env::var("ZOLANA_E2E_MINT").is_err();
     let mint = test_mint(&rpc, &sender);
+    // A mint the pool has not registered yet, a new one or the demo token on
+    // a fresh pool, is registered by its first deposit.
+    let new_mint = rpc
+        .get_account(pda::spl_asset_registry(&mint))
+        .unwrap()
+        .is_none();
     let sender_tokens = token_account(&rpc, &sender, sender.pubkey(), mint);
     mint_to(&rpc, &sender, mint, sender_tokens, TOKEN_DEPOSIT);
     let recipient_tokens = token_account(&rpc, &sender, recipient.pubkey(), mint);

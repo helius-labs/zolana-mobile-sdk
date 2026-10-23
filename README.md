@@ -47,9 +47,9 @@ flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
   --dart-define=ZOLANA_E2E=true --dart-define=ZOLANA_API_KEY=...
 ```
 
-`ZOLANA_API_KEY` is a Helius key: the example reaches Solana RPC and the Zolana
-indexer on Helius devnet with it. It is compiled into that build only; do not
-commit it.
+`ZOLANA_API_KEY` is a Helius key: the example reaches Solana devnet RPC through
+Helius with it, and Zolana's devnet-d indexer and prover without it. It is
+compiled into that build only; do not commit it.
 
 The build uses the precompiled native libraries (see below). When no release
 matches the sources, it builds them from source with Rust. Android source builds need the NDK version Flutter selects (28.2.13676358
@@ -123,15 +123,16 @@ memory, and merges notes on request.
 The end-to-end wallet tests register, deposit, prove a private transfer on this
 machine, check the recipient's balance, and unshield from a second, stale
 session of the sender; merge notes; and deposit, transfer and withdraw an SPL
-token. Zolana devnet runs the pinned revision; the demo accounts avoid devnet
-airdrop limits once funded. `ZOLANA_E2E_MINT` names the token: the demo token
-`Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6`, which account A mints; without
-it the test creates a mint and registers it with the shielded pool:
+token. Zolana's devnet-d deployment runs the pinned release; the demo accounts
+avoid devnet airdrop limits once funded. `ZOLANA_E2E_MINT` names the token: the
+demo token `Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6`, which account A
+mints; without it the test creates a mint and registers it with the shielded
+pool:
 
 ```sh
 ZOLANA_E2E_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
-ZOLANA_E2E_INDEXER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
-ZOLANA_E2E_PROVER_URL="https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$API_KEY" \
+ZOLANA_E2E_INDEXER_URL="https://d21d98xh5lgv3b.cloudfront.net" \
+ZOLANA_E2E_PROVER_URL="https://d1unet9hn0mci0.cloudfront.net" \
 ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
 ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
 ZOLANA_E2E_MINT=Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6 \

@@ -2170,6 +2170,7 @@ const _: fn() = || {
         let _: Option<String> = WalletConfig.proving_key_url;
         let _: Option<zolana_mobile::Proving> = WalletConfig.proving;
         let _: Option<String> = WalletConfig.prover_url;
+        let _: Option<bool> = WalletConfig.prover_tee;
         let _: Option<u32> = WalletConfig.max_spend_inputs;
         let _: Option<u64> = WalletConfig.reuse_notes_ms;
         let _: Option<Vec<zolana_mobile::MintConfig>> = WalletConfig.mints;
@@ -2851,6 +2852,17 @@ impl SseDecode for Option<PreparedTransaction> {
     }
 }
 
+impl SseDecode for Option<bool> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<bool>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<zolana_mobile::Proving> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3191,6 +3203,7 @@ impl SseDecode for zolana_mobile::WalletConfig {
         let mut var_provingKeyUrl = <Option<String>>::sse_decode(deserializer);
         let mut var_proving = <Option<zolana_mobile::Proving>>::sse_decode(deserializer);
         let mut var_proverUrl = <Option<String>>::sse_decode(deserializer);
+        let mut var_proverTee = <Option<bool>>::sse_decode(deserializer);
         let mut var_maxSpendInputs = <Option<u32>>::sse_decode(deserializer);
         let mut var_reuseNotesMs = <Option<u64>>::sse_decode(deserializer);
         let mut var_mints = <Option<Vec<zolana_mobile::MintConfig>>>::sse_decode(deserializer);
@@ -3201,6 +3214,7 @@ impl SseDecode for zolana_mobile::WalletConfig {
             proving_key_url: var_provingKeyUrl,
             proving: var_proving,
             prover_url: var_proverUrl,
+            prover_tee: var_proverTee,
             max_spend_inputs: var_maxSpendInputs,
             reuse_notes_ms: var_reuseNotesMs,
             mints: var_mints,
@@ -4132,6 +4146,7 @@ impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::WalletConfig> {
             self.0.proving_key_url.into_into_dart().into_dart(),
             self.0.proving.into_into_dart().into_dart(),
             self.0.prover_url.into_into_dart().into_dart(),
+            self.0.prover_tee.into_into_dart().into_dart(),
             self.0.max_spend_inputs.into_into_dart().into_dart(),
             self.0.reuse_notes_ms.into_into_dart().into_dart(),
             self.0.mints.into_into_dart().into_dart(),
@@ -4743,6 +4758,16 @@ impl SseEncode for Option<PreparedTransaction> {
     }
 }
 
+impl SseEncode for Option<bool> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <bool>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<zolana_mobile::Proving> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5021,6 +5046,7 @@ impl SseEncode for zolana_mobile::WalletConfig {
         <Option<String>>::sse_encode(self.proving_key_url, serializer);
         <Option<zolana_mobile::Proving>>::sse_encode(self.proving, serializer);
         <Option<String>>::sse_encode(self.prover_url, serializer);
+        <Option<bool>>::sse_encode(self.prover_tee, serializer);
         <Option<u32>>::sse_encode(self.max_spend_inputs, serializer);
         <Option<u64>>::sse_encode(self.reuse_notes_ms, serializer);
         <Option<Vec<zolana_mobile::MintConfig>>>::sse_encode(self.mints, serializer);

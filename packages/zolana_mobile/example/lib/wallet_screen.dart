@@ -28,11 +28,12 @@ class Network {
   final String rpcUrl;
   final String indexerUrl;
 
-  /// Zolana devnet through Helius: Solana RPC and the Zolana indexer, both
-  /// keyed by the Helius key from `--dart-define=ZOLANA_API_KEY=...`.
+  /// Zolana's devnet-d deployment: Solana RPC through Helius, keyed by the
+  /// Helius key from `--dart-define=ZOLANA_API_KEY=...`, and the deployment's
+  /// indexer, directly until the Helius gateway serves devnet-d.
   static const devnet = Network(
     'https://beta-devnet.helius-rpc.com/?api-key=$_apiKey',
-    'https://beta-devnet.helius-rpc.com/v1/zolana?api-key=$_apiKey',
+    'https://d21d98xh5lgv3b.cloudfront.net',
   );
 }
 
