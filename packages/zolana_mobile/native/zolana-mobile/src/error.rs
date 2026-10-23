@@ -245,6 +245,19 @@ fn program_error(failure: Option<&ChainError>) -> Option<u32> {
     }
 }
 
+/// Whether `failure` settles a send: the chain ran the transaction and
+/// refused it, or refused it in simulation, so it was never sent. A
+/// simulation that found it already processed does not settle it, since it
+/// may have landed; nor does any other failure, which may have come after
+/// the transaction went out.
+pub(crate) fn settles_the_send(failure: &ClientError) -> bool {
+    matches!(failure, ClientError::SolanaRpcTransaction { source, .. }
+    if !matches!(
+        source.get_transaction_error(),
+        None | Some(ChainError::AlreadyProcessed)
+    ))
+}
+
 /// The error and its causes, so a failed request says why it failed (DNS,
 /// connection, TLS). Client and transaction errors describe what failed
 /// without key material; keep it that way when adding variants. Request

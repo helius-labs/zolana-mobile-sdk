@@ -39,7 +39,7 @@ use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 use zeroize::Zeroizing;
 use zolana_client::{
-    compile_message, set_priority_fee,
+    compile_message,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, set_merge_encryption_instruction,
@@ -68,7 +68,7 @@ use zolana_user_registry_interface::MergeEncryptionScheme;
 use crate::{
     activity::{self, ActivityEntry},
     asset::{mint_name, Asset, Assets, MintConfig},
-    error::WalletError,
+    error::{settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
@@ -1103,9 +1103,13 @@ impl MobileWallet {
         mut message: VersionedMessage,
         priority_fee_lamports: Option<u64>,
     ) -> Result<VersionedMessage, WalletError> {
-        if let Some(fee) = priority_fee_lamports.or(self.priority_fee) {
-            set_priority_fee(&mut message, fee)?;
-        }
+        let Some(fee) = priority_fee_lamports.or(self.priority_fee) else {
+            return Ok(message);
+        };
+        let VersionedMessage::V1(v1) = &mut message else {
+            return Err(ClientError::UnsupportedTransactionVersion.into());
+        };
+        v1.config.priority_fee = Some(fee);
         Ok(message)
     }
 
@@ -1401,15 +1405,18 @@ impl MobileWallet {
             message: pending.message.clone(),
         };
         self.forget_notes();
-        if pending.operation.indexed() {
-            let sent = self
-                .client
-                .submit_private_transaction_sync(transaction, pending.last_valid_block_height);
-            self.settle(pending, sent.map(drop))?;
-        } else {
+        match self.client.process_transaction(transaction) {
             // A registration or a merging change: preparing it again finds
             // one whose response was lost but that landed.
-            self.client.process_transaction(transaction)?;
+            sent if !pending.operation.indexed() => drop(sent?),
+            // The chain refused it, in simulation or after it ran: it spent
+            // nothing.
+            Err(failure) if settles_the_send(&failure) => {
+                self.release(pending);
+                return Err(failure.into());
+            }
+            // It landed, or may have.
+            _ => self.settle(pending, signature)?,
         }
         Ok(signature.to_string())
     }
@@ -1436,10 +1443,7 @@ impl MobileWallet {
         if !pending.operation.indexed() {
             return wait_for_confirmation(&self.client, signature);
         }
-        let outcome = self
-            .client
-            .wait_for_private_transaction_sync(signature, Some(pending.last_valid_block_height));
-        self.settle(pending, outcome)
+        self.settle(pending, signature)
     }
 
     /// Wait for a deposit, spend or merge by its signature, such as one sent
@@ -1463,14 +1467,18 @@ impl MobileWallet {
         )
     }
 
-    /// `outcome` of `pending`'s send, releasing its notes unless it is
-    /// unknown: spent once it landed, free again when the chain refused it or
-    /// it expired. An unknown outcome keeps them reserved: it may still land.
+    /// Wait for `pending`, sent as `signature`, releasing its notes unless
+    /// the outcome is unknown: spent once it landed, free again when the chain
+    /// refused it or it expired. An unknown outcome keeps them reserved: it
+    /// may still land.
     fn settle(
         &self,
         pending: &PreparedTransaction,
-        outcome: Result<(), ClientError>,
+        signature: Signature,
     ) -> Result<(), WalletError> {
+        let outcome = self
+            .client
+            .wait_for_private_transaction_sync(signature, Some(pending.last_valid_block_height));
         if !matches!(outcome, Err(ClientError::TransactionOutcomeUnknown { .. })) {
             self.release(pending);
         }
@@ -1901,6 +1909,30 @@ mod tests {
         delay_ms: 1,
         max_delay_ms: 1,
     };
+
+    /// A send refused in simulation was never sent and settles at once; one
+    /// found already processed may have landed and is looked up.
+    #[test]
+    fn only_an_already_processed_simulation_is_looked_up() {
+        let preflight = |err: &str| {
+            let result: solana_rpc_client_api::response::RpcSimulateTransactionResult =
+                serde_json::from_str(&format!(r#"{{"err":"{err}"}}"#)).unwrap();
+            ClientError::SolanaRpcTransaction {
+                operation: "process_transaction",
+                source: solana_rpc_client_api::request::RpcError::RpcResponseError {
+                    code: -32002,
+                    message: "Transaction simulation failed".into(),
+                    data: solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(result),
+                }
+                .into(),
+            }
+        };
+        assert!(settles_the_send(&preflight("InsufficientFundsForFee")));
+        assert!(!settles_the_send(&preflight("AlreadyProcessed")));
+        assert!(!settles_the_send(&ClientError::Rpc(
+            "connection reset".into()
+        )));
+    }
 
     /// The notes and history wait for the indexer to reach the RPC's slot,
     /// and a stalled indexer fails as `IndexerBehind` instead of answering
