@@ -42,7 +42,6 @@ use solana_transaction_error::TransactionError as ChainError;
 use zeroize::Zeroizing;
 use zolana_client::{
     compile_message,
-    prover::tee::TeePolicy,
     user_registry::{
         build_registration_transaction_sync, fetch_user_record_optional_checked,
         resolved_address_from_record, set_merge_encryption_instruction,
@@ -89,17 +88,11 @@ pub struct WalletConfig {
     /// when `None`. [`Proving::Remote`] needs [`Self::prover_url`].
     pub proving: Option<Proving>,
     /// The prover [`Proving::Remote`] asks, through the transport: the
-    /// application's backend as a proxy of the prover's `/prove/<key>` routes,
-    /// or a Zolana prover. It receives each spend's witness, the wallet's
-    /// nullifier secret included.
+    /// application's backend as a proxy of the prover's routes, or a Zolana
+    /// prover. It receives each spend's witness, the wallet's nullifier
+    /// secret included, encrypted to the enclave the Zolana SDK pins once the
+    /// prover attests to it; only a loopback prover gets it in plaintext.
     pub prover_url: Option<String>,
-    /// Whether the wallet sends proof requests only to a prover that attests
-    /// to the enclave the Zolana SDK pins, encrypted to it. `None`: yes,
-    /// except to a loopback prover and the Helius gateway
-    /// (`https://*.helius-rpc.com/v1/zolana`), which cannot relay encrypted
-    /// requests. `Some(false)`: plaintext to any prover, such as a backend
-    /// that runs its own. `Some(true)`: always.
-    pub prover_tee: Option<bool>,
     /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
     /// A spend that needs more fails with [`WalletError::MergeRequired`]
     /// naming this cap, before proving. Proof time and memory grow with the
@@ -122,15 +115,6 @@ pub struct WalletConfig {
     /// registered: the wallet looks up a mint a call names, and the mints of
     /// notes a read meets.
     pub mints: Option<Vec<MintConfig>>,
-}
-
-/// `prover` as [`WalletConfig::prover_tee`] asks.
-fn remote_prover(prover: ProverClient, tee: Option<bool>) -> Result<ProverClient, WalletError> {
-    Ok(match tee {
-        None => prover,
-        Some(false) => prover.without_tee(),
-        Some(true) => prover.with_tee(TeePolicy::default_deployment().map_err(ClientError::from)?),
-    })
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -576,11 +560,7 @@ impl MobileWallet {
             send_lookup: SEND_LOOKUP,
             proving_keys,
             native_prover,
-            remote_prover: config
-                .prover_url
-                .map(|url| remote_prover(transport.prover(url), config.prover_tee))
-                .transpose()?
-                .map(Arc::new),
+            remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
             client,
         })
     }
@@ -1785,7 +1765,6 @@ mod tests {
             proving_key_url: None,
             proving: None,
             prover_url: None,
-            prover_tee: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
@@ -2743,7 +2722,6 @@ mod tests {
         let config = |prover_url: Option<&str>| WalletConfig {
             proving: Some(Proving::Remote),
             prover_url: prover_url.map(str::to_string),
-            prover_tee: None,
             ..config()
         };
         let mut remote = open_with(&signer, config(None)).unwrap();
@@ -2753,24 +2731,24 @@ mod tests {
         assert_eq!(missing(&mut remote, None), [false; 2]);
     }
 
-    /// A remote prover gets attested, encrypted requests unless the config
-    /// says otherwise; the Helius gateway and a loopback prover get plaintext.
+    /// Every remote prover, the Helius gateway included, gets attested,
+    /// encrypted requests; only a loopback prover gets plaintext.
     #[test]
-    fn prover_tee_decides_whether_proof_requests_are_encrypted() {
-        let transport = unreachable();
-        let tee = |url: &str, tee| {
-            remote_prover(transport.prover(url.to_string()), tee)
-                .unwrap()
-                .has_tee()
+    fn only_a_loopback_prover_gets_plaintext_proof_requests() {
+        let signer = Keypair::new();
+        let tee = |url: &str| {
+            let config = WalletConfig {
+                prover_url: Some(url.to_string()),
+                ..config()
+            };
+            let wallet = open_with(&signer, config).unwrap();
+            wallet.remote_prover.as_ref().unwrap().has_tee()
         };
-        assert!(tee("https://prover.example", None));
-        assert!(!tee("https://prover.example", Some(false)));
-        assert!(!tee(
-            "https://beta-devnet.helius-rpc.com/v1/zolana?api-key=k",
-            None
+        assert!(tee("https://prover.example"));
+        assert!(tee(
+            "https://beta-devnet.helius-rpc.com/v1/zolana?api-key=k"
         ));
-        assert!(!tee("http://127.0.0.1:3001", None));
-        assert!(tee("http://127.0.0.1:3001", Some(true)));
+        assert!(!tee("http://127.0.0.1:3001"));
     }
 
     /// A deposit is one instruction this account pays for and signs, and the

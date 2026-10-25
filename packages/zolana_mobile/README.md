@@ -529,21 +529,22 @@ await wallet.spend(
   completes or fails.
   The Helius gateway (`https://*.helius-rpc.com/v1/zolana`) routes proofs
   by their body, so for it the paths are `/prove` and `/prove/status`.
-- **Attestation**: unless `proverUrl` is the Helius gateway or a loopback
-  prover, the wallet first fetches
+- **Attestation**: from every prover but a loopback one, the Helius gateway
+  included, the wallet first fetches
   `GET <proverUrl>/tee/v1/attestation?nonce=<hex>`, checks that the prover
   runs the enclave the Zolana SDK pins (devnet-d's
   prover at `https://d1unet9hn0mci0.cloudfront.net`), and encrypts every
   request body to it, with the `Zolana-Tee`, `Zolana-Tee-Enc` and
-  `Zolana-Tee-Ciphertext` headers. `WalletConfig.proverTee: false` sends
-  plaintext instead, to a backend that runs its own prover; `true` requires
-  the enclave from the gateway and loopback too.
-- **The application's backend** serves these routes as a proxy of a
-  Zolana prover: it forwards the body and the `X-Sync` / `X-Async` and
-  `Zolana-Tee*` headers to the same path of the prover, and returns the
-  prover's status, headers and body as they are. The response carries the
-  proof's `provingKeySha256`, which the wallet checks. A Zolana prover that
-  serves these routes can also be `proverUrl` directly.
+  `Zolana-Tee-Ciphertext` headers. Each request is bound to its method and
+  its route below `proverUrl`. A remote prover that does not attest fails
+  every remote spend: no setting sends it plaintext.
+- **The application's backend** serves these routes, the attestation
+  included, as a proxy of an attested Zolana prover: it forwards the body
+  and the `X-Sync` / `X-Async` and `Zolana-Tee*` headers to the same route
+  of the prover, and returns the prover's status, headers and body as they
+  are. The response carries the proof's `provingKeySha256`, which the
+  wallet checks. A Zolana prover that serves these routes can also be
+  `proverUrl` directly.
 - **Verification on the device**: the wallet verifies the proof against the
   pinned verifying key and the public input it computed itself, before it
   builds the message. A response that is not a proof of the pinned key fails
@@ -558,10 +559,9 @@ await wallet.spend(
   `WalletError.remoteProverMissing`.
 - **Privacy**: the request carries the transaction's full witness: the notes
   it spends and creates, their amounts and owners, and the wallet's nullifier
-  secret (the `nullifierPrivateKey` of `exportKeys()`). Encrypted to an
-  attested prover, only the enclave reads it; in plaintext, the backend and
-  its prover learn the transaction and can recognize later spends of these
-  notes.
+  secret (the `nullifierPrivateKey` of `exportKeys()`). Encrypted to the
+  attested prover, only the enclave reads it, not a backend or gateway that
+  relays it. A loopback prover gets it in plaintext.
   None of them can move funds: every spend needs the account's signature.
   Prove on the device when this is not acceptable. With the default transport,
   `open` refuses a plaintext `proverUrl` off loopback with
