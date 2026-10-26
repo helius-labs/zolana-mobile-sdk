@@ -471,6 +471,14 @@ sends through the wallet's RPC instead.
   `tx.signers` is `[feePayer, owner]`, and the fee payer's signature is the
   transaction signature. The proof binds the fee payer, so choose it at
   prepare. `spend` always uses this account.
+- Every `prepare` method, and `register`, `deposit`, `spend`, `setMerging`
+  and `merge`, accepts `priorityFeeLamports`: a total priority fee per
+  transaction, in lamports. Omitting it uses `WalletConfig.priorityFeeLamports`;
+  omitting both adds no priority fee. Pass zero to override a configured fee.
+  The fee is written into the v1 message header before signing and exposed as
+  `tx.priorityFeeLamports`. It is added to the base transaction fee and is
+  independent of the compute limit, including when a spend creates token
+  accounts. `refresh` preserves it; prepare again to change it.
 - The message carries a recent blockhash: `tx.lastValidBlockHeight` is the
   last block height at which it can land, about 150 blocks (60–90 s) after it
   was prepared. For a slower approval, `wallet.refresh(tx)` returns it with a
@@ -644,7 +652,7 @@ take now.
 ### Balances
 
 `balances()` returns one `TokenBalance` per asset held, and `overview()` the
-same from one read with the history:
+same from one read with the history and `unresolvedAssets`:
 
 - `amount` is what the indexer has confirmed for this wallet, `reserved`
   included. A payment or change on its way appears once its transaction is
@@ -663,6 +671,14 @@ same from one read with the history:
   application fee the spend pays. Every amount up to a limit selects; one
   more fails with `WalletError.mergeRequired`,
   `WalletError.tooManyInputTrees` or `WalletError.insufficientPrivateBalance`.
+
+`overview().unresolvedAssets` lists asset ids and mints found in wallet notes
+that remain unresolved after refreshing the pool's registrations. Those notes
+are excluded from balances and activity. Senders can supply unregistered asset
+ids, so these notes do not make the whole read fail. Show the known balances
+and mark the portfolio as incomplete while either list is non-empty. Later
+reads include the notes if their assets become registered. Mints excluded by
+`WalletConfig.mints` also appear in these lists.
 
 ### Merges
 

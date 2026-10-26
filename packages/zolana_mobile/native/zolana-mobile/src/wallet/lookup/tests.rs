@@ -23,6 +23,7 @@ fn config() -> WalletConfig {
         max_spend_inputs: None,
         reuse_notes_ms: None,
         mints: None,
+        priority_fee_lamports: None,
     }
 }
 

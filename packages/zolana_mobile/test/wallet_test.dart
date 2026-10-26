@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter_rust_bridge/flutter_rust_bridge.dart' as frb;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -58,7 +59,8 @@ class FakePending implements PreparedTransaction {
     this.signers = const [owner],
     this.height = 100,
     this.operation = const Operation.registration(),
-  });
+    BigInt? priorityFeeLamports,
+  }) : priorityFeeLamports = priorityFeeLamports ?? BigInt.zero;
 
   @override
   final Uint8List message;
@@ -67,6 +69,8 @@ class FakePending implements PreparedTransaction {
   final int height;
   @override
   final Operation operation;
+  @override
+  final BigInt priorityFeeLamports;
 
   @override
   List<OutputOpening> get outputs => const [];
@@ -104,6 +108,9 @@ class FakeWallet implements MobileWallet {
   List<String> spendSigners = const [owner];
   String? spendFeePayer;
   final proved = <Proving?>[];
+
+  /// The priority fee each prepare call was given, in call order.
+  final priorityFees = <BigInt?>[];
 
   @override
   Future<String> shieldedAddress() async {
@@ -174,7 +181,10 @@ class FakeWallet implements MobileWallet {
   }
 
   @override
-  Future<PreparedTransaction?> prepareRegistration() async {
+  Future<PreparedTransaction?> prepareRegistration({
+    BigInt? priorityFeeLamports,
+  }) async {
+    priorityFees.add(priorityFeeLamports);
     await holdRegistration?.future;
     return switch (status) {
       RegistrationStatus.registered => null,
@@ -191,13 +201,18 @@ class FakeWallet implements MobileWallet {
   Future<bool> mergingEnabled() async => merging;
 
   @override
-  Future<PreparedTransaction?> prepareMerging({required bool enabled}) async =>
-      enabled == merging
-      ? null
-      : FakePending(
-          Uint8List.fromList([5]),
-          operation: Operation.merging(enabled: enabled),
-        );
+  Future<PreparedTransaction?> prepareMerging({
+    required bool enabled,
+    BigInt? priorityFeeLamports,
+  }) async {
+    priorityFees.add(priorityFeeLamports);
+    return enabled == merging
+        ? null
+        : FakePending(
+            Uint8List.fromList([5]),
+            operation: Operation.merging(enabled: enabled),
+          );
+  }
 
   @override
   Future<PreparedTransaction> prepareMerge({
@@ -205,7 +220,9 @@ class FakeWallet implements MobileWallet {
     int? maxInputs,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   }) async {
+    priorityFees.add(priorityFeeLamports);
     if (!merging) throw const WalletError.mergingDisabled();
     merges.add((mint, maxInputs, feePayer, proving));
     return FakePending(
@@ -218,14 +235,19 @@ class FakeWallet implements MobileWallet {
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
-  }) async => FakePending(
-    Uint8List.fromList([1, 2]),
-    operation: Operation.deposit(
-      mint: mint,
-      amount: amount,
-      createsSplInterface: false,
-    ),
-  );
+    BigInt? priorityFeeLamports,
+  }) async {
+    priorityFees.add(priorityFeeLamports);
+    return FakePending(
+      Uint8List.fromList([1, 2]),
+      operation: Operation.deposit(
+        mint: mint,
+        amount: amount,
+        createsSplInterface: false,
+      ),
+      priorityFeeLamports: priorityFeeLamports,
+    );
+  }
 
   @override
   Future<PreparedTransaction> prepareSpend({
@@ -233,7 +255,9 @@ class FakeWallet implements MobileWallet {
     String? mint,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   }) async {
+    priorityFees.add(priorityFeeLamports);
     events.add('spend ${mint ?? 'SOL'}');
     spendFeePayer = feePayer;
     proved.add(proving);
@@ -286,7 +310,14 @@ class FakeWallet implements MobileWallet {
   @override
   Future<WalletOverview> overview() async {
     events.add('overview');
-    return const WalletOverview(balances: [], activity: []);
+    return WalletOverview(
+      balances: const [],
+      activity: const [],
+      unresolvedAssets: UnresolvedAssets(
+        assetIds: frb.Uint64List(0),
+        mints: const [],
+      ),
+    );
   }
 }
 
@@ -1243,6 +1274,33 @@ void main() {
       ]);
     },
   );
+
+  test('passes the priority fee of each call, null for the config', () async {
+    final (wallet, native, _, _) = await openWallet();
+    native.status = RegistrationStatus.notRegistered;
+    final fee = BigInt.from(20000);
+
+    await wallet.prepareRegistration(priorityFeeLamports: fee);
+    final deposit = await wallet.prepareDeposit(
+      BigInt.one,
+      priorityFeeLamports: fee,
+    );
+    await wallet.deposit(BigInt.one);
+    await wallet.prepareSpend(
+      outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
+      priorityFeeLamports: fee,
+    );
+    await wallet.spend(
+      outputs: [Output.private(recipient: 'R', amount: BigInt.one)],
+      priorityFeeLamports: fee,
+    );
+    await wallet.prepareMerging(true, priorityFeeLamports: fee);
+    native.merging = true;
+    await wallet.prepareMerge(priorityFeeLamports: fee);
+    await wallet.merge();
+    expect(native.priorityFees, [fee, fee, null, fee, fee, fee, fee, null]);
+    expect(deposit.priorityFeeLamports, fee);
+  });
 
   test('a signed spend shows the signer every output in order', () async {
     final (wallet, _, signer, _) = await openWallet();

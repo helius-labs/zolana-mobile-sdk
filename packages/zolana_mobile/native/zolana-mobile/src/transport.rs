@@ -352,6 +352,7 @@ pub(crate) mod tests {
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
+            priority_fee_lamports: None,
         };
         let pubkey = signer.pubkey().to_string();
         let signature = signer.sign_message(&derivation_message(pubkey.clone()).unwrap());

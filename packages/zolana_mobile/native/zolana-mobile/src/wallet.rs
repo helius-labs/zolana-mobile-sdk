@@ -117,6 +117,9 @@ pub struct WalletConfig {
     /// registered: the wallet looks up a mint a call names, and the mints of
     /// notes a read meets.
     pub mints: Option<Vec<MintConfig>>,
+    /// Default total priority fee per transaction, in lamports. Each prepare
+    /// call can override it, including with zero. `None` adds no priority fee.
+    pub priority_fee_lamports: Option<u64>,
 }
 
 /// The Zolana derivation message the wallet's signer signs once to open it.
@@ -324,6 +327,16 @@ impl PreparedTransaction {
         self.message.serialize()
     }
 
+    /// Total priority fee in lamports, added to the base transaction fee.
+    /// Read from the prepared message header; zero when unset.
+    #[flutter_rust_bridge::frb(sync, getter)]
+    pub fn priority_fee_lamports(&self) -> u64 {
+        match &self.message {
+            VersionedMessage::V1(message) => message.config.priority_fee.unwrap_or(0),
+            _ => 0,
+        }
+    }
+
     /// Base58 public keys that must sign, in signature order. The first is
     /// the fee payer, whose signature is the transaction signature.
     #[flutter_rust_bridge::frb(sync, getter)]
@@ -360,10 +373,24 @@ pub struct WalletKeys {
 }
 
 /// The private balances, one per asset held, and the history, newest first.
+/// Notes in [`Self::unresolved_assets`] are excluded from both.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WalletOverview {
     pub balances: Vec<TokenBalance>,
     pub activity: Vec<ActivityEntry>,
+    pub unresolved_assets: UnresolvedAssets,
+}
+
+/// Assets of wallet notes that could not be resolved after refreshing the
+/// pool's registrations. Their notes are excluded from balances and activity.
+/// This also includes mints excluded by [`WalletConfig::mints`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnresolvedAssets {
+    /// Unresolved asset ids, sorted and deduplicated. These are supplied by
+    /// senders and may not correspond to a registered asset.
+    pub asset_ids: Vec<u64>,
+    /// Base58 mints from deposits or merge outputs with no known asset id.
+    pub mints: Vec<String>,
 }
 
 /// A spendable private balance. `mint` is `None` for SOL.
@@ -510,6 +537,8 @@ pub struct MobileWallet {
     proving: Proving,
     /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
     send_lookup: IndexerPollConfig,
+    /// Default whole-transaction priority fee in lamports.
+    priority_fee: Option<u64>,
     proving_keys: Arc<KeyStore>,
     /// The device prover, the client's too: [`Self::proving_keys`] proves
     /// with it so that a key stays loaded between the two.
@@ -628,6 +657,7 @@ impl MobileWallet {
             recent: Mutex::new(None),
             proving: config.proving.unwrap_or(Proving::Local),
             send_lookup: SEND_LOOKUP,
+            priority_fee: config.priority_fee_lamports,
             proving_keys,
             native_prover,
             remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
@@ -670,12 +700,20 @@ impl MobileWallet {
 
     /// `None` when the registry already holds this wallet's address. Fails
     /// with [`WalletError::RegistrationConflict`] when it holds other keys:
-    /// this wallet never replaces them.
-    pub fn prepare_registration(&self) -> Result<Option<PreparedTransaction>, WalletError> {
+    /// this wallet never replaces them. `priority_fee_lamports` overrides
+    /// [`WalletConfig::priority_fee_lamports`], as on every prepared
+    /// transaction.
+    pub fn prepare_registration(
+        &self,
+        priority_fee_lamports: Option<u64>,
+    ) -> Result<Option<PreparedTransaction>, WalletError> {
         let message =
             build_registration_transaction_sync(&self.client, self.owner, &self.address, None)?;
         message
-            .map(|message| self.pending(Operation::Registration, message))
+            .map(|message| {
+                let message = self.with_priority_fee(message, priority_fee_lamports)?;
+                self.pending(Operation::Registration, message)
+            })
             .transpose()
     }
 
@@ -696,6 +734,7 @@ impl MobileWallet {
     pub fn prepare_merging(
         &self,
         enabled: bool,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<Option<PreparedTransaction>, WalletError> {
         if self.merging_enabled()? == enabled {
             return Ok(None);
@@ -706,11 +745,10 @@ impl MobileWallet {
             MergeEncryptionScheme::Disabled
         };
         let instruction = set_merge_encryption_instruction(self.owner, scheme);
-        self.pending(
-            Operation::Merging { enabled },
-            self.message(&[instruction])?,
-        )
-        .map(Some)
+        let message =
+            self.with_priority_fee(self.message(&[instruction])?, priority_fee_lamports)?;
+        self.pending(Operation::Merging { enabled }, message)
+            .map(Some)
     }
 
     /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -733,6 +771,7 @@ impl MobileWallet {
         max_inputs: Option<u32>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
         let payer = self.fee_payer(fee_payer)?;
         let proving = self.proving(proving)?;
@@ -763,12 +802,14 @@ impl MobileWallet {
                 .ok_or(WalletError::RemoteProverMissing)?;
             submission = submission.with_prover(remote);
         }
+        let mut unsigned = submission.finish_unsigned_sync(&self.client, payer)?;
+        unsigned.message = self.with_priority_fee(unsigned.message, priority_fee_lamports)?;
         let pending = self.proved(
             Operation::Merge {
                 mint: mint_name(&asset.mint),
                 amount,
             },
-            submission.finish_unsigned_sync(&self.client, payer)?,
+            unsigned,
         );
         Ok(self.reserve(pending, spends))
     }
@@ -787,6 +828,7 @@ impl MobileWallet {
         &mut self,
         mint: Option<String>,
         amount: u64,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
         let (asset, registered) = self
             .assets()
@@ -830,13 +872,15 @@ impl MobileWallet {
         }
         .instruction()?;
         instructions.push(deposit);
+        let message =
+            self.with_priority_fee(self.message(&instructions)?, priority_fee_lamports)?;
         self.pending(
             Operation::Deposit {
                 mint: mint_name(&asset.mint),
                 amount,
                 creates_spl_interface: !registered,
             },
-            self.message(&instructions)?,
+            message,
         )
     }
 
@@ -871,12 +915,21 @@ impl MobileWallet {
     }
 
     /// [`Self::balances`] and [`Self::activity`] from one read of the
-    /// indexer, which each of them makes on its own.
+    /// indexer, and the assets of notes that could not be included in either.
     pub fn overview(&mut self) -> Result<WalletOverview, WalletError> {
         let scan = self.scan()?;
         Ok(WalletOverview {
             balances: self.token_balances(&scan.spendable)?,
             activity: activity::entries(&scan.history, &scan.asset_registry)?,
+            unresolved_assets: UnresolvedAssets {
+                asset_ids: scan.history.unknown_asset_ids.iter().copied().collect(),
+                mints: scan
+                    .history
+                    .unknown_mints
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            },
         })
     }
 
@@ -979,6 +1032,7 @@ impl MobileWallet {
         mint: Option<String>,
         fee_payer: Option<String>,
         proving: Option<Proving>,
+        priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
         if outputs.is_empty() {
             return Err(WalletError::NoOutputs);
@@ -1047,13 +1101,15 @@ impl MobileWallet {
             None => Vec::new(),
         };
         let (unsigned, openings) = self.prove(transaction, settlements, payer, proving)?;
+        let mut unsigned = with_setup(unsigned, &payer, &setup)?;
+        unsigned.message = self.with_priority_fee(unsigned.message, priority_fee_lamports)?;
         let mut pending = self.proved(
             Operation::Spend {
                 mint: mint_name(&asset.mint),
                 outputs,
                 created_token_accounts: created.iter().map(ToString::to_string).collect(),
             },
-            with_setup(unsigned, &payer, &setup)?,
+            unsigned,
         );
         pending.outputs = openings;
         Ok(self.reserve(pending, spends))
@@ -1103,6 +1159,23 @@ impl MobileWallet {
             (Proving::Remote, None) => Err(WalletError::RemoteProverMissing),
             _ => Ok(proving),
         }
+    }
+
+    /// Apply the call's fee or the wallet default before signing. The header
+    /// is not part of the proof, so this also works after proving.
+    fn with_priority_fee(
+        &self,
+        mut message: VersionedMessage,
+        priority_fee_lamports: Option<u64>,
+    ) -> Result<VersionedMessage, WalletError> {
+        let Some(fee) = priority_fee_lamports.or(self.priority_fee) else {
+            return Ok(message);
+        };
+        let VersionedMessage::V1(v1) = &mut message else {
+            return Err(ClientError::UnsupportedTransactionVersion.into());
+        };
+        v1.config.priority_fee = Some(fee);
+        Ok(message)
     }
 
     /// A message with `instructions`, paid by this account. Its blockhash is
@@ -1861,6 +1934,7 @@ mod tests {
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
+            priority_fee_lamports: None,
         }
     }
 
@@ -2220,6 +2294,10 @@ mod tests {
             WalletOverview {
                 balances: Vec::new(),
                 activity: Vec::new(),
+                unresolved_assets: UnresolvedAssets {
+                    asset_ids: Vec::new(),
+                    mints: Vec::new(),
+                },
             }
         );
         // One read of each stream serves both halves.
@@ -2516,21 +2594,21 @@ mod tests {
         assert_eq!(tag_reads(&asked), 1);
         // The merge finds nothing to take, in the notes of the read.
         assert!(matches!(
-            wallet.prepare_merge(None, None, None, None).err(),
+            wallet.prepare_merge(None, None, None, None, None).err(),
             Some(WalletError::NothingToMerge { .. })
         ));
         assert_eq!(tag_reads(&asked), 1, "no read within the window");
         wallet.forget_notes();
-        let _ = wallet.prepare_merge(None, None, None, None);
+        let _ = wallet.prepare_merge(None, None, None, None, None);
         assert_eq!(tag_reads(&asked), 2, "read again once forgotten");
         let stale = Instant::now().checked_sub(Duration::from_secs(61)).unwrap();
         wallet.recent().as_mut().unwrap().at = stale;
-        let _ = wallet.prepare_merge(None, None, None, None);
+        let _ = wallet.prepare_merge(None, None, None, None, None);
         assert_eq!(tag_reads(&asked), 3, "a read older than the window");
 
         let (mut wallet, asked) = rpc_wallet_with(&signer, config(), caught_up);
         wallet.balances().unwrap();
-        let _ = wallet.prepare_merge(None, None, None, None);
+        let _ = wallet.prepare_merge(None, None, None, None, None);
         assert_eq!(tag_reads(&asked), 2, "every spend reads without a window");
     }
 
@@ -2803,8 +2881,8 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let missing = |wallet: &mut MobileWallet, proving| {
             [
-                wallet.prepare_spend(vec![private(&recipient, 1)], None, None, proving),
-                wallet.prepare_spend(vec![public(&recipient, 1)], None, None, proving),
+                wallet.prepare_spend(vec![private(&recipient, 1)], None, None, proving, None),
+                wallet.prepare_spend(vec![public(&recipient, 1)], None, None, proving, None),
             ]
             .map(|result| result.err() == Some(WalletError::RemoteProverMissing))
         };
@@ -2860,7 +2938,7 @@ mod tests {
             }}),
             _ => serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
         });
-        let pending = wallet.prepare_deposit(None, 100).unwrap();
+        let pending = wallet.prepare_deposit(None, 100, None).unwrap();
         assert_eq!(
             pending.operation(),
             Operation::Deposit {
@@ -2872,6 +2950,87 @@ mod tests {
         assert_eq!(pending.message.instructions().len(), 1);
         assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
         assert_eq!(pending.last_valid_block_height(), 9);
+    }
+
+    /// A prepared transaction pays the priority fee its call names, or else
+    /// the config's, in its v1 header, and keeps it through `refresh`.
+    #[test]
+    fn a_transaction_pays_the_priority_fee_its_call_or_the_config_names() {
+        let signer = Keypair::new();
+        let blockhash = |method: &str| match method {
+            "getLatestBlockhash" => serde_json::json!({"result": {
+                "context": {"slot": 1},
+                "value": {
+                    "blockhash": "11111111111111111111111111111111",
+                    "lastValidBlockHeight": 9
+                }
+            }}),
+            _ => serde_json::json!({"error": {"code": -32603, "message": "unexpected"}}),
+        };
+        let fee_in_header = |pending: &PreparedTransaction| {
+            let VersionedMessage::V1(message) =
+                wincode::deserialize::<VersionedMessage>(&pending.message()).expect("a message")
+            else {
+                panic!("not a v1 message");
+            };
+            message.config.priority_fee
+        };
+
+        let (mut wallet, _) = rpc_wallet(&signer, blockhash);
+        let pending = wallet.prepare_deposit(None, 100, None).unwrap();
+        assert_eq!(pending.priority_fee_lamports(), 0);
+        assert_eq!(fee_in_header(&pending), None);
+
+        let config = WalletConfig {
+            priority_fee_lamports: Some(5_000),
+            ..config()
+        };
+        let (mut wallet, _) = rpc_wallet_with(&signer, config, blockhash);
+        let pending = wallet.prepare_deposit(None, 100, None).unwrap();
+        assert_eq!(pending.priority_fee_lamports(), 5_000);
+        assert_eq!(fee_in_header(&pending), Some(5_000));
+        let named = wallet.prepare_deposit(None, 100, Some(12_000)).unwrap();
+        assert_eq!(named.priority_fee_lamports(), 12_000);
+        let refreshed = wallet.refresh(&named).unwrap();
+        assert_eq!(fee_in_header(&refreshed), Some(12_000));
+        let free = wallet.prepare_deposit(None, 100, Some(0)).unwrap();
+        assert_eq!(fee_in_header(&free), Some(0));
+    }
+
+    /// The fee goes into a built message, a proved one included, and changes
+    /// nothing else of it.
+    #[test]
+    fn the_priority_fee_changes_only_the_header() {
+        let wallet = open(&Keypair::new()).unwrap();
+        let built = compile_message(
+            &wallet.owner,
+            &[set_merge_encryption_instruction(
+                wallet.owner,
+                MergeEncryptionScheme::PoseidonCtrV1,
+            )],
+            Default::default(),
+            ComputeBudgetConfig::new(450_000),
+        )
+        .unwrap();
+        let priced = wallet.with_priority_fee(built.clone(), Some(7)).unwrap();
+        let (VersionedMessage::V1(built), VersionedMessage::V1(priced)) = (built, priced) else {
+            panic!("not v1 messages");
+        };
+        assert_eq!(priced.config.priority_fee, Some(7));
+        assert_eq!(priced.config.compute_unit_limit, Some(450_000));
+        assert_eq!(
+            v1::Message {
+                config: built.config.with_priority_fee(7),
+                ..built.clone()
+            },
+            priced
+        );
+        assert_eq!(
+            wallet
+                .with_priority_fee(VersionedMessage::V1(built.clone()), None)
+                .unwrap(),
+            VersionedMessage::V1(built)
+        );
     }
 
     const MINT: Pubkey = Pubkey::new_from_array([7; 32]);
@@ -2949,7 +3108,7 @@ mod tests {
         let other = Keypair::new().pubkey();
         let deposit = |registry, config| {
             let (mut wallet, _) = token_wallet(&signer, registry, config);
-            wallet.prepare_deposit(Some(MINT.to_string()), 100)
+            wallet.prepare_deposit(Some(MINT.to_string()), 100, None)
         };
         let registered = account(
             PROGRAM_ID_PUBKEY,
@@ -3005,7 +3164,9 @@ mod tests {
             protocol_config(false, Keypair::new().pubkey()),
         );
         assert_eq!(
-            wallet.prepare_deposit(Some(MINT.to_string()), 100).err(),
+            wallet
+                .prepare_deposit(Some(MINT.to_string()), 100, None)
+                .err(),
             Some(WalletError::AssetNotSupported {
                 mint: MINT.to_string()
             })
@@ -3018,7 +3179,7 @@ mod tests {
         let (mut wallet, _) =
             token_wallet(&signer, serde_json::Value::Null, serde_json::Value::Null);
         assert!(matches!(
-            wallet.prepare_deposit(Some(MINT.to_string()), 100),
+            wallet.prepare_deposit(Some(MINT.to_string()), 100, None),
             Err(WalletError::Client { message }) if message.contains("protocol config")
         ));
     }
@@ -3148,7 +3309,7 @@ mod tests {
         let recipient = Keypair::new().pubkey().to_string();
         let spend = |wallet: &mut MobileWallet, outputs| {
             wallet
-                .prepare_spend(outputs, None, None, None)
+                .prepare_spend(outputs, None, None, None, None)
                 .err()
                 .expect("fails before the network")
         };
@@ -3281,15 +3442,15 @@ mod tests {
         let invalid = Some(WalletError::InvalidPubkey { value: bad.clone() });
         let error = |result: Result<PreparedTransaction, WalletError>| result.err();
         assert_eq!(
-            error(wallet.prepare_spend(vec![private(&bad, 1)], None, None, None)),
+            error(wallet.prepare_spend(vec![private(&bad, 1)], None, None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_spend(vec![public(&bad, 1)], None, None, None)),
+            error(wallet.prepare_spend(vec![public(&bad, 1)], None, None, None, None)),
             invalid
         );
         assert_eq!(
-            error(wallet.prepare_spend(vec![private(&recipient, 1)], None, Some(bad), None)),
+            error(wallet.prepare_spend(vec![private(&recipient, 1)], None, Some(bad), None, None)),
             invalid
         );
     }

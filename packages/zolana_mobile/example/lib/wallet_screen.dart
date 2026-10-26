@@ -61,6 +61,10 @@ class _WalletScreenState extends State<WalletScreen> {
   List<TokenBalance>? _balances;
   Map<String?, BigInt> _publics = const {};
   List<ActivityEntry> _history = const [];
+
+  /// How many assets the last refresh found notes in but could not count:
+  /// the balances and the history leave them out.
+  int _unresolved = 0;
   bool _refreshing = false;
   int _generation = 0;
 
@@ -88,6 +92,7 @@ class _WalletScreenState extends State<WalletScreen> {
       _balances = null;
       _publics = const {};
       _history = const [];
+      _unresolved = 0;
       _refreshing = false;
     });
     try {
@@ -187,6 +192,9 @@ class _WalletScreenState extends State<WalletScreen> {
       setState(() {
         _balances = overview.balances;
         _history = overview.activity;
+        _unresolved =
+            overview.unresolvedAssets.assetIds.length +
+            overview.unresolvedAssets.mints.length;
         _publics = {
           for (final (index, asset) in demoAssets.indexed)
             asset.mint: public[index],
@@ -535,6 +543,16 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 ],
               ),
+              if (_unresolved > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    'Notes in $_unresolved unrecognized '
+                    '${_unresolved == 1 ? 'asset are' : 'assets are'} '
+                    'not counted.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               const SizedBox(height: 32),
               Text('Activity', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),

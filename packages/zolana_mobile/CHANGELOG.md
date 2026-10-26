@@ -59,6 +59,9 @@ Unreleased.
   `selfTransfer`.
 * `overview()`: the balances and the history from one read of the indexer,
   for a screen that shows both.
+  `unresolvedAssets` lists asset ids and mints that remain unresolved after
+  refreshing the pool's registrations. Their notes are excluded from balances
+  and history, so non-empty lists mean the portfolio is incomplete.
 * `spend` / `prepareSpend` take `outputs` of one asset, proved together in
   one transaction: `Output.private`, a note for a registered wallet with its
   amount hidden and the note tagged with the recipient's Solana address on
@@ -71,6 +74,12 @@ Unreleased.
 * `prepareRegistration`, `prepareDeposit`, `prepareSpend`, `submit` and
   `confirm` for applications that sign and send transactions themselves.
   `feePayer` lets another account pay the network fee of a spend.
+* Priority fees: `WalletConfig.priorityFeeLamports`, and
+  `priorityFeeLamports` on every `prepare` method and on `register`,
+  `deposit`, `spend`, `setMerging` and `merge`, set a total fee per transaction
+  in lamports. A call overrides the configured fee, including with zero.
+  `PreparedTransaction.priorityFeeLamports` reads the fee from the message
+  header before signing; `refresh` preserves it.
 * Merges: `setMerging` / `prepareMerging` and `mergingEnabled()` for the
   account's opt-in, and `merge` / `prepareMerge` to combine up to 52 notes of
   one asset on one tree into one, proved on the device or by `proverUrl`.

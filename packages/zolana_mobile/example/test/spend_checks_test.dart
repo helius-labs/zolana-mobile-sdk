@@ -186,6 +186,8 @@ class Pending implements PreparedTransaction {
   String get feePayer => signers.single;
   @override
   BigInt get lastValidBlockHeight => BigInt.from(100);
+  @override
+  BigInt get priorityFeeLamports => BigInt.zero;
   // Deliberately misleading: checked approvals must come from the UI request.
   @override
   Operation get operation => const Operation.custom(programs: []);
@@ -226,6 +228,7 @@ class Backend implements WalletBackend, native.MobileWallet {
     String? mint,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   }) async => pending;
   @override
   Future<String> submit({

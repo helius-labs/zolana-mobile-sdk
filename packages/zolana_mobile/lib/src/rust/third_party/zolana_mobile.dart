@@ -116,7 +116,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   );
 
   /// [`Self::balances`] and [`Self::activity`] from one read of the
-  /// indexer, which each of them makes on its own.
+  /// indexer, and the assets of notes that could not be included in either.
   Future<WalletOverview> overview();
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -132,6 +132,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
   Future<PreparedTransaction> prepareDeposit({
     String? mint,
     required BigInt amount,
+    BigInt? priorityFeeLamports,
   });
 
   /// Build and prove a merge of the smallest notes of `mint` (SOL for
@@ -153,6 +154,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
     int? maxInputs,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   });
 
   /// Turn merges of this account's notes on or off; this account signs.
@@ -160,12 +162,19 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// proved with this wallet's nullifier secret is valid without this
   /// account's signature: whoever holds the secret and the notes, such as a
   /// prover that proved its spends, can merge them. It cannot move funds.
-  Future<PreparedTransaction?> prepareMerging({required bool enabled});
+  Future<PreparedTransaction?> prepareMerging({
+    required bool enabled,
+    BigInt? priorityFeeLamports,
+  });
 
   /// `None` when the registry already holds this wallet's address. Fails
   /// with [`WalletError::RegistrationConflict`] when it holds other keys:
-  /// this wallet never replaces them.
-  Future<PreparedTransaction?> prepareRegistration();
+  /// this wallet never replaces them. `priority_fee_lamports` overrides
+  /// [`WalletConfig::priority_fee_lamports`], as on every prepared
+  /// transaction.
+  Future<PreparedTransaction?> prepareRegistration({
+    BigInt? priorityFeeLamports,
+  });
 
   /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in
   /// one transaction. A private output is a note for a registered wallet,
@@ -208,6 +217,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
     String? mint,
     String? feePayer,
     Proving? proving,
+    BigInt? priorityFeeLamports,
   });
 
   /// Spendable private balance of SOL (`mint` `None`) or `mint`, read from
@@ -306,6 +316,10 @@ abstract class PreparedTransaction implements RustOpaqueInterface {
   /// Output slots of a spend, in proof order, including padding. Empty
   /// unless this is a spend. Do not log them.
   List<OutputOpening> get outputs;
+
+  /// Total priority fee in lamports, added to the base transaction fee.
+  /// Read from the prepared message header; zero when unset.
+  BigInt get priorityFeeLamports;
 
   /// Base58 public keys that must sign, in signature order. The first is
   /// the fee payer, whose signature is the transaction signature.
@@ -1072,6 +1086,31 @@ class TransportResponse {
           body == other.body;
 }
 
+/// Assets of wallet notes that could not be resolved after refreshing the
+/// pool's registrations. Their notes are excluded from balances and activity.
+/// This also includes mints excluded by [`WalletConfig::mints`].
+class UnresolvedAssets {
+  /// Unresolved asset ids, sorted and deduplicated. These are supplied by
+  /// senders and may not correspond to a registered asset.
+  final Uint64List assetIds;
+
+  /// Base58 mints from deposits or merge outputs with no known asset id.
+  final List<String> mints;
+
+  const UnresolvedAssets({required this.assetIds, required this.mints});
+
+  @override
+  int get hashCode => assetIds.hashCode ^ mints.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UnresolvedAssets &&
+          runtimeType == other.runtimeType &&
+          assetIds == other.assetIds &&
+          mints == other.mints;
+}
+
 /// Where the wallet reads chain state and stores proving keys.
 class WalletConfig {
   final String rpcUrl;
@@ -1119,6 +1158,10 @@ class WalletConfig {
   /// notes a read meets.
   final List<MintConfig>? mints;
 
+  /// Default total priority fee per transaction, in lamports. Each prepare
+  /// call can override it, including with zero. `None` adds no priority fee.
+  final BigInt? priorityFeeLamports;
+
   const WalletConfig({
     required this.rpcUrl,
     required this.indexerUrl,
@@ -1129,6 +1172,7 @@ class WalletConfig {
     this.maxSpendInputs,
     this.reuseNotesMs,
     this.mints,
+    this.priorityFeeLamports,
   });
 
   @override
@@ -1141,7 +1185,8 @@ class WalletConfig {
       proverUrl.hashCode ^
       maxSpendInputs.hashCode ^
       reuseNotesMs.hashCode ^
-      mints.hashCode;
+      mints.hashCode ^
+      priorityFeeLamports.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1156,7 +1201,8 @@ class WalletConfig {
           proverUrl == other.proverUrl &&
           maxSpendInputs == other.maxSpendInputs &&
           reuseNotesMs == other.reuseNotesMs &&
-          mints == other.mints;
+          mints == other.mints &&
+          priorityFeeLamports == other.priorityFeeLamports;
 }
 
 @freezed
@@ -1446,14 +1492,21 @@ class WalletKeys {
 }
 
 /// The private balances, one per asset held, and the history, newest first.
+/// Notes in [`Self::unresolved_assets`] are excluded from both.
 class WalletOverview {
   final List<TokenBalance> balances;
   final List<ActivityEntry> activity;
+  final UnresolvedAssets unresolvedAssets;
 
-  const WalletOverview({required this.balances, required this.activity});
+  const WalletOverview({
+    required this.balances,
+    required this.activity,
+    required this.unresolvedAssets,
+  });
 
   @override
-  int get hashCode => balances.hashCode ^ activity.hashCode;
+  int get hashCode =>
+      balances.hashCode ^ activity.hashCode ^ unresolvedAssets.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1461,5 +1514,6 @@ class WalletOverview {
       other is WalletOverview &&
           runtimeType == other.runtimeType &&
           balances == other.balances &&
-          activity == other.activity;
+          activity == other.activity &&
+          unresolvedAssets == other.unresolvedAssets;
 }
