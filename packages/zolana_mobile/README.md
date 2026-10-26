@@ -133,6 +133,29 @@ await wallet.spend(
   `Operation_Spend` lists each output in order. An empty list fails with
   `WalletError.noOutputs`, a zero amount with `WalletError.amountZero`,
   before anything is asked of the network.
+- **Checking before signing**: `PreparedTransaction.outputs` returns the final
+  output openings of a spend in proof order, including change and padding.
+  Every opening contains its final blinding; neither the random transaction
+  seed nor the derived output seed is exposed. Other transaction types return
+  an empty list, and `refresh` preserves the openings.
+
+  Payment policy belongs to the app. The example's `SpendChecks` parses the
+  actual Solana v1 message and its default-ring `transact` instruction, reads
+  recipient registrations and the output tree from the app's trusted RPC,
+  recomputes each published output commitment and checks discovery tags. It
+  compares private payments, the app fee, change ownership and public
+  withdrawals against the UI request captured before preparation. It permits
+  only the token-account creation needed by those withdrawals and caps the
+  priority fee at 10,000 lamports. Unknown formats or circuits are refused.
+  The signer signs the exact byte snapshot that passed these checks and shows
+  the checked payment facts instead of trusting `operation` as evidence.
+
+  This example policy checks spend outputs; it does not validate recipient
+  ciphertext decryptability, audit protocol tree fees, or independently
+  verify Groth16 proofs. The shielded-pool program verifies proofs during
+  execution. Registration, deposit and merge approvals retain their existing
+  behavior. Openings are confidential: keep them out of logs and analytics.
+
 - **What is public**: a deposit shows this account, the asset and the amount.
   A spend shows this account, the asset, each public output's recipient and
   amount, and the Solana address each private output's note is tagged with

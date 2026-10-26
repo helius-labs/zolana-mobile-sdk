@@ -7,6 +7,7 @@ import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
 import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
+import 'package:zolana_mobile_demo/spend_checks.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
@@ -51,9 +52,35 @@ void main() {
     mints: [for (final asset in demoAssets) ?asset.config],
   );
 
-  Future<ZolanaWallet> open(DemoAccount account) async => ZolanaWallet.open(
-    signer: await DemoSigner.fromSeedHex(account.seedHex),
-    config: await config(),
+  final signers = <ZolanaWallet, DemoSigner>{};
+  Future<ZolanaWallet> open(
+    DemoAccount account, {
+    String? proverUrl,
+    ZolanaTransport? transport,
+  }) async {
+    final signer = await DemoSigner.fromSeedHex(
+      account.seedHex,
+      spendChecks: SpendChecks(TestClusterRpc(Network.devnet.rpcUrl)),
+    );
+    final wallet = await ZolanaWallet.open(
+      signer: signer,
+      config: await config(proverUrl: proverUrl),
+      transport: transport,
+    );
+    signers[wallet] = signer;
+    return wallet;
+  }
+
+  Future<String> checkedSpend(
+    ZolanaWallet wallet, {
+    required List<Output> outputs,
+    String? mint,
+    Proving? proving,
+  }) => signers[wallet]!.spend(
+    wallet,
+    outputs: outputs,
+    mint: mint,
+    proving: proving,
   );
 
   testWidgets('sends privately from A to B, proving on this device', (
@@ -104,11 +131,25 @@ void main() {
       prepared.operation,
       Operation.spend(outputs: outputs, createdTokenAccounts: const []),
     );
+    final checks = SpendChecks(TestClusterRpc(Network.devnet.rpcUrl));
+    final request = SpendRequest(outputs: outputs);
+    await checks.verify(
+      message: prepared.message,
+      openings: prepared.outputs,
+      sender: signer.publicKey,
+      request: request,
+    );
     // A slow approval: the same proof under a new blockhash.
     final transaction = await sender.refresh(prepared);
     expect(
       transaction.lastValidBlockHeight,
       greaterThanOrEqualTo(prepared.lastValidBlockHeight),
+    );
+    await checks.verify(
+      message: transaction.message,
+      openings: transaction.outputs,
+      sender: signer.publicKey,
+      request: request,
     );
     final signature = await sender.submit(transaction, [
       await signer.signMessage(transaction.message, transaction: transaction),
@@ -137,11 +178,8 @@ void main() {
     final lamports = BigInt.from(1000000);
     final transport = AppTransport();
     addTearDown(transport.close);
-    Future<ZolanaWallet> sender({String? proverUrl}) async => ZolanaWallet.open(
-      signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),
-      config: await config(proverUrl: proverUrl),
-      transport: transport.send,
-    );
+    Future<ZolanaWallet> sender({String? proverUrl}) =>
+        open(demoAccounts[0], proverUrl: proverUrl, transport: transport.send);
     final local = await sender();
     addTearDown(local.close);
     await expectLater(
@@ -168,7 +206,8 @@ void main() {
     final recipientBefore = await recipient.privateBalance();
 
     final started = DateTime.now();
-    final signature = await remote.spend(
+    final signature = await checkedSpend(
+      remote,
       outputs: [
         Output.private(recipient: demoAccounts[1].publicKey, amount: lamports),
       ],
@@ -227,7 +266,8 @@ void main() {
     await sender.deposit(shield, mint: mint);
     expect(await sender.privateBalance(mint: mint), senderBefore + shield);
 
-    final sent = await sender.spend(
+    final sent = await checkedSpend(
+      sender,
       outputs: [
         Output.private(recipient: demoAccounts[1].publicKey, amount: send),
       ],
@@ -248,7 +288,8 @@ void main() {
       demoAccounts[1].publicKey,
       mint,
     );
-    await recipient.spend(
+    await checkedSpend(
+      recipient,
       outputs: [
         Output.public(recipient: demoAccounts[1].publicKey, amount: unshield),
       ],

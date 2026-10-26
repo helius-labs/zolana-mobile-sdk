@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 108739387;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1928669408;
 
 // Section: executor
 
@@ -1540,6 +1540,54 @@ fn wire__zolana_mobile__PreparedTransaction_operation_impl(
         },
     )
 }
+fn wire__zolana_mobile__PreparedTransaction_outputs_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "PreparedTransaction_outputs",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreparedTransaction>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let mut api_that_guard = None;
+                let decode_indices_ =
+                    flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                        flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                            &api_that, 0, false,
+                        ),
+                    ]);
+                for i in decode_indices_ {
+                    match i {
+                        0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                        _ => unreachable!(),
+                    }
+                }
+                let api_that_guard = api_that_guard.unwrap();
+                let output_ok = Result::<_, ()>::Ok(zolana_mobile::PreparedTransaction::outputs(
+                    &*api_that_guard,
+                ))?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__zolana_mobile__PreparedTransaction_signers_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -2094,6 +2142,19 @@ const _: fn() = || {
             let _: String = recipient;
             let _: u64 = amount;
         }
+    }
+    {
+        let OutputOpening = None::<zolana_mobile::OutputOpening>.unwrap();
+        let _: Option<Vec<u8>> = OutputOpening.owner_signing_key;
+        let _: Option<Vec<u8>> = OutputOpening.nullifier_key;
+        let _: Option<String> = OutputOpening.mint;
+        let _: u64 = OutputOpening.amount;
+        let _: Vec<u8> = OutputOpening.blinding;
+        let _: u16 = OutputOpening.tree_id;
+        let _: Option<Vec<u8>> = OutputOpening.data_hash;
+        let _: Option<Vec<u8>> = OutputOpening.ring_data_hash;
+        let _: Option<String> = OutputOpening.ring_program_id;
+        let _: bool = OutputOpening.compact;
     }
     {
         let ProvedRequest = None::<zolana_mobile::ProvedRequest>.unwrap();
@@ -2666,6 +2727,18 @@ impl SseDecode for Vec<zolana_mobile::Output> {
     }
 }
 
+impl SseDecode for Vec<zolana_mobile::OutputOpening> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<zolana_mobile::OutputOpening>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2928,6 +3001,17 @@ impl SseDecode for Option<Vec<zolana_mobile::MintConfig>> {
     }
 }
 
+impl SseDecode for Option<Vec<u8>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<Vec<u8>>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for zolana_mobile::Output {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2953,6 +3037,34 @@ impl SseDecode for zolana_mobile::Output {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseDecode for zolana_mobile::OutputOpening {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_ownerSigningKey = <Option<Vec<u8>>>::sse_decode(deserializer);
+        let mut var_nullifierKey = <Option<Vec<u8>>>::sse_decode(deserializer);
+        let mut var_mint = <Option<String>>::sse_decode(deserializer);
+        let mut var_amount = <u64>::sse_decode(deserializer);
+        let mut var_blinding = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_treeId = <u16>::sse_decode(deserializer);
+        let mut var_dataHash = <Option<Vec<u8>>>::sse_decode(deserializer);
+        let mut var_ringDataHash = <Option<Vec<u8>>>::sse_decode(deserializer);
+        let mut var_ringProgramId = <Option<String>>::sse_decode(deserializer);
+        let mut var_compact = <bool>::sse_decode(deserializer);
+        return zolana_mobile::OutputOpening {
+            owner_signing_key: var_ownerSigningKey,
+            nullifier_key: var_nullifierKey,
+            mint: var_mint,
+            amount: var_amount,
+            blinding: var_blinding,
+            tree_id: var_treeId,
+            data_hash: var_dataHash,
+            ring_data_hash: var_ringDataHash,
+            ring_program_id: var_ringProgramId,
+            compact: var_compact,
+        };
     }
 }
 
@@ -3567,16 +3679,16 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        31 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
-        37 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        39 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        40 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        41 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3598,7 +3710,8 @@ fn pde_ffi_dispatcher_sync_impl(
         ),
         28 => wire__zolana_mobile__PreparedTransaction_message_impl(ptr, rust_vec_len, data_len),
         29 => wire__zolana_mobile__PreparedTransaction_operation_impl(ptr, rust_vec_len, data_len),
-        30 => wire__zolana_mobile__PreparedTransaction_signers_impl(ptr, rust_vec_len, data_len),
+        30 => wire__zolana_mobile__PreparedTransaction_outputs_impl(ptr, rust_vec_len, data_len),
+        31 => wire__zolana_mobile__PreparedTransaction_signers_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3865,6 +3978,35 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::Output>>
     for zolana_mobile::Output
 {
     fn into_into_dart(self) -> FrbWrapper<zolana_mobile::Output> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::OutputOpening> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.owner_signing_key.into_into_dart().into_dart(),
+            self.0.nullifier_key.into_into_dart().into_dart(),
+            self.0.mint.into_into_dart().into_dart(),
+            self.0.amount.into_into_dart().into_dart(),
+            self.0.blinding.into_into_dart().into_dart(),
+            self.0.tree_id.into_into_dart().into_dart(),
+            self.0.data_hash.into_into_dart().into_dart(),
+            self.0.ring_data_hash.into_into_dart().into_dart(),
+            self.0.ring_program_id.into_into_dart().into_dart(),
+            self.0.compact.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::OutputOpening>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::OutputOpening>>
+    for zolana_mobile::OutputOpening
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::OutputOpening> {
         self.into()
     }
 }
@@ -4594,6 +4736,16 @@ impl SseEncode for Vec<zolana_mobile::Output> {
     }
 }
 
+impl SseEncode for Vec<zolana_mobile::OutputOpening> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <zolana_mobile::OutputOpening>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4813,6 +4965,16 @@ impl SseEncode for Option<Vec<zolana_mobile::MintConfig>> {
     }
 }
 
+impl SseEncode for Option<Vec<u8>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <Vec<u8>>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for zolana_mobile::Output {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -4831,6 +4993,22 @@ impl SseEncode for zolana_mobile::Output {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseEncode for zolana_mobile::OutputOpening {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<Vec<u8>>>::sse_encode(self.owner_signing_key, serializer);
+        <Option<Vec<u8>>>::sse_encode(self.nullifier_key, serializer);
+        <Option<String>>::sse_encode(self.mint, serializer);
+        <u64>::sse_encode(self.amount, serializer);
+        <Vec<u8>>::sse_encode(self.blinding, serializer);
+        <u16>::sse_encode(self.tree_id, serializer);
+        <Option<Vec<u8>>>::sse_encode(self.data_hash, serializer);
+        <Option<Vec<u8>>>::sse_encode(self.ring_data_hash, serializer);
+        <Option<String>>::sse_encode(self.ring_program_id, serializer);
+        <bool>::sse_encode(self.compact, serializer);
     }
 }
 

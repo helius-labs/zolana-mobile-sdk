@@ -2,6 +2,10 @@
 
 Unreleased.
 
+* A prepared spend exposes its output openings, including change and padding,
+  so an application's signer can recompute commitments and check the message.
+  The example performs these checks before signing. Seeds stay inside the SDK.
+
 * Built on Zolana v0.5.0-alpha, which devnet-d runs: shielded pool
   `spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt`, user registry
   `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`. The viewing key is an X25519

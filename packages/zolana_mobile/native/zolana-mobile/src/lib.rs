@@ -34,8 +34,8 @@ pub use transport::{
     Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
 };
 pub use wallet::{
-    derivation_message, MobileWallet, Operation, Output, PreparedTransaction, RegistrationStatus,
-    SpendLimit, TokenBalance, WalletConfig, WalletKeys, WalletOverview,
+    derivation_message, MobileWallet, Operation, Output, OutputOpening, PreparedTransaction,
+    RegistrationStatus, SpendLimit, TokenBalance, WalletConfig, WalletKeys, WalletOverview,
 };
 
 static PREPARED: Mutex<ProverState> = Mutex::new(ProverState {

@@ -288,6 +288,10 @@ abstract class PreparedTransaction implements RustOpaqueInterface {
   /// What it does, with what it moves and to whom.
   Operation get operation;
 
+  /// Output slots of a spend, in proof order, including padding. Empty
+  /// unless this is a spend. Do not log them.
+  List<OutputOpening> get outputs;
+
   /// Base58 public keys that must sign, in signature order. The first is
   /// the fee payer, whose signature is the transaction signature.
   List<String> get signers;
@@ -539,6 +543,78 @@ sealed class Output with _$Output {
     required String recipient,
     required BigInt amount,
   }) = Output_Public;
+}
+
+/// One output slot of a prepared spend, in proof order, including padding.
+/// Recompute its commitment and compare it with the corresponding output of
+/// the shielded-pool instruction in the message before signing. Do not log this.
+///
+/// A dummy has no owner. A compact slot is left out of the transaction; its
+/// commitment is 32 zero bytes. The list position is the proof slot index.
+class OutputOpening {
+  /// 34-byte signing key: scheme, 32-byte key, zero padding. Absent for a dummy.
+  final Uint8List? ownerSigningKey;
+
+  /// Owner nullifier public key. Absent for a dummy.
+  final Uint8List? nullifierKey;
+
+  /// `None` for SOL.
+  final String? mint;
+  final BigInt amount;
+
+  /// Final 32-byte big-endian output blinding.
+  final Uint8List blinding;
+
+  /// Raw id of the output tree, shared by every slot.
+  final int treeId;
+  final Uint8List? dataHash;
+  final Uint8List? ringDataHash;
+  final String? ringProgramId;
+
+  /// Compact padding is not written into the transaction.
+  final bool compact;
+
+  const OutputOpening({
+    this.ownerSigningKey,
+    this.nullifierKey,
+    this.mint,
+    required this.amount,
+    required this.blinding,
+    required this.treeId,
+    this.dataHash,
+    this.ringDataHash,
+    this.ringProgramId,
+    required this.compact,
+  });
+
+  @override
+  int get hashCode =>
+      ownerSigningKey.hashCode ^
+      nullifierKey.hashCode ^
+      mint.hashCode ^
+      amount.hashCode ^
+      blinding.hashCode ^
+      treeId.hashCode ^
+      dataHash.hashCode ^
+      ringDataHash.hashCode ^
+      ringProgramId.hashCode ^
+      compact.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OutputOpening &&
+          runtimeType == other.runtimeType &&
+          ownerSigningKey == other.ownerSigningKey &&
+          nullifierKey == other.nullifierKey &&
+          mint == other.mint &&
+          amount == other.amount &&
+          blinding == other.blinding &&
+          treeId == other.treeId &&
+          dataHash == other.dataHash &&
+          ringDataHash == other.ringDataHash &&
+          ringProgramId == other.ringProgramId &&
+          compact == other.compact;
 }
 
 /// A proof of a `/prove` request through the wallet's key store, by
