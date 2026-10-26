@@ -4,32 +4,33 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 
 ## Samsung Galaxy A16, Android 14, low tier
 
-**Before:** [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) of 2026-10-26. **After:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26.
+**Before:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26. **After:** [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) of 2026-10-26.
 
 | by scenario | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| first run, including download | before | 6.06 s (download: 2.92 s, 6.5 MiB) | 10.72 s (download: 5.72 s, 11.6 MiB) | 16.75 s (download: 7.74 s, 21.6 MiB) | 35.86 s (download: 19.29 s, 41.9 MiB) | 71.47 s (download: 39.69 s, 84.2 MiB) | 114.88 s (download: 63.60 s, 138.6 MiB) | 109.80 s (download: 61.07 s, 133.1 MiB) |
-| | after | 6.17 s (download: 3.01 s, 6.5 MiB) (+2 %) | 10.63 s (download: 5.42 s, 11.6 MiB) (-1 %) | 14.13 s (download: 5.18 s, 21.6 MiB) (-16 %) | 34.12 s (download: 17.32 s, 41.9 MiB) (-5 %) | 65.72 s (download: 34.06 s, 84.2 MiB) (-8 %) | 112.42 s (download: 61.62 s, 138.6 MiB) (-2 %) | 107.17 s (download: 58.63 s, 133.1 MiB) (-2 %) |
-| warm | before | 0.84 s | 1.38 s | 2.43 s | 4.49 s | 7.75 s | 12.73 s | 12.17 s |
-| | after | 0.83 s | 1.41 s | 2.50 s (+3 %) | 4.45 s | 7.97 s (+3 %) | 12.71 s | 12.19 s |
-| first run after restart | before | 0.99 s | 1.66 s | 2.72 s | 5.04 s | 8.99 s | 13.81 s | 13.41 s |
-| | after | 0.99 s | 1.78 s (+7 %) | 2.70 s | 4.88 s (-3 %) | 8.66 s (-4 %) | 13.75 s | 12.99 s (-3 %) |
-| repeated after restart | before | 0.85 s | 1.40 s | 2.48 s | 4.44 s | 7.89 s | 12.87 s | 12.73 s |
-| | after | 0.88 s | 1.39 s | 2.42 s (-3 %) | 4.43 s | 8.18 s (+4 %) | 12.28 s (-5 %) | 12.15 s (-5 %) |
+| first run, including download | before | 6.17 s (download: 3.01 s, 6.5 MiB) | 10.63 s (download: 5.42 s, 11.6 MiB) | 14.13 s (download: 5.18 s, 21.6 MiB) | 34.12 s (download: 17.32 s, 41.9 MiB) | 65.72 s (download: 34.06 s, 84.2 MiB) | 112.42 s (download: 61.62 s, 138.6 MiB) | 107.17 s (download: 58.63 s, 133.1 MiB) |
+| | after | 5.51 s (download: 2.42 s, 6.5 MiB) (-11 %) | 10.37 s (download: 5.33 s, 11.6 MiB) (-2 %) | 17.61 s (download: 8.85 s, 21.6 MiB) (+25 % **!**) | 36.05 s (download: 18.74 s, 41.9 MiB) (+6 %) | 69.35 s (download: 37.23 s, 84.2 MiB) (+6 %) | 112.04 s (download: 61.64 s, 138.6 MiB) | 107.70 s (download: 59.23 s, 133.1 MiB) |
+| warm | before | 0.83 s | 1.41 s | 2.50 s | 4.45 s | 7.97 s | 12.71 s | 12.19 s |
+| | after | 0.88 s (+7 %) | 1.42 s | 2.46 s | 4.60 s (+3 %) | 8.38 s (+5 %) | 12.43 s (-2 %) | 12.37 s (+1 %) |
+| first run after restart | before | 0.99 s | 1.78 s | 2.70 s | 4.88 s | 8.66 s | 13.75 s | 12.99 s |
+| | after | 1.05 s (+6 %) | 1.69 s (-5 %) | 2.75 s | 4.75 s (-3 %) | 9.16 s (+6 %) | 13.53 s (-2 %) | 12.73 s (-2 %) |
+| repeated after restart | before | 0.88 s | 1.39 s | 2.42 s | 4.43 s | 8.18 s | 12.28 s | 12.15 s |
+| | after | 0.85 s | 1.43 s | 2.45 s | 4.55 s (+3 %) | 8.09 s (-1 %) | 13.01 s (+6 %) | 12.13 s |
 
 | by stage | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| key load | before | 0.20 s | 0.27 s | 0.29 s | 0.43 s | 0.59 s | 0.82 s | 0.80 s |
-| | after | 0.20 s | 0.28 s | 0.29 s | 0.38 s (-12 %) | 0.53 s (-10 %) | 0.89 s (+8 %) | 0.76 s |
-| witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.01 s | 0.01 s |
+| key load | before | 0.20 s | 0.28 s | 0.29 s | 0.38 s | 0.53 s | 0.89 s | 0.76 s |
+| | after | 0.20 s | 0.26 s | 0.30 s | 0.38 s | 0.62 s (+17 %) | 0.85 s | 0.71 s (-7 %) |
+| witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.01 s | 0.00 s |
 | | after | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.01 s | 0.00 s |
-| prove | before | 0.82 s | 1.35 s | 2.43 s | 4.44 s | 7.80 s | 12.77 s | 12.37 s |
-| | after | 0.82 s | 1.37 s | 2.39 s | 4.45 s | 8.02 s (+3 %) | 12.67 s (-1 %) | 12.15 s (-2 %) |
+| prove | before | 0.82 s | 1.37 s | 2.39 s | 4.45 s | 8.02 s | 12.67 s | 12.15 s |
+| | after | 0.82 s | 1.39 s | 2.43 s | 4.54 s (+2 %) | 8.28 s (+3 %) | 12.53 s (-1 %) | 12.17 s |
 
-### Proof, last 14 commits
+### Proof, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.82 s | 1.39 s | 2.43 s | 4.54 s | 8.28 s | 12.53 s | 12.17 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.82 s | 1.37 s | 2.39 s | 4.45 s | 8.02 s | 12.67 s | 12.15 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.82 s | 1.35 s | 2.43 s | 4.44 s | 7.80 s | 12.77 s | 12.37 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.82 s | 1.37 s | 2.45 s | 4.52 s | 8.08 s | 12.52 s | 12.33 s |
@@ -45,10 +46,11 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 | [`70becb6`](https://github.com/helius-labs/zolana-mobile-sdk/commit/70becb6f171f86d89298c1a25dc15890a4ac96bc) | 2026-10-19 | 1.18 s | 2.02 s | 3.66 s | 7.07 s | 14.96 s | 24.88 s | 22.09 s |
 | [`e28587b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/e28587bf51d4dcfde3e979a469bed69ee1b48930) | 2026-10-17 | 1.19 s | 2.01 s | 3.69 s | 6.99 s | 14.92 s | 23.81 s | 21.72 s |
 
-### First run after a restart, last 14 commits
+### First run after a restart, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 1.05 s | 1.69 s | 2.75 s | 4.75 s | 9.16 s | 13.53 s | 12.73 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.99 s | 1.78 s | 2.70 s | 4.88 s | 8.66 s | 13.75 s | 12.99 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.99 s | 1.66 s | 2.72 s | 5.04 s | 8.99 s | 13.81 s | 13.41 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.99 s | 1.68 s | 2.71 s | 4.77 s | 8.64 s | 13.24 s | 13.23 s |
@@ -66,32 +68,33 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 
 ## Samsung Galaxy A56, Android 15, mid tier
 
-**Before:** [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) of 2026-10-26. **After:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26.
+**Before:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26. **After:** [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) of 2026-10-26.
 
 | by scenario | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| first run, including download | before | 2.61 s (download: 1.55 s, 6.5 MiB) | 3.51 s (download: 1.75 s, 11.6 MiB) | 6.21 s (download: 3.14 s, 21.6 MiB) | 11.88 s (download: 6.03 s, 41.9 MiB) | 23.65 s (download: 12.21 s, 84.2 MiB) | 38.11 s (download: 19.93 s, 138.6 MiB) | 37.65 s (download: 20.26 s, 133.1 MiB) |
-| | after | 3.77 s (download: 2.69 s, 6.5 MiB) (+44 % **!**) | 5.77 s (download: 4.02 s, 11.6 MiB) (+64 % **!**) | 9.86 s (download: 6.82 s, 21.6 MiB) (+59 % **!**) | 19.15 s (download: 13.41 s, 41.9 MiB) (+61 % **!**) | 27.96 s (download: 16.56 s, 84.2 MiB) (+18 %) | 56.18 s (download: 38.16 s, 138.6 MiB) (+47 % **!**) | 38.38 s (download: 21.10 s, 133.1 MiB) (+2 %) |
-| warm | before | 0.25 s | 0.42 s | 0.75 s | 1.38 s | 2.71 s | 4.31 s | 4.24 s |
-| | after | 0.26 s | 0.43 s | 0.76 s | 1.44 s (+4 %) | 2.69 s | 4.36 s | 4.29 s (+1 %) |
-| first run after restart | before | 0.52 s | 0.57 s | 0.94 s | 1.67 s | 3.24 s | 4.71 s | 4.63 s |
-| | after | 0.53 s | 0.55 s | 0.92 s | 1.61 s (-3 %) | 3.09 s (-5 %) | 4.73 s | 4.67 s |
-| repeated after restart | before | 0.26 s | 0.45 s | 0.76 s | 1.41 s | 2.81 s | 4.40 s | 4.48 s |
-| | after | 0.25 s | 0.42 s | 0.75 s | 1.39 s | 2.70 s (-4 %) | 4.35 s (-1 %) | 4.17 s (-7 %) |
+| first run, including download | before | 3.77 s (download: 2.69 s, 6.5 MiB) | 5.77 s (download: 4.02 s, 11.6 MiB) | 9.86 s (download: 6.82 s, 21.6 MiB) | 19.15 s (download: 13.41 s, 41.9 MiB) | 27.96 s (download: 16.56 s, 84.2 MiB) | 56.18 s (download: 38.16 s, 138.6 MiB) | 38.38 s (download: 21.10 s, 133.1 MiB) |
+| | after | 2.86 s (download: 1.80 s, 6.5 MiB) (-24 % **!**) | 3.78 s (download: 2.01 s, 11.6 MiB) (-35 % **!**) | 6.78 s (download: 3.64 s, 21.6 MiB) (-31 % **!**) | 13.29 s (download: 7.26 s, 41.9 MiB) (-31 % **!**) | 25.76 s (download: 14.40 s, 84.2 MiB) (-8 %) | 40.63 s (download: 22.73 s, 138.6 MiB) (-28 % **!**) | 37.07 s (download: 19.59 s, 133.1 MiB) (-3 %) |
+| warm | before | 0.26 s | 0.43 s | 0.76 s | 1.44 s | 2.69 s | 4.36 s | 4.29 s |
+| | after | 0.25 s | 0.42 s | 0.76 s | 1.40 s | 2.66 s | 4.38 s | 4.24 s (-1 %) |
+| first run after restart | before | 0.53 s | 0.55 s | 0.92 s | 1.61 s | 3.09 s | 4.73 s | 4.67 s |
+| | after | 0.54 s | 0.59 s | 0.95 s | 1.66 s | 3.10 s | 4.76 s | 4.60 s (-2 %) |
+| repeated after restart | before | 0.25 s | 0.42 s | 0.75 s | 1.39 s | 2.70 s | 4.35 s | 4.17 s |
+| | after | 0.25 s | 0.44 s | 0.76 s | 1.39 s | 2.77 s (+3 %) | 4.32 s | 4.23 s (+2 %) |
 
 | by stage | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| key load | before | 0.23 s | 0.12 s | 0.16 s | 0.22 s | 0.29 s | 0.35 s | 0.35 s |
-| | after | 0.26 s | 0.12 s | 0.15 s | 0.20 s | 0.29 s | 0.35 s | 0.35 s |
+| key load | before | 0.26 s | 0.12 s | 0.15 s | 0.20 s | 0.29 s | 0.35 s | 0.35 s |
+| | after | 0.26 s | 0.12 s | 0.16 s | 0.20 s | 0.27 s | 0.37 s | 0.34 s |
 | witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
 | | after | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
-| prove | before | 0.26 s | 0.44 s | 0.76 s | 1.41 s | 2.79 s | 4.37 s | 4.29 s |
-| | after | 0.26 s | 0.42 s | 0.75 s | 1.41 s | 2.74 s (-2 %) | 4.36 s | 4.27 s |
+| prove | before | 0.26 s | 0.42 s | 0.75 s | 1.41 s | 2.74 s | 4.36 s | 4.27 s |
+| | after | 0.25 s | 0.43 s | 0.76 s | 1.40 s | 2.76 s | 4.38 s | 4.24 s |
 
-### Proof, last 14 commits
+### Proof, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.25 s | 0.43 s | 0.76 s | 1.40 s | 2.76 s | 4.38 s | 4.24 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.26 s | 0.42 s | 0.75 s | 1.41 s | 2.74 s | 4.36 s | 4.27 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.26 s | 0.44 s | 0.76 s | 1.41 s | 2.79 s | 4.37 s | 4.29 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.27 s | 0.43 s | 0.77 s | 1.40 s | 2.74 s | 4.36 s | 4.28 s |
@@ -107,10 +110,11 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 | [`70becb6`](https://github.com/helius-labs/zolana-mobile-sdk/commit/70becb6f171f86d89298c1a25dc15890a4ac96bc) | 2026-10-19 | 0.34 s | 0.58 s | 1.06 s | 2.00 s | 3.90 s | 6.08 s | 5.80 s |
 | [`e28587b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/e28587bf51d4dcfde3e979a469bed69ee1b48930) | 2026-10-17 | 0.35 s | 0.57 s | 1.06 s | 1.98 s | 3.87 s | 6.00 s | 5.78 s |
 
-### First run after a restart, last 14 commits
+### First run after a restart, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.54 s | 0.59 s | 0.95 s | 1.66 s | 3.10 s | 4.76 s | 4.60 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.53 s | 0.55 s | 0.92 s | 1.61 s | 3.09 s | 4.73 s | 4.67 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.52 s | 0.57 s | 0.94 s | 1.67 s | 3.24 s | 4.71 s | 4.63 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.52 s | 0.60 s | 1.01 s | 1.60 s | 3.10 s | 4.82 s | 4.68 s |
@@ -128,32 +132,33 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 
 ## Samsung Galaxy S25, Android 15, high tier
 
-**Before:** [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) of 2026-10-26. **After:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26.
+**Before:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26. **After:** [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) of 2026-10-26.
 
 | by scenario | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| first run, including download | before | 14.26 s (download: 2.17 s, 6.5 MiB) | 4.16 s (download: 3.02 s, 11.6 MiB) | 4.78 s (download: 3.08 s, 21.6 MiB) | 8.48 s (download: 5.64 s, 41.9 MiB) | 17.58 s (download: 12.29 s, 84.2 MiB) | 27.70 s (download: 19.35 s, 138.6 MiB) | 27.55 s (download: 19.55 s, 133.1 MiB) |
-| | after | 13.27 s (download: 0.99 s, 6.5 MiB) (-7 %) | 2.34 s (download: 1.23 s, 11.6 MiB) (-44 % **!**) | 4.02 s (download: 2.19 s, 21.6 MiB) (-16 %) | 7.20 s (download: 4.19 s, 41.9 MiB) (-15 %) | 14.14 s (download: 8.78 s, 84.2 MiB) (-20 %) | 22.15 s (download: 13.46 s, 138.6 MiB) (-20 % **!**) | 25.00 s (download: 16.53 s, 133.1 MiB) (-9 %) |
-| warm | before | 0.17 s | 0.20 s | 0.32 s | 0.49 s | 0.85 s | 1.40 s | 1.37 s |
-| | after | 0.16 s | 0.20 s | 0.34 s | 0.55 s (+13 %) | 0.94 s (+9 %) | 1.54 s (+10 %) | 1.51 s (+10 %) |
-| first run after restart | before | 0.49 s | 0.50 s | 0.65 s | 1.00 s | 1.65 s |  |  |
-| | after | 0.57 s (+15 %) | 0.64 s (+28 % **!**) | 0.80 s (+23 % **!**) | 1.05 s (+6 %) | 1.73 s (+5 %) | 3.25 s | 3.19 s |
-| repeated after restart | before | 0.14 s | 0.19 s | 0.31 s | 0.50 s | 0.86 s |  |  |
-| | after | 0.15 s | 0.21 s | 0.31 s | 0.49 s | 0.88 s | 2.04 s | 2.01 s |
+| first run, including download | before | 13.27 s (download: 0.99 s, 6.5 MiB) | 2.34 s (download: 1.23 s, 11.6 MiB) | 4.02 s (download: 2.19 s, 21.6 MiB) | 7.20 s (download: 4.19 s, 41.9 MiB) | 14.14 s (download: 8.78 s, 84.2 MiB) | 22.15 s (download: 13.46 s, 138.6 MiB) | 25.00 s (download: 16.53 s, 133.1 MiB) |
+| | after | 13.63 s (download: 1.48 s, 6.5 MiB) (+3 %) | 3.10 s (download: 2.04 s, 11.6 MiB) (+32 % **!**) | 4.67 s (download: 2.96 s, 21.6 MiB) (+16 %) | 9.65 s (download: 6.80 s, 41.9 MiB) (+34 % **!**) | 19.74 s (download: 14.39 s, 84.2 MiB) (+40 % **!**) | 32.89 s (download: 24.52 s, 138.6 MiB) (+48 % **!**) | 27.96 s (download: 19.88 s, 133.1 MiB) (+12 %) |
+| warm | before | 0.16 s | 0.20 s | 0.34 s | 0.55 s | 0.94 s | 1.54 s | 1.51 s |
+| | after | 0.16 s | 0.20 s | 0.32 s | 0.50 s (-9 %) | 0.85 s (-9 %) | 1.39 s (-10 %) | 1.36 s (-10 %) |
+| first run after restart | before | 0.57 s | 0.64 s | 0.80 s | 1.05 s | 1.73 s | 3.25 s | 3.19 s |
+| | after | 0.47 s (-17 %) | 0.49 s (-24 % **!**) | 0.65 s (-18 %) | 0.94 s (-11 %) | 1.51 s (-13 %) |  |  |
+| repeated after restart | before | 0.15 s | 0.21 s | 0.31 s | 0.49 s | 0.88 s | 2.04 s | 2.01 s |
+| | after | 0.14 s | 0.20 s | 0.31 s | 0.49 s | 0.86 s |  |  |
 
 | by stage | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| key load | before | 0.34 s | 0.30 s | 0.34 s | 0.50 s | 0.77 s |  |  |
-| | after | 0.41 s (+20 % **!**) | 0.44 s (+48 % **!**) | 0.48 s (+42 % **!**) | 0.56 s (+12 %) | 0.86 s (+12 %) | 1.19 s | 1.19 s |
+| key load | before | 0.41 s | 0.44 s | 0.48 s | 0.56 s | 0.86 s | 1.19 s | 1.19 s |
+| | after | 0.33 s (-21 % **!**) | 0.29 s (-34 % **!**) | 0.35 s (-27 % **!**) | 0.45 s (-20 % **!**) | 0.65 s (-25 % **!**) |  |  |
 | witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
 | | after | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
-| prove | before | 0.15 s | 0.19 s | 0.30 s | 0.49 s | 0.86 s | 1.40 s | 1.37 s |
-| | after | 0.15 s | 0.19 s | 0.33 s | 0.52 s | 0.87 s | 1.78 s (+27 % **!**) | 1.75 s (+28 % **!**) |
+| prove | before | 0.15 s | 0.19 s | 0.33 s | 0.52 s | 0.87 s | 1.78 s | 1.75 s |
+| | after | 0.14 s | 0.19 s | 0.30 s | 0.48 s | 0.85 s | 1.39 s (-22 % **!**) | 1.36 s (-22 % **!**) |
 
-### Proof, last 14 commits
+### Proof, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.14 s | 0.19 s | 0.30 s | 0.48 s | 0.85 s | 1.39 s | 1.36 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.15 s | 0.19 s | 0.33 s | 0.52 s | 0.87 s | 1.78 s | 1.75 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.15 s | 0.19 s | 0.30 s | 0.49 s | 0.86 s | 1.40 s | 1.37 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.15 s | 0.20 s | 0.32 s | 0.63 s | 1.13 s | 1.94 s | 2.04 s |
@@ -169,10 +174,11 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 | [`70becb6`](https://github.com/helius-labs/zolana-mobile-sdk/commit/70becb6f171f86d89298c1a25dc15890a4ac96bc) | 2026-10-19 | 0.20 s | 0.32 s | 0.58 s | 1.12 s | 2.22 s | 3.47 s | 4.65 s |
 | [`e28587b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/e28587bf51d4dcfde3e979a469bed69ee1b48930) | 2026-10-17 | 0.20 s | 0.33 s | 0.59 s | 1.31 s | 2.36 s | 3.89 s | 4.68 s |
 
-### First run after a restart, last 14 commits
+### First run after a restart, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.47 s | 0.49 s | 0.65 s | 0.94 s | 1.51 s |  |  |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.57 s | 0.64 s | 0.80 s | 1.05 s | 1.73 s | 3.25 s | 3.19 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.49 s | 0.50 s | 0.65 s | 1.00 s | 1.65 s |  |  |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.64 s | 0.67 s | 0.94 s | 1.45 s | 2.24 s | 3.69 s | 3.51 s |
@@ -190,32 +196,33 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 
 ## iPhone 12, iOS 18.5, low tier
 
-**Before:** [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) of 2026-10-26. **After:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26.
+**Before:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26. **After:** [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) of 2026-10-26.
 
 | by scenario | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| first run, including download | before | 2.86 s (download: 0.36 s, 6.5 MiB) | 1.96 s (download: 0.52 s, 11.6 MiB) | 3.46 s (download: 0.93 s, 21.6 MiB) | 6.45 s (download: 1.80 s, 41.9 MiB) | 12.98 s (download: 3.85 s, 84.2 MiB) | 20.73 s (download: 5.88 s, 138.6 MiB) | 19.79 s (download: 5.75 s, 133.1 MiB) |
-| | after | 2.93 s (download: 0.38 s, 6.5 MiB) (+3 %) | 1.96 s (download: 0.52 s, 11.6 MiB) | 3.48 s (download: 0.94 s, 21.6 MiB) | 6.43 s (download: 1.82 s, 41.9 MiB) | 12.79 s (download: 3.60 s, 84.2 MiB) (-1 %) | 20.67 s (download: 5.91 s, 138.6 MiB) | 20.03 s (download: 5.89 s, 133.1 MiB) (+1 %) |
-| warm | before | 0.15 s | 0.24 s | 0.42 s | 0.68 s | 1.21 s | 1.98 s | 2.00 s |
-| | after | 0.14 s | 0.23 s | 0.42 s | 0.67 s | 1.21 s | 1.96 s | 1.99 s |
-| first run after restart | before | 0.31 s | 0.36 s | 0.67 s | 1.08 s | 1.90 s | 3.02 s | 2.90 s |
-| | after | 0.30 s | 0.36 s | 0.66 s | 1.06 s | 1.85 s | 2.99 s | 2.89 s |
-| repeated after restart | before | 0.14 s | 0.23 s | 0.44 s | 0.74 s | 1.35 s | 2.19 s | 2.18 s |
-| | after | 0.15 s | 0.23 s | 0.43 s | 0.73 s | 1.34 s | 2.17 s | 2.17 s |
+| first run, including download | before | 2.93 s (download: 0.38 s, 6.5 MiB) | 1.96 s (download: 0.52 s, 11.6 MiB) | 3.48 s (download: 0.94 s, 21.6 MiB) | 6.43 s (download: 1.82 s, 41.9 MiB) | 12.79 s (download: 3.60 s, 84.2 MiB) | 20.67 s (download: 5.91 s, 138.6 MiB) | 20.03 s (download: 5.89 s, 133.1 MiB) |
+| | after | 2.83 s (download: 0.37 s, 6.5 MiB) (-3 %) | 1.97 s (download: 0.52 s, 11.6 MiB) |  |  |  |  |  |
+| warm | before | 0.14 s | 0.23 s | 0.42 s | 0.67 s | 1.21 s | 1.96 s | 1.99 s |
+| | after | 0.15 s | 0.23 s |  |  |  |  |  |
+| first run after restart | before | 0.30 s | 0.36 s | 0.66 s | 1.06 s | 1.85 s | 2.99 s | 2.89 s |
+| | after |  |  |  |  |  |  |  |
+| repeated after restart | before | 0.15 s | 0.23 s | 0.43 s | 0.73 s | 1.34 s | 2.17 s | 2.17 s |
+| | after |  |  |  |  |  |  |  |
 
 | by stage | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| key load | before | 0.11 s | 0.13 s | 0.21 s | 0.34 s | 0.60 s | 0.90 s | 0.82 s |
-| | after | 0.11 s | 0.13 s | 0.21 s | 0.34 s | 0.56 s | 0.88 s | 0.81 s |
+| key load | before | 0.11 s | 0.13 s | 0.21 s | 0.34 s | 0.56 s | 0.88 s | 0.81 s |
+| | after |  |  |  |  |  |  |  |
 | witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
-| | after | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
-| prove | before | 0.15 s | 0.23 s | 0.43 s | 0.72 s | 1.25 s | 2.04 s | 2.03 s |
-| | after | 0.14 s | 0.23 s | 0.43 s | 0.71 s | 1.25 s | 2.03 s | 2.02 s |
+| | after | 0.00 s | 0.00 s |  |  |  |  |  |
+| prove | before | 0.14 s | 0.23 s | 0.43 s | 0.71 s | 1.25 s | 2.03 s | 2.02 s |
+| | after | 0.15 s | 0.23 s |  |  |  |  |  |
 
-### Proof, last 14 commits
+### Proof, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.15 s | 0.23 s |  |  |  |  |  |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.14 s | 0.23 s | 0.43 s | 0.71 s | 1.25 s | 2.03 s | 2.02 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.15 s | 0.23 s | 0.43 s | 0.72 s | 1.25 s | 2.04 s | 2.03 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.14 s | 0.23 s | 0.45 s | 0.74 s | 1.29 s | 2.17 s | 2.14 s |
@@ -231,10 +238,11 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 | [`70becb6`](https://github.com/helius-labs/zolana-mobile-sdk/commit/70becb6f171f86d89298c1a25dc15890a4ac96bc) | 2026-10-19 | 0.37 s | 0.59 s | 1.03 s | 1.93 s | 3.69 s | 6.12 s | 6.17 s |
 | [`e28587b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/e28587bf51d4dcfde3e979a469bed69ee1b48930) | 2026-10-17 | 0.37 s | 0.60 s | 1.08 s | 2.04 s | 3.96 s | 6.49 s | 6.49 s |
 
-### First run after a restart, last 14 commits
+### First run after a restart, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 |  |  |  |  |  |  |  |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.30 s | 0.36 s | 0.66 s | 1.06 s | 1.85 s | 2.99 s | 2.89 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.31 s | 0.36 s | 0.67 s | 1.08 s | 1.90 s | 3.02 s | 2.90 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.29 s | 0.38 s | 0.70 s | 1.12 s | 1.95 s | 3.15 s | 3.05 s |
@@ -252,32 +260,33 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 
 ## iPhone 15, iOS 18.5, mid tier
 
-**Before:** [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) of 2026-10-26. **After:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26.
+**Before:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26. **After:** [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) of 2026-10-26.
 
 | by scenario | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| first run, including download | before | 2.47 s (download: 0.39 s, 6.5 MiB) | 1.87 s (download: 0.52 s, 11.6 MiB) | 3.54 s (download: 0.95 s, 21.6 MiB) | 7.17 s (download: 2.08 s, 41.9 MiB) | 13.00 s (download: 3.75 s, 84.2 MiB) | 20.43 s (download: 5.97 s, 138.6 MiB) | 19.61 s (download: 5.76 s, 133.1 MiB) |
-| | after | 2.39 s (download: 0.35 s, 6.5 MiB) (-3 %) | 1.72 s (download: 0.51 s, 11.6 MiB) (-8 %) | 3.19 s (download: 0.92 s, 21.6 MiB) (-10 %) | 6.02 s (download: 2.01 s, 41.9 MiB) (-16 %) | 11.55 s (download: 3.53 s, 84.2 MiB) (-11 %) | 19.10 s (download: 6.08 s, 138.6 MiB) (-7 %) | 18.23 s (download: 5.60 s, 133.1 MiB) (-7 %) |
-| warm | before | 0.12 s | 0.19 s | 0.38 s | 0.66 s | 1.11 s | 1.65 s | 1.78 s |
-| | after | 0.11 s | 0.17 s | 0.31 s (-19 %) | 0.50 s (-24 % **!**) | 0.87 s (-22 % **!**) | 1.52 s (-8 %) | 1.52 s (-15 %) |
-| first run after restart | before | 0.32 s | 0.55 s | 0.85 s | 1.15 s | 1.91 s | 2.81 s | 2.97 s |
-| | after | 0.21 s (-33 % **!**) | 0.30 s (-45 % **!**) | 0.51 s (-40 % **!**) | 0.86 s (-25 % **!**) | 1.57 s (-18 %) | 2.37 s (-16 %) | 2.28 s (-23 % **!**) |
-| repeated after restart | before | 0.19 s | 0.34 s | 0.47 s | 0.77 s | 1.33 s | 2.23 s | 1.98 s |
-| | after | 0.13 s (-30 % **!**) | 0.20 s (-43 % **!**) | 0.37 s (-22 % **!**) | 0.66 s (-15 %) | 1.21 s (-9 %) | 1.89 s (-16 %) | 1.82 s (-8 %) |
+| first run, including download | before | 2.39 s (download: 0.35 s, 6.5 MiB) | 1.72 s (download: 0.51 s, 11.6 MiB) | 3.19 s (download: 0.92 s, 21.6 MiB) | 6.02 s (download: 2.01 s, 41.9 MiB) | 11.55 s (download: 3.53 s, 84.2 MiB) | 19.10 s (download: 6.08 s, 138.6 MiB) | 18.23 s (download: 5.60 s, 133.1 MiB) |
+| | after | 2.32 s (download: 0.36 s, 6.5 MiB) (-3 %) | 1.66 s (download: 0.51 s, 11.6 MiB) (-3 %) | 2.95 s (download: 0.93 s, 21.6 MiB) (-7 %) | 5.61 s (download: 1.85 s, 41.9 MiB) (-7 %) | 11.22 s (download: 3.77 s, 84.2 MiB) (-3 %) | 18.15 s (download: 6.06 s, 138.6 MiB) (-5 %) | 17.25 s (download: 5.60 s, 133.1 MiB) (-5 %) |
+| warm | before | 0.11 s | 0.17 s | 0.31 s | 0.50 s | 0.87 s | 1.52 s | 1.52 s |
+| | after | 0.11 s | 0.18 s | 0.32 s | 0.50 s | 0.89 s | 1.45 s (-5 %) | 1.44 s (-5 %) |
+| first run after restart | before | 0.21 s | 0.30 s | 0.51 s | 0.86 s | 1.57 s | 2.37 s | 2.28 s |
+| | after | 0.22 s | 0.28 s | 0.46 s (-11 %) | 0.76 s (-12 %) | 1.34 s (-15 %) | 1.99 s (-16 %) | 1.95 s (-14 %) |
+| repeated after restart | before | 0.13 s | 0.20 s | 0.37 s | 0.66 s | 1.21 s | 1.89 s | 1.82 s |
+| | after | 0.12 s | 0.18 s | 0.32 s (-14 %) | 0.52 s (-21 % **!**) | 0.93 s (-23 % **!**) | 1.56 s (-17 %) | 1.56 s (-14 %) |
 
 | by stage | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| key load | before | 0.14 s | 0.24 s | 0.32 s | 0.42 s | 0.74 s | 1.07 s | 1.11 s |
-| | after | 0.08 s (-41 % **!**) | 0.11 s (-55 % **!**) | 0.17 s (-49 % **!**) | 0.26 s (-37 % **!**) | 0.46 s (-38 % **!**) | 0.62 s (-42 % **!**) | 0.63 s (-44 % **!**) |
+| key load | before | 0.08 s | 0.11 s | 0.17 s | 0.26 s | 0.46 s | 0.62 s | 0.63 s |
+| | after | 0.08 s | 0.10 s | 0.14 s | 0.24 s | 0.44 s | 0.47 s (-25 % **!**) | 0.43 s (-31 % **!**) |
 | witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
 | | after | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
-| prove | before | 0.15 s | 0.25 s | 0.43 s | 0.70 s | 1.13 s | 1.69 s | 1.82 s |
-| | after | 0.13 s | 0.19 s (-23 % **!**) | 0.34 s (-20 %) | 0.56 s (-20 %) | 1.00 s (-12 %) | 1.63 s (-4 %) | 1.58 s (-13 %) |
+| prove | before | 0.13 s | 0.19 s | 0.34 s | 0.56 s | 1.00 s | 1.63 s | 1.58 s |
+| | after | 0.11 s | 0.18 s | 0.32 s | 0.51 s (-9 %) | 0.90 s (-10 %) | 1.50 s (-8 %) | 1.48 s (-7 %) |
 
-### Proof, last 14 commits
+### Proof, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.11 s | 0.18 s | 0.32 s | 0.51 s | 0.90 s | 1.50 s | 1.48 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.13 s | 0.19 s | 0.34 s | 0.56 s | 1.00 s | 1.63 s | 1.58 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.15 s | 0.25 s | 0.43 s | 0.70 s | 1.13 s | 1.69 s | 1.82 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.11 s | 0.17 s | 0.31 s | 0.50 s | 0.88 s | 1.49 s | 1.45 s |
@@ -293,10 +302,11 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 | [`70becb6`](https://github.com/helius-labs/zolana-mobile-sdk/commit/70becb6f171f86d89298c1a25dc15890a4ac96bc) | 2026-10-19 | 0.36 s | 0.59 s | 1.04 s | 1.96 s | 3.70 s | 5.70 s | 5.59 s |
 | [`e28587b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/e28587bf51d4dcfde3e979a469bed69ee1b48930) | 2026-10-17 | 0.29 s | 0.46 s | 0.81 s | 1.50 s | 2.80 s | 4.68 s | 4.65 s |
 
-### First run after a restart, last 14 commits
+### First run after a restart, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.22 s | 0.28 s | 0.46 s | 0.76 s | 1.34 s | 1.99 s | 1.95 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.21 s | 0.30 s | 0.51 s | 0.86 s | 1.57 s | 2.37 s | 2.28 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.32 s | 0.55 s | 0.85 s | 1.15 s | 1.91 s | 2.81 s | 2.97 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.21 s | 0.28 s | 0.46 s | 0.77 s | 1.36 s | 2.10 s | 1.93 s |
@@ -314,32 +324,33 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 
 ## iPhone 17 Pro, iOS 26.3.1, high tier
 
-**Before:** [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) of 2026-10-26. **After:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26.
+**Before:** [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) of 2026-10-26. **After:** [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) of 2026-10-26.
 
 | by scenario | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| first run, including download | before | 8.82 s (download: 1.05 s, 6.5 MiB) | 2.27 s (download: 1.42 s, 11.6 MiB) | 3.61 s (download: 2.05 s, 21.6 MiB) | 7.09 s (download: 4.25 s, 41.9 MiB) | 14.12 s (download: 8.62 s, 84.2 MiB) | 22.56 s (download: 14.08 s, 138.6 MiB) | 22.11 s (download: 13.83 s, 133.1 MiB) |
-| | after | 8.97 s (download: 0.83 s, 6.5 MiB) (+2 %) | 2.25 s (download: 1.34 s, 11.6 MiB) | 3.71 s (download: 2.09 s, 21.6 MiB) (+3 %) | 7.39 s (download: 4.30 s, 41.9 MiB) (+4 %) | 13.55 s (download: 7.92 s, 84.2 MiB) (-4 %) | 22.28 s (download: 13.52 s, 138.6 MiB) (-1 %) | 21.35 s (download: 12.84 s, 133.1 MiB) (-3 %) |
-| warm | before | 0.08 s | 0.11 s | 0.19 s | 0.34 s | 0.54 s | 0.75 s | 0.76 s |
-| | after | 0.08 s | 0.12 s | 0.20 s | 0.35 s | 0.55 s | 0.79 s | 0.78 s |
-| first run after restart | before | 0.15 s | 0.19 s | 0.29 s | 0.48 s | 0.76 s | 1.09 s | 1.09 s |
-| | after | 0.16 s | 0.21 s | 0.32 s | 0.50 s | 0.80 s | 1.16 s (+6 %) | 1.14 s |
-| repeated after restart | before | 0.09 s | 0.12 s | 0.20 s | 0.34 s | 0.56 s | 0.81 s | 0.78 s |
-| | after | 0.09 s | 0.13 s | 0.22 s | 0.36 s | 0.61 s (+9 %) | 0.88 s (+10 %) | 0.86 s (+10 %) |
+| first run, including download | before | 8.97 s (download: 0.83 s, 6.5 MiB) | 2.25 s (download: 1.34 s, 11.6 MiB) | 3.71 s (download: 2.09 s, 21.6 MiB) | 7.39 s (download: 4.30 s, 41.9 MiB) | 13.55 s (download: 7.92 s, 84.2 MiB) | 22.28 s (download: 13.52 s, 138.6 MiB) | 21.35 s (download: 12.84 s, 133.1 MiB) |
+| | after | 8.75 s (download: 0.35 s, 6.5 MiB) (-2 %) | 1.44 s (download: 0.51 s, 11.6 MiB) (-36 % **!**) | 2.58 s (download: 0.92 s, 21.6 MiB) (-30 % **!**) | 4.91 s (download: 1.78 s, 41.9 MiB) (-33 % **!**) | 9.96 s (download: 3.81 s, 84.2 MiB) (-26 % **!**) | 15.49 s (download: 6.03 s, 138.6 MiB) (-30 % **!**) | 14.69 s (download: 5.42 s, 133.1 MiB) (-31 % **!**) |
+| warm | before | 0.08 s | 0.12 s | 0.20 s | 0.35 s | 0.55 s | 0.79 s | 0.78 s |
+| | after | 0.09 s | 0.12 s | 0.21 s | 0.36 s | 0.59 s | 0.87 s (+10 %) | 0.84 s (+8 %) |
+| first run after restart | before | 0.16 s | 0.21 s | 0.32 s | 0.50 s | 0.80 s | 1.16 s | 1.14 s |
+| | after | 0.17 s | 0.23 s | 0.36 s | 0.54 s | 0.92 s (+14 %) | 1.29 s (+11 %) | 1.28 s (+13 %) |
+| repeated after restart | before | 0.09 s | 0.13 s | 0.22 s | 0.36 s | 0.61 s | 0.88 s | 0.86 s |
+| | after | 0.10 s | 0.14 s | 0.25 s | 0.40 s | 0.67 s (+10 %) | 0.99 s (+12 %) | 0.94 s (+9 %) |
 
 | by stage | | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
-| key load | before | 0.07 s | 0.07 s | 0.09 s | 0.13 s | 0.21 s | 0.28 s | 0.30 s |
-| | after | 0.07 s | 0.08 s | 0.10 s | 0.14 s | 0.21 s | 0.29 s | 0.30 s |
+| key load | before | 0.07 s | 0.08 s | 0.10 s | 0.14 s | 0.21 s | 0.29 s | 0.30 s |
+| | after | 0.07 s | 0.09 s | 0.11 s | 0.15 s | 0.24 s | 0.33 s | 0.32 s |
 | witness | before | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
 | | after | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s | 0.00 s |
-| prove | before | 0.08 s | 0.11 s | 0.20 s | 0.34 s | 0.55 s | 0.78 s | 0.77 s |
-| | after | 0.09 s | 0.12 s | 0.21 s | 0.35 s | 0.57 s | 0.83 s (+6 %) | 0.81 s |
+| prove | before | 0.09 s | 0.12 s | 0.21 s | 0.35 s | 0.57 s | 0.83 s | 0.81 s |
+| | after | 0.09 s | 0.13 s | 0.23 s | 0.38 s | 0.64 s (+13 %) | 0.92 s (+11 %) | 0.89 s (+10 %) |
 
-### Proof, last 14 commits
+### Proof, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.09 s | 0.13 s | 0.23 s | 0.38 s | 0.64 s | 0.92 s | 0.89 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.09 s | 0.12 s | 0.21 s | 0.35 s | 0.57 s | 0.83 s | 0.81 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.08 s | 0.11 s | 0.20 s | 0.34 s | 0.55 s | 0.78 s | 0.77 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.09 s | 0.12 s | 0.21 s | 0.35 s | 0.58 s | 0.84 s | 0.80 s |
@@ -355,10 +366,11 @@ Written by CI after every push to `main` (`scripts/proof-timing-history.py` on `
 | [`70becb6`](https://github.com/helius-labs/zolana-mobile-sdk/commit/70becb6f171f86d89298c1a25dc15890a4ac96bc) | 2026-10-19 | 0.21 s | 0.34 s | 0.62 s | 1.16 s | 2.12 s | 3.54 s | 3.47 s |
 | [`e28587b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/e28587bf51d4dcfde3e979a469bed69ee1b48930) | 2026-10-17 | 0.20 s | 0.35 s | 0.63 s | 1.17 s | 2.17 s | 3.57 s | 3.46 s |
 
-### First run after a restart, last 14 commits
+### First run after a restart, last 15 commits
 
 | commit | date | 1 → 2 | 2 → 2 | 4 → 2 | 8 → 2 | 16 → 2 | 24 → 2 | merge 24 → 1 |
 |---|---|---|---|---|---|---|---|---|
+| [`418d376`](https://github.com/helius-labs/zolana-mobile-sdk/commit/418d37618e67cd4ba68d8b1f5ff50890b54039a8) | 2026-10-26 | 0.17 s | 0.23 s | 0.36 s | 0.54 s | 0.92 s | 1.29 s | 1.28 s |
 | [`455be9e`](https://github.com/helius-labs/zolana-mobile-sdk/commit/455be9ee158cbba0fa0c63ca37e5de678fb8fe6d) | 2026-10-26 | 0.16 s | 0.21 s | 0.32 s | 0.50 s | 0.80 s | 1.16 s | 1.14 s |
 | [`842ed6b`](https://github.com/helius-labs/zolana-mobile-sdk/commit/842ed6b9dc8953fe88cf1c3bf79dfc3d8b1d525b) | 2026-10-26 | 0.15 s | 0.19 s | 0.29 s | 0.48 s | 0.76 s | 1.09 s | 1.09 s |
 | [`3457ad0`](https://github.com/helius-labs/zolana-mobile-sdk/commit/3457ad00eca9cacb4294e39032c6b339cf47e019) | 2026-10-25 | 0.17 s | 0.21 s | 0.33 s | 0.51 s | 0.81 s | 1.17 s | 1.15 s |
