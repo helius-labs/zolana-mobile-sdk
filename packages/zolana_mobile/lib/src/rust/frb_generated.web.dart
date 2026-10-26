@@ -317,6 +317,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   TokenBalance dco_decode_token_balance(dynamic raw);
 
   @protected
+  TransactionLookup dco_decode_transaction_lookup(dynamic raw);
+
+  @protected
+  TransactionLookupStatus dco_decode_transaction_lookup_status(dynamic raw);
+
+  @protected
   TransportFailure dco_decode_transport_failure(dynamic raw);
 
   @protected
@@ -650,6 +656,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenBalance sse_decode_token_balance(SseDeserializer deserializer);
+
+  @protected
+  TransactionLookup sse_decode_transaction_lookup(SseDeserializer deserializer);
+
+  @protected
+  TransactionLookupStatus sse_decode_transaction_lookup_status(
+    SseDeserializer deserializer,
+  );
 
   @protected
   TransportFailure sse_decode_transport_failure(SseDeserializer deserializer);
@@ -1065,6 +1079,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_token_balance(TokenBalance self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_transaction_lookup(
+    TransactionLookup self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_transaction_lookup_status(
+    TransactionLookupStatus self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_transport_failure(

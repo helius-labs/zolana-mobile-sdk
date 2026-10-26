@@ -159,6 +159,20 @@ class FakeWallet implements MobileWallet {
   @override
   Future<List<ActivityEntry>> activity() async => const [];
 
+  final lookups = <String>[];
+  TransactionLookup lookup = TransactionLookup(
+    status: TransactionLookupStatus.ready,
+    entries: const [],
+    indexedSlot: BigInt.zero,
+  );
+  WalletError? lookupError;
+  @override
+  Future<TransactionLookup> transaction({required String signature}) async {
+    lookups.add(signature);
+    if (lookupError case final error?) throw error;
+    return lookup;
+  }
+
   @override
   Future<PreparedTransaction?> prepareRegistration() async {
     await holdRegistration?.future;
@@ -418,6 +432,36 @@ openWallet() async {
 Matcher throwsWalletError(WalletError error) => throwsA(error);
 
 void main() {
+  test(
+    'signature lookup preserves rows and statuses without requesting activity',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+      for (final status in TransactionLookupStatus.values) {
+        native.lookup = TransactionLookup(
+          status: status,
+          entries: const [],
+          indexedSlot: BigInt.from(90),
+          slot: BigInt.from(100),
+        );
+        expect(await wallet.transaction('signature'), same(native.lookup));
+      }
+      expect(
+        native.lookups,
+        List.filled(TransactionLookupStatus.values.length, 'signature'),
+      );
+      native.lookupError = const WalletError.client(message: 'unavailable');
+      await expectLater(
+        wallet.transaction('signature'),
+        throwsWalletError(native.lookupError!),
+      );
+      await wallet.close();
+      await expectLater(
+        wallet.transaction('signature'),
+        throwsWalletError(const WalletError.walletClosed()),
+      );
+    },
+  );
+
   test('opens from a signature over the derivation message', () async {
     final (wallet, _, signer, backend) = await openWallet();
 

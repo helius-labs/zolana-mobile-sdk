@@ -2,6 +2,13 @@
 
 Unreleased.
 
+* `ZolanaWallet.transaction(signature)` fetches and decrypts one signature
+  without history pagination. Its result distinguishes ready (possibly empty),
+  pending indexing, not found and incomplete details. Outgoing reads can also
+  fetch confirmed public settlements and recipient/asset metadata.
+* Activity rows now include a stable `index`: the pool's asset id, consistent
+  across signature lookup, `activity()` and `overview()`.
+
 * A prepared spend exposes its output openings, including change and padding,
   so an application's signer can recompute commitments and check the message.
   The example performs these checks before signing. Seeds stay inside the SDK.

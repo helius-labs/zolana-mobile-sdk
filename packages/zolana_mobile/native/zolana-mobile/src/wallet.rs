@@ -68,13 +68,15 @@ use zolana_transaction::{
 use zolana_user_registry_interface::MergeEncryptionScheme;
 
 use crate::{
-    activity::{self, ActivityEntry},
+    activity::{self, ActivityEntry, TransactionLookup},
     asset::{mint_name, Asset, Assets, MintConfig},
     error::{client_message, settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
 };
+
+mod lookup;
 
 /// Where the wallet reads chain state and stores proving keys.
 pub struct WalletConfig {
@@ -874,7 +876,7 @@ impl MobileWallet {
         let scan = self.scan()?;
         Ok(WalletOverview {
             balances: self.token_balances(&scan.spendable)?,
-            activity: activity::entries(&scan.history),
+            activity: activity::entries(&scan.history, &scan.asset_registry)?,
         })
     }
 
@@ -914,7 +916,25 @@ impl MobileWallet {
     /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
     pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, WalletError> {
-        Ok(activity::entries(&self.scan()?.history))
+        let scan = self.scan()?;
+        activity::entries(&scan.history, &scan.asset_registry)
+    }
+
+    /// Fetch only the shielded events of `signature` and their confirmed
+    /// Solana transaction, then decrypt this wallet's rows. Does not scan or
+    /// warm the wallet's history or spendable-note cache. Asset/recipient
+    /// registry reads may be needed, but no history pages are fetched.
+    ///
+    /// A cold wallet can read its default-ring outgoing transfers and public
+    /// withdrawals using its transaction viewing key, without old input notes.
+    /// `Incomplete` reports unsupported spends or missing metadata rather than
+    /// returning an incorrect empty result. Recipient-tagged dummy padding
+    /// (possible on an exact-balance private send) is also incomplete: a cold
+    /// reader cannot authenticate it as padding without input-note history.
+    /// Only `Ready` with no entries means
+    /// there are no activity rows for this wallet's configured assets.
+    pub fn transaction(&self, signature: String) -> Result<TransactionLookup, WalletError> {
+        lookup::transaction(self, signature)
     }
 
     /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in
