@@ -25,7 +25,7 @@ mod prover;
 mod transport;
 mod wallet;
 
-pub use activity::{ActivityEntry, ActivityKind};
+pub use activity::{ActivityEntry, ActivityKind, TransactionLookup, TransactionLookupStatus};
 pub use asset::MintConfig;
 pub use error::WalletError;
 pub use keys::{ProvingKeyProgress, ProvingKeyStatus, ProvingKeys, DEFAULT_PROVING_KEYS_URL};
@@ -34,8 +34,9 @@ pub use transport::{
     Transport, TransportFailure, TransportOutcome, TransportRequest, TransportResponse,
 };
 pub use wallet::{
-    derivation_message, MobileWallet, Operation, Output, PreparedTransaction, RegistrationStatus,
-    SpendLimit, TokenBalance, UnresolvedAssets, WalletConfig, WalletKeys, WalletOverview,
+    derivation_message, MobileWallet, Operation, Output, OutputOpening, PreparedTransaction,
+    RegistrationStatus, SpendLimit, TokenBalance, UnresolvedAssets, WalletConfig, WalletKeys,
+    WalletOverview,
 };
 
 static PREPARED: Mutex<ProverState> = Mutex::new(ProverState {

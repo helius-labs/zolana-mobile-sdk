@@ -270,23 +270,29 @@ class ZolanaWallet {
   /// indexer does not say which spends were withdrawals.
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
+  /// Fetch and decrypt every activity row for one signature, without scanning
+  /// wallet history. May also read the confirmed transaction and asset or
+  /// recipient registrations. Works for a freshly opened wallet.
+  ///
+  /// Only [native.TransactionLookupStatus.ready] with an empty list means no
+  /// rows for the wallet's configured assets. Pending indexing, unavailable
+  /// transactions and incomplete details have distinct statuses; network
+  /// errors throw. Row identities match [activity] and [overview].
+  Future<native.TransactionLookup> transaction(String signature) =>
+      _serial(() => _wallet.transaction(signature: signature));
+
   /// [balances] and [activity] from one read of the indexer, which each of
-  /// them makes on its own: a screen that shows both calls this once. Its
-  /// [native.WalletOverview.unresolvedAssets] lists the assets of notes the
-  /// read found but could not count, which both leave out: while it holds
-  /// any, show the portfolio as incomplete.
+  /// them makes on its own, and the assets of notes the read could not count.
+  /// A non-empty [native.WalletOverview.unresolvedAssets] means the balances
+  /// and history are incomplete.
   Future<native.WalletOverview> overview() => _serial(_wallet.overview);
 
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with [WalletError.registrationConflict]
   /// when the registry holds other keys; the wallet never replaces them.
-  ///
-  /// Every `prepare` method takes [priorityFeeLamports], the priority fee of
-  /// the whole transaction in lamports, as a v1 message carries it, not a
-  /// price per compute unit; `WalletConfig.priorityFeeLamports` when null,
-  /// and none without either. It is in the message before the call returns,
-  /// so [PreparedTransaction.priorityFeeLamports] is what the fee payer pays
-  /// on top of the base fee of its signatures.
+  /// Every prepare method accepts a total [priorityFeeLamports] in lamports.
+  /// When omitted, it uses `WalletConfig.priorityFeeLamports`. The fee is
+  /// written into the v1 message header before the application signs it.
   Future<PreparedTransaction?> prepareRegistration({
     BigInt? priorityFeeLamports,
   }) => _serial(
@@ -441,12 +447,10 @@ class ZolanaWallet {
       _serial(() => _prepare(_wallet.refresh(pending: transaction)));
 
   /// Attach [signatures] (in [PreparedTransaction.signers] order), send, and
-  /// wait as [confirm] does. Returns the transaction signature. A deposit,
-  /// spend or merge whose send fails without the chain's verdict, such as a
-  /// lost confirmation, is looked up as [waitForTransaction] does; a
-  /// registration or merging change fails, and preparing it again finds one
-  /// that landed. A note the chain already spent fails with
-  /// [WalletError.notesAlreadySpent].
+  /// wait as [confirm] does. Returns the transaction signature. A send that
+  /// fails without the chain's verdict, such as a lost confirmation, is
+  /// checked against the signature's status until the blockhash expires. A
+  /// note the chain already spent fails with [WalletError.notesAlreadySpent].
   ///
   /// A spend's notes are released once the send has an outcome: spent when
   /// it landed, free for the next spend when the chain refused it, it
@@ -495,13 +499,6 @@ class ZolanaWallet {
   /// the prepared transaction's [PreparedTransaction.lastValidBlockHeight]
   /// with its signature: without it, a transaction never seen cannot be told
   /// expired and ends unknown.
-  ///
-  /// The RPC's status cache holds recent transactions only, so one waited
-  /// for long after it was sent may be gone from it though it landed. Past
-  /// [lastValidBlockHeight], a transaction the cache does not hold is looked
-  /// for at the indexer once the indexer reached the RPC's slot: it is
-  /// expired only when the indexer does not have it, and unknown while the
-  /// indexer cannot be read.
   Future<void> waitForTransaction(
     String signature, {
     BigInt? lastValidBlockHeight,

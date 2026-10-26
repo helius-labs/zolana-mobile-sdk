@@ -28,7 +28,10 @@ A and B, so one phone can pay itself privately. Their keys are public in
 faucet.solana.com. The wallet screen switches between SOL and TEST, a devnet
 SPL Token mint the demo accounts hold 1,000 of (`example/lib/demo_assets.dart`;
 account A is its mint authority). The first send downloads the proving key for
-its shape into app storage; later sends reuse it.
+its shape into app storage; later sends reuse it. Before signing a send or
+unshield, the example checks the message's output commitments and public
+transfers against the original payment request, using output openings from
+the SDK. This policy lives in `example/lib/spend_checks.dart`.
 
 Install Flutter and the platform toolchain. Then:
 

@@ -40,6 +40,7 @@ solana-rpc-client = "4.2"
 solana-rpc-client-api = "4.2"
 solana-transaction-error = "3.3"
 solana-transaction = "4.1"
+solana-transaction-status-client-types = "4.1"
 serde_json = "1.0"
 sha2 = "0.10"
 zeroize = "1.9"
@@ -47,14 +48,14 @@ solana-address = "=2.6.1"
 solana-pubkey = "=4.2.0"
 solana-signature = "=3.4.1"
 wincode = "=0.5.5"
-zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174", features = ["std"] }
-zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174", features = ["borsh"] }
-zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174" }
-zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174" }
-zolana-api = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174" }
-zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174", features = ["client"] }
-zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174" }
-zolana-user-registry-interface = { git = "https://github.com/helius-labs/zolana", rev = "28946012b2a21f0fc4028e6c9462405f239b0174" }
+zolana-hasher = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["std"] }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["borsh"] }
+zolana-keypair = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+zolana-api = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["client"] }
+zolana-transaction = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+zolana-user-registry-interface = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "683c0bb3b66c059dd0c0699f44a763cecb309012", features = ["metal"] }

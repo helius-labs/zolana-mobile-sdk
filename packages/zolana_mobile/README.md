@@ -133,6 +133,65 @@ await wallet.spend(
   `Operation_Spend` lists each output in order. An empty list fails with
   `WalletError.noOutputs`, a zero amount with `WalletError.amountZero`,
   before anything is asked of the network.
+- **Checking before signing**: `PreparedTransaction.outputs` returns the final
+  output openings of a spend in proof order, including change and padding.
+  Every opening contains its final blinding; neither the random transaction
+  seed nor the derived output seed is exposed. Other transaction types return
+  an empty list, and `refresh` preserves the openings.
+
+  Payment policy belongs to the app. The example's `SpendChecks` parses the
+  actual Solana v1 message and its default-ring `transact` instruction, reads
+  recipient registrations and the output tree from the app's trusted RPC,
+  recomputes each published output commitment and checks discovery tags. It
+  compares private payments, the app fee, change ownership and public
+  withdrawals against the UI request captured before preparation. It permits
+  only the token-account creation needed by those withdrawals and caps the
+  priority fee at 10,000 lamports. Unknown formats or circuits are refused.
+  The signer signs the exact byte snapshot that passed these checks and shows
+  the checked payment facts instead of trusting `operation` as evidence.
+
+  This example policy checks spend outputs; it does not validate recipient
+  ciphertext decryptability, audit protocol tree fees, or independently
+  verify Groth16 proofs. The shielded-pool program verifies proofs during
+  execution. Registration, deposit and merge approvals retain their existing
+  behavior. Openings are confidential: keep them out of logs and analytics.
+
+- **One transaction**: use `await wallet.transaction(signature)` on a detail
+  screen. It requests `getShieldedTransactionsBySignature` and the confirmed
+  Solana transaction, decrypts only that signature's events, and returns every
+  asset row. It may read asset and recipient registrations, but never calls
+  the transaction/UTXO history pagers or warms the spendable-note cache.
+
+  ```dart
+  final result = await wallet.transaction(signature);
+  switch (result.status) {
+    case TransactionLookupStatus.ready:
+      showRows(result.entries); // Empty means no rows for configured assets.
+    case TransactionLookupStatus.pendingIndexing:
+      showIndexing(); // The indexer has not reached result.slot yet.
+    case TransactionLookupStatus.notFound:
+      showUnavailable(); // Neither indexer nor confirmed RPC found it.
+    case TransactionLookupStatus.incomplete:
+      showDetailsUnavailable(); // Never a partial or guessed amount.
+  }
+  ```
+
+  Network errors throw `WalletError`. `notFound` does not prove a transaction
+  never existed: an RPC may prune old transactions. A fresh wallet can read
+  deposits, received notes, merges, default-ring sends with authenticatable
+  recipient outputs, and public withdrawals without first scanning its input
+  notes. Missing settlement metadata, unsupported spend formats, and
+  recipient-tagged dummy padding return `incomplete`. The last case can occur
+  on an exact-balance private send with no change: a cold reader cannot tell
+  that padding from an unreadable recipient note. The method does not hide
+  that limitation behind a full-history scan.
+
+  Every `ActivityEntry` from this method, `activity()` and `overview()` has
+  `{signature, slot, index}`. `index` is the pool's immutable asset id (1 for
+  SOL), so it does not move when rows are filtered or another asset is added.
+  Mobile rows aggregate one asset per signature; this index is not the TS
+  SDK's per-output leaf index and should not be compared numerically with it.
+
 - **What is public**: a deposit shows this account, the asset and the amount.
   A spend shows this account, the asset, each public output's recipient and
   amount, and the Solana address each private output's note is tagged with
@@ -413,18 +472,13 @@ sends through the wallet's RPC instead.
   transaction signature. The proof binds the fee payer, so choose it at
   prepare. `spend` always uses this account.
 - Every `prepare` method, and `register`, `deposit`, `spend`, `setMerging`
-  and `merge`, takes an optional `priorityFeeLamports`:
-  `WalletConfig.priorityFeeLamports` when it is null, and no priority fee
-  without either. It is the priority fee of the whole transaction in
-  lamports, which a v1 message carries in its header, not a price per
-  compute unit. It is in `tx.message` when the call returns, so
-  `tx.priorityFeeLamports` is final for the approval: the fee payer pays it
-  on top of the base fee of its signatures, plus the rent of any token
-  account the spend creates (`Operation_Spend.createdTokenAccounts`).
-  Creating a token account raises the transaction's compute limit, not its
-  priority fee. `refresh` keeps the fee; prepare again to change it. Only
-  the fee payer signs a merge, so a relayer that pays for one checks
-  `tx.priorityFeeLamports` before signing.
+  and `merge`, accepts `priorityFeeLamports`: a total priority fee per
+  transaction, in lamports. Omitting it uses `WalletConfig.priorityFeeLamports`;
+  omitting both adds no priority fee. Pass zero to override a configured fee.
+  The fee is written into the v1 message header before signing and exposed as
+  `tx.priorityFeeLamports`. It is added to the base transaction fee and is
+  independent of the compute limit, including when a spend creates token
+  accounts. `refresh` preserves it; prepare again to change it.
 - The message carries a recent blockhash: `tx.lastValidBlockHeight` is the
   last block height at which it can land, about 150 blocks (60–90 s) after it
   was prepared. For a slower approval, `wallet.refresh(tx)` returns it with a
@@ -506,14 +560,6 @@ try {
   await settlePendingSend(wallet, pending);
 }
 ```
-
-A restart can come long after the send. The RPC's status cache holds recent
-transactions only, so a payment that landed may be gone from it by then.
-Past the saved `lastValidBlockHeight`, `waitForTransaction` looks for a
-transaction the cache does not hold at the indexer, once the indexer has
-reached the RPC's slot. It reports `transactionExpired` only when the indexer
-does not have the transaction, and `transactionOutcomeUnknown` while the
-indexer cannot be read, so keep the signature and try again later.
 
 ### Backend proving
 
@@ -626,18 +672,13 @@ same from one read with the history and `unresolvedAssets`:
   more fails with `WalletError.mergeRequired`,
   `WalletError.tooManyInputTrees` or `WalletError.insufficientPrivateBalance`.
 
-A read can find notes for the wallet that it cannot count. Their output names
-an asset id the pool has not registered, or the wallet's deposit or merge
-output names a mint without an asset id. A read meeting one looks the pool's
-registrations up again and decrypts once more. Notes still unresolved after
-that are left out of the balances and the history, not failed on: the sender
-writes a note's asset id and nothing on chain checks it, so anyone could
-otherwise stop the wallet's reads with one note. `overview()` lists their
-asset ids and mints in `unresolvedAssets`. While it is not empty, show the
-known balances and spend them as usual, but mark the portfolio as
-incomplete, for instance with an "unrecognized assets" line. A later read
-counts the notes once the pool registers their asset. With
-`WalletConfig.mints`, notes in mints outside the list are listed there too.
+`overview().unresolvedAssets` lists asset ids and mints found in wallet notes
+that remain unresolved after refreshing the pool's registrations. Those notes
+are excluded from balances and activity. Senders can supply unregistered asset
+ids, so these notes do not make the whole read fail. Show the known balances
+and mark the portfolio as incomplete while either list is non-empty. Later
+reads include the notes if their assets become registered. Mints excluded by
+`WalletConfig.mints` also appear in these lists.
 
 ### Merges
 

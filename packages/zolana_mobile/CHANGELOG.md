@@ -2,6 +2,17 @@
 
 Unreleased.
 
+* `ZolanaWallet.transaction(signature)` fetches and decrypts one signature
+  without history pagination. Its result distinguishes ready (possibly empty),
+  pending indexing, not found and incomplete details. Outgoing reads can also
+  fetch confirmed public settlements and recipient/asset metadata.
+* Activity rows now include a stable `index`: the pool's asset id, consistent
+  across signature lookup, `activity()` and `overview()`.
+
+* A prepared spend exposes its output openings, including change and padding,
+  so an application's signer can recompute commitments and check the message.
+  The example performs these checks before signing. Seeds stay inside the SDK.
+
 * Built on Zolana v0.5.0-alpha, which devnet-d runs: shielded pool
   `spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt`, user registry
   `regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ`. The viewing key is an X25519
@@ -48,12 +59,9 @@ Unreleased.
   `selfTransfer`.
 * `overview()`: the balances and the history from one read of the indexer,
   for a screen that shows both.
-  Its `unresolvedAssets` lists the assets of notes the read found but could
-  not count, even after looking the pool's registrations up again: asset ids
-  the pool has not registered, which the sender wrote and nothing checks, and
-  mints of this wallet's deposits or merge outputs without an asset id. The
-  balances and the history leave those notes out, so a non-empty
-  `unresolvedAssets` means the portfolio is incomplete.
+  `unresolvedAssets` lists asset ids and mints that remain unresolved after
+  refreshing the pool's registrations. Their notes are excluded from balances
+  and history, so non-empty lists mean the portfolio is incomplete.
 * `spend` / `prepareSpend` take `outputs` of one asset, proved together in
   one transaction: `Output.private`, a note for a registered wallet with its
   amount hidden and the note tagged with the recipient's Solana address on
@@ -68,12 +76,10 @@ Unreleased.
   `feePayer` lets another account pay the network fee of a spend.
 * Priority fees: `WalletConfig.priorityFeeLamports`, and
   `priorityFeeLamports` on every `prepare` method and on `register`,
-  `deposit`, `spend`, `setMerging` and `merge`, set the priority fee of the
-  whole transaction in lamports, which a v1 message carries in its header.
-  The call's fee wins over the config's. The prepared message already
-  carries it, so `PreparedTransaction.priorityFeeLamports` is final for the
-  approval, a spend that creates a token account and a proved spend or
-  merge included; `refresh` keeps it.
+  `deposit`, `spend`, `setMerging` and `merge`, set a total fee per transaction
+  in lamports. A call overrides the configured fee, including with zero.
+  `PreparedTransaction.priorityFeeLamports` reads the fee from the message
+  header before signing; `refresh` preserves it.
 * Merges: `setMerging` / `prepareMerging` and `mergingEnabled()` for the
   account's opt-in, and `merge` / `prepareMerge` to combine up to 52 notes of
   one asset on one tree into one, proved on the device or by `proverUrl`.
@@ -87,13 +93,6 @@ Unreleased.
   transaction landed.
   A spend of a note the chain already spent fails with
   `WalletError.notesAlreadySpent`.
-* Past its blockhash, a shielded-pool transaction the RPC's status cache no
-  longer holds, as after a long interruption, is looked for at the indexer
-  once it has reached the RPC's slot. `submit`, `confirm` and
-  `waitForTransaction` report `WalletError.transactionExpired` only when the
-  indexer does not have it, and `WalletError.transactionOutcomeUnknown`
-  while the indexer cannot be read, so a payment that landed long before is
-  not reported expired.
 * Balances, activity and every spend wait for the indexer to reach the RPC's
   confirmed slot, and fail with `WalletError.indexerBehind` when it does not
   within about ten seconds.

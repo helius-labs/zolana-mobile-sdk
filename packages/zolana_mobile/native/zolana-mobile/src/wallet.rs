@@ -32,11 +32,13 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use solana_commitment_config::CommitmentConfig;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_message::{v1, VersionedMessage};
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
+use solana_transaction_error::TransactionError as ChainError;
 use zeroize::Zeroizing;
 use zolana_client::{
     compile_message,
@@ -58,7 +60,7 @@ use zolana_program::instruction::{
 use zolana_transaction::{
     instructions::{
         merge::{MergeTransaction, MAX_MERGE_INPUTS, MERGE_DEFAULT_INPUT_COUNT},
-        transact::{ConfidentialTransaction, MAX_SPEND_INPUTS},
+        transact::{ConfidentialTransaction, SppProofInputs, SppProofOutputUtxo, MAX_SPEND_INPUTS},
     },
     select_merge, select_spend_excluding, AssetBalance, LocalShieldedKeys,
     SpendableDecryptionResult, TransactionError, WalletUtxo,
@@ -66,13 +68,15 @@ use zolana_transaction::{
 use zolana_user_registry_interface::MergeEncryptionScheme;
 
 use crate::{
-    activity::{self, ActivityEntry},
+    activity::{self, ActivityEntry, TransactionLookup},
     asset::{mint_name, Asset, Assets, MintConfig},
-    error::{settles_the_send, WalletError},
+    error::{client_message, settles_the_send, WalletError},
     keys::{KeyStore, ProvingKeys},
     prover::{NativeProver, Proving},
     transport::Transport,
 };
+
+mod lookup;
 
 /// Where the wallet reads chain state and stores proving keys.
 pub struct WalletConfig {
@@ -113,10 +117,8 @@ pub struct WalletConfig {
     /// registered: the wallet looks up a mint a call names, and the mints of
     /// notes a read meets.
     pub mints: Option<Vec<MintConfig>>,
-    /// The priority fee, in lamports, of every transaction the wallet
-    /// prepares unless the call names one: the whole transaction's, as a v1
-    /// message carries it in its header, not a price per compute unit. No
-    /// priority fee when `None`.
+    /// Default total priority fee per transaction, in lamports. Each prepare
+    /// call can override it, including with zero. `None` adds no priority fee.
     pub priority_fee_lamports: Option<u64>,
 }
 
@@ -195,15 +197,6 @@ pub enum Output {
     Public { recipient: String, amount: u64 },
 }
 
-impl Operation {
-    /// Whether it is a shielded-pool transaction, which the indexer records
-    /// once it lands. A registration or a merging change is the user
-    /// registry's.
-    fn indexed(&self) -> bool {
-        !matches!(self, Operation::Registration | Operation::Merging { .. })
-    }
-}
-
 impl Output {
     fn recipient(&self) -> &str {
         match self {
@@ -216,6 +209,65 @@ impl Output {
             Output::Private { amount, .. } | Output::Public { amount, .. } => *amount,
         }
     }
+}
+
+/// One output slot of a prepared spend, in proof order, including padding.
+/// Recompute its commitment and compare it with the corresponding output of
+/// the shielded-pool instruction in the message before signing. Do not log this.
+///
+/// A dummy has no owner. A compact slot is left out of the transaction; its
+/// commitment is 32 zero bytes. The list position is the proof slot index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[flutter_rust_bridge::frb(non_opaque)]
+pub struct OutputOpening {
+    /// 34-byte signing key: scheme, 32-byte key, zero padding. Absent for a dummy.
+    pub owner_signing_key: Option<Vec<u8>>,
+    /// Owner nullifier public key. Absent for a dummy.
+    pub nullifier_key: Option<Vec<u8>>,
+    /// `None` for SOL.
+    pub mint: Option<String>,
+    pub amount: u64,
+    /// Final 32-byte big-endian output blinding.
+    pub blinding: Vec<u8>,
+    /// Raw id of the output tree, shared by every slot.
+    pub tree_id: u16,
+    pub data_hash: Option<Vec<u8>>,
+    pub ring_data_hash: Option<Vec<u8>>,
+    pub ring_program_id: Option<String>,
+    /// Compact padding is not written into the transaction.
+    pub compact: bool,
+}
+
+impl OutputOpening {
+    fn from_output(output: &SppProofOutputUtxo, tree_id: u16) -> Self {
+        let (owner_signing_key, nullifier_key) = match &output.owner_address {
+            Some(address) => (
+                Some(address.signing_pubkey.as_bytes().to_vec()),
+                Some(address.nullifier_pubkey.to_vec()),
+            ),
+            None => (None, None),
+        };
+        Self {
+            owner_signing_key,
+            nullifier_key,
+            mint: mint_name(&Pubkey::new_from_array(*output.asset.asset.as_array())),
+            amount: output.amount,
+            blinding: output.blinding.to_vec(),
+            tree_id,
+            data_hash: output.data_hash.map(|hash| hash.to_vec()),
+            ring_data_hash: output.ring_data_hash.map(|hash| hash.to_vec()),
+            ring_program_id: output.ring_program_id.map(|id| id.to_string()),
+            compact: output.is_compact(),
+        }
+    }
+}
+
+fn output_openings(inputs: &SppProofInputs) -> Vec<OutputOpening> {
+    inputs
+        .output_utxos
+        .iter()
+        .map(|output| OutputOpening::from_output(output, inputs.output_tree_id))
+        .collect()
 }
 
 /// An output whose recipient was checked on chain.
@@ -245,6 +297,8 @@ pub struct PreparedTransaction {
     last_valid_block_height: u64,
     /// Nullifiers of the notes it spends; empty unless it is a spend.
     spends: Vec<[u8; 32]>,
+    /// Output slots of a spend, in proof order. Empty for any other transaction.
+    outputs: Vec<OutputOpening>,
 }
 
 impl PreparedTransaction {
@@ -273,9 +327,8 @@ impl PreparedTransaction {
         self.message.serialize()
     }
 
-    /// The priority fee in lamports the fee payer pays on top of the base fee
-    /// of its signatures: the whole transaction's, from the message header.
-    /// Zero without one.
+    /// Total priority fee in lamports, added to the base transaction fee.
+    /// Read from the prepared message header; zero when unset.
     #[flutter_rust_bridge::frb(sync, getter)]
     pub fn priority_fee_lamports(&self) -> u64 {
         match &self.message {
@@ -293,6 +346,13 @@ impl PreparedTransaction {
             .iter()
             .map(ToString::to_string)
             .collect()
+    }
+
+    /// Output slots of a spend, in proof order, including padding. Empty
+    /// unless this is a spend. Do not log them.
+    #[flutter_rust_bridge::frb(sync, getter)]
+    pub fn outputs(&self) -> Vec<OutputOpening> {
+        self.outputs.clone()
     }
 }
 
@@ -313,8 +373,7 @@ pub struct WalletKeys {
 }
 
 /// The private balances, one per asset held, and the history, newest first.
-/// Both leave out the notes in [`Self::unresolved_assets`]: while it holds
-/// any, they are not the whole portfolio.
+/// Notes in [`Self::unresolved_assets`] are excluded from both.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WalletOverview {
     pub balances: Vec<TokenBalance>,
@@ -322,37 +381,16 @@ pub struct WalletOverview {
     pub unresolved_assets: UnresolvedAssets,
 }
 
-/// The assets of notes a read found for this wallet but could not count,
-/// even after it looked the pool's registrations up again: their balances
-/// and history are left out. Empty when the read counted every note.
-///
-/// With [`WalletConfig::mints`], notes in mints outside the list are here
-/// too.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// Assets of wallet notes that could not be resolved after refreshing the
+/// pool's registrations. Their notes are excluded from balances and activity.
+/// This also includes mints excluded by [`WalletConfig::mints`].
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnresolvedAssets {
-    /// Asset ids that notes for this wallet name and the pool has not
-    /// registered, ascending. The sender wrote the id and nothing on chain
-    /// checks it, so an id may name no asset at all: a later read counts the
-    /// notes once the pool registers it.
+    /// Unresolved asset ids, sorted and deduplicated. These are supplied by
+    /// senders and may not correspond to a registered asset.
     pub asset_ids: Vec<u64>,
-    /// Base58 mints that this wallet's deposits or merge outputs name and the
-    /// pool has no asset id for, ascending.
+    /// Base58 mints from deposits or merge outputs with no known asset id.
     pub mints: Vec<String>,
-}
-
-impl UnresolvedAssets {
-    /// What a read whose history is `history` left out: the Zolana SDK
-    /// reports the same assets in both halves of one read.
-    fn of(history: &zolana_transaction::History) -> Self {
-        UnresolvedAssets {
-            asset_ids: history.unknown_asset_ids.iter().copied().collect(),
-            mints: history
-                .unknown_mints
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-        }
-    }
 }
 
 /// A spendable private balance. `mint` is `None` for SOL.
@@ -497,7 +535,9 @@ pub struct MobileWallet {
     recent: Mutex<Option<RecentRead>>,
     /// Where spends are proved unless a call says otherwise.
     proving: Proving,
-    /// [`WalletConfig::priority_fee_lamports`].
+    /// How a send whose response was lost is looked up: [`SEND_LOOKUP`].
+    send_lookup: IndexerPollConfig,
+    /// Default whole-transaction priority fee in lamports.
     priority_fee: Option<u64>,
     proving_keys: Arc<KeyStore>,
     /// The device prover, the client's too: [`Self::proving_keys`] proves
@@ -616,6 +656,7 @@ impl MobileWallet {
             reuse_notes: Duration::from_millis(config.reuse_notes_ms.unwrap_or(0)),
             recent: Mutex::new(None),
             proving: config.proving.unwrap_or(Proving::Local),
+            send_lookup: SEND_LOOKUP,
             priority_fee: config.priority_fee_lamports,
             proving_keys,
             native_prover,
@@ -874,14 +915,21 @@ impl MobileWallet {
     }
 
     /// [`Self::balances`] and [`Self::activity`] from one read of the
-    /// indexer, which each of them makes on its own, and the assets of the
-    /// notes the read could not count, which both leave out.
+    /// indexer, and the assets of notes that could not be included in either.
     pub fn overview(&mut self) -> Result<WalletOverview, WalletError> {
         let scan = self.scan()?;
         Ok(WalletOverview {
             balances: self.token_balances(&scan.spendable)?,
-            activity: activity::entries(&scan.history),
-            unresolved_assets: UnresolvedAssets::of(&scan.history),
+            activity: activity::entries(&scan.history, &scan.asset_registry)?,
+            unresolved_assets: UnresolvedAssets {
+                asset_ids: scan.history.unknown_asset_ids.iter().copied().collect(),
+                mints: scan
+                    .history
+                    .unknown_mints
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+            },
         })
     }
 
@@ -921,7 +969,25 @@ impl MobileWallet {
     /// outputs are all this wallet's own is listed as a withdrawal, one with
     /// another wallet's output as sent.
     pub fn activity(&mut self) -> Result<Vec<ActivityEntry>, WalletError> {
-        Ok(activity::entries(&self.scan()?.history))
+        let scan = self.scan()?;
+        activity::entries(&scan.history, &scan.asset_registry)
+    }
+
+    /// Fetch only the shielded events of `signature` and their confirmed
+    /// Solana transaction, then decrypt this wallet's rows. Does not scan or
+    /// warm the wallet's history or spendable-note cache. Asset/recipient
+    /// registry reads may be needed, but no history pages are fetched.
+    ///
+    /// A cold wallet can read its default-ring outgoing transfers and public
+    /// withdrawals using its transaction viewing key, without old input notes.
+    /// `Incomplete` reports unsupported spends or missing metadata rather than
+    /// returning an incorrect empty result. Recipient-tagged dummy padding
+    /// (possible on an exact-balance private send) is also incomplete: a cold
+    /// reader cannot authenticate it as padding without input-note history.
+    /// Only `Ready` with no entries means
+    /// there are no activity rows for this wallet's configured assets.
+    pub fn transaction(&self, signature: String) -> Result<TransactionLookup, WalletError> {
+        lookup::transaction(self, signature)
     }
 
     /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in
@@ -1034,10 +1100,10 @@ impl MobileWallet {
                 .collect(),
             None => Vec::new(),
         };
-        let unsigned = self.prove(transaction, settlements, payer, proving)?;
+        let (unsigned, openings) = self.prove(transaction, settlements, payer, proving)?;
         let mut unsigned = with_setup(unsigned, &payer, &setup)?;
         unsigned.message = self.with_priority_fee(unsigned.message, priority_fee_lamports)?;
-        let pending = self.proved(
+        let mut pending = self.proved(
             Operation::Spend {
                 mint: mint_name(&asset.mint),
                 outputs,
@@ -1045,6 +1111,7 @@ impl MobileWallet {
             },
             unsigned,
         );
+        pending.outputs = openings;
         Ok(self.reserve(pending, spends))
     }
 
@@ -1094,10 +1161,8 @@ impl MobileWallet {
         }
     }
 
-    /// `message` with the priority fee `priority_fee_lamports` names, or else
-    /// [`WalletConfig::priority_fee_lamports`], in its v1 header; as built
-    /// without either. The header is not part of a proof, only of the
-    /// signatures, so a proved message takes the fee as it is.
+    /// Apply the call's fee or the wallet default before signing. The header
+    /// is not part of the proof, so this also works after proving.
     fn with_priority_fee(
         &self,
         mut message: VersionedMessage,
@@ -1154,6 +1219,7 @@ impl MobileWallet {
             message: unsigned.message,
             last_valid_block_height: unsigned.last_valid_block_height,
             spends: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -1251,7 +1317,8 @@ impl MobileWallet {
         &self,
         pending: &PreparedTransaction,
     ) -> Result<PreparedTransaction, WalletError> {
-        let refreshed = self.pending(pending.operation.clone(), pending.message.clone())?;
+        let mut refreshed = self.pending(pending.operation.clone(), pending.message.clone())?;
+        refreshed.outputs = pending.outputs.clone();
         self.release(pending);
         Ok(if pending.spends.is_empty() {
             refreshed
@@ -1349,9 +1416,11 @@ impl MobileWallet {
         settlement_transfers: Vec<TransactInterfaceTransferAccounts>,
         payer: Pubkey,
         proving: Proving,
-    ) -> Result<UnsignedMessage, WalletError> {
+    ) -> Result<(UnsignedMessage, Vec<OutputOpening>), WalletError> {
+        let inputs = transaction.encrypt(&self.keys)?;
+        let openings = output_openings(&inputs);
         let signed = SignedPrivateTransaction {
-            transaction: transaction.encrypt(&self.keys)?,
+            transaction: inputs,
             settlement_transfers,
         };
         let mut submission = Submission::new(&signed, payer, &self.nullifier_key);
@@ -1362,16 +1431,17 @@ impl MobileWallet {
                 .ok_or(WalletError::RemoteProverMissing)?;
             submission = submission.with_prover(remote);
         }
-        Ok(submission.finish_unsigned_sync(&self.client)?)
+        Ok((submission.finish_unsigned_sync(&self.client)?, openings))
     }
 
-    /// Attach the signatures, send, and wait as [`Self::confirm`] does: a
-    /// deposit, spend or merge whose response was lost is looked up; a
-    /// registration or merging change fails with the send's error, and
-    /// preparing it again finds one that landed. Returns the signature.
+    /// Attach the signatures, send, and wait as [`Self::confirm`] does.
+    /// Returns the signature.
     ///
     /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
-    /// before anything is sent.
+    /// before anything is sent. A spend's notes are released once the send
+    /// has an outcome: spent when it landed, free again when the chain
+    /// refused it, it expired or it spent a note the chain already had. They
+    /// stay reserved while the outcome is unknown, since it may still land.
     pub fn submit(
         &self,
         pending: &PreparedTransaction,
@@ -1406,25 +1476,30 @@ impl MobileWallet {
         };
         self.forget_notes();
         match self.client.process_transaction(transaction) {
-            // A registration or a merging change: preparing it again finds
-            // one whose response was lost but that landed.
-            sent if !pending.operation.indexed() => drop(sent?),
-            // The chain refused it, in simulation or after it ran: it spent
-            // nothing.
+            Ok(_) => {}
+            // The chain refused it, in simulation or after it ran: it never
+            // spent its notes.
             Err(failure) if settles_the_send(&failure) => {
                 self.release(pending);
                 return Err(failure.into());
             }
-            // It landed, or may have.
-            _ => self.settle(pending, signature)?,
+            // A send can fail after the transaction went out, such as when
+            // the RPC loses the confirmation: look for it before failing.
+            Err(_) => self.outcome(pending, signature)?,
         }
+        self.settle(pending, signature, true)?;
         Ok(signature.to_string())
     }
 
-    /// Wait for a transaction the application sent itself: a registration or
-    /// a merging change until Solana confirms it, anything else as
-    /// [`Self::wait_for_transaction`] does. A spend's notes are released with
-    /// every outcome but the unknown one.
+    /// Wait for a transaction the application sent itself, as
+    /// [`Self::submit`] waits for a send whose response was lost: until Solana
+    /// confirms it and, for shielded-pool transactions, the indexer has it,
+    /// so the next balance or spend reads the notes it created and not the
+    /// ones it spent; the chain's error when the chain refused it;
+    /// [`WalletError::TransactionExpired`] when it did not land before
+    /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
+    /// when that cannot be told. A spend's notes are released with every
+    /// outcome but the unknown one.
     ///
     /// `signature` is the transaction signature, the fee payer's; it is
     /// checked against `pending` before anything is asked.
@@ -1439,20 +1514,20 @@ impl MobileWallet {
         if !signed_by(fee_payer, &pending.message(), signature.as_array()) {
             return Err(WalletError::SignatureInvalid);
         }
-        self.forget_notes();
-        if !pending.operation.indexed() {
-            return wait_for_confirmation(&self.client, signature);
-        }
-        self.settle(pending, signature)
+        self.settle(pending, signature, false)
     }
 
-    /// Wait for a deposit, spend or merge by its signature, such as one sent
-    /// before the application restarted, as the Zolana SDK's
-    /// `wait_for_private_transaction` does: done once Solana confirmed it, the
-    /// chain's error when it failed, [`WalletError::TransactionExpired`] once
-    /// a new transaction is safe, and [`WalletError::TransactionOutcomeUnknown`]
-    /// when the wait ended first. Save `last_valid_block_height` with the
-    /// signature: without it, a transaction never seen cannot be told expired.
+    /// Wait for a shielded-pool transaction by its signature, such as one sent
+    /// before the application restarted, until its outcome is known, as
+    /// [`Self::submit`] tells a send whose response was lost: done once Solana
+    /// confirms it and the indexer has it, so the next balance reads its
+    /// notes; the chain's error when the chain refused it;
+    /// [`WalletError::TransactionExpired`] when it did not land before
+    /// `last_valid_block_height`, so sending it again is safe; and
+    /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
+    /// Save the prepared transaction's last valid block height with its
+    /// signature: without it, a transaction never seen cannot be told expired
+    /// and ends unknown.
     pub fn wait_for_transaction(
         &self,
         signature: String,
@@ -1461,38 +1536,60 @@ impl MobileWallet {
         let signature =
             Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
         self.forget_notes();
-        landed(
-            self.client
-                .wait_for_private_transaction_sync(signature, last_valid_block_height),
-        )
+        reconcile(
+            &self.client,
+            signature,
+            last_valid_block_height,
+            self.send_lookup,
+        )?;
+        Ok(self.client.confirm_private_transaction_sync(signature)?)
     }
 
-    /// Wait for `pending`, sent as `signature`, releasing its notes unless
-    /// the outcome is unknown: spent once it landed, free again when the chain
-    /// refused it or it expired. An unknown outcome keeps them reserved: it
-    /// may still land.
+    /// Wait for `pending`, sent as `signature`: a registration or a merging
+    /// change until Solana confirms it, a shielded-pool transaction until its
+    /// outcome is known and the indexer has it. `landed` when the send
+    /// already confirmed it, so its status is not asked again.
     fn settle(
         &self,
         pending: &PreparedTransaction,
         signature: Signature,
+        landed: bool,
     ) -> Result<(), WalletError> {
-        let outcome = self
-            .client
-            .wait_for_private_transaction_sync(signature, Some(pending.last_valid_block_height));
-        if !matches!(outcome, Err(ClientError::TransactionOutcomeUnknown { .. })) {
+        self.forget_notes();
+        if matches!(
+            pending.operation,
+            Operation::Registration | Operation::Merging { .. }
+        ) {
+            return wait_for_confirmation(&self.client, signature);
+        }
+        if landed {
+            self.release(pending);
+        } else {
+            self.outcome(pending, signature)?;
+        }
+        Ok(self.client.confirm_private_transaction_sync(signature)?)
+    }
+
+    /// What became of `pending`, sent as `signature`, as [`reconcile`] tells
+    /// it. Every outcome but the unknown one releases its notes: spent once
+    /// it landed, free again when the chain refused it, it expired or it
+    /// spent a note the chain already had. An unknown outcome keeps them
+    /// reserved, since the transaction may still land.
+    fn outcome(
+        &self,
+        pending: &PreparedTransaction,
+        signature: Signature,
+    ) -> Result<(), WalletError> {
+        let outcome = reconcile(
+            &self.client,
+            signature,
+            Some(pending.last_valid_block_height),
+            self.send_lookup,
+        );
+        if !matches!(outcome, Err(WalletError::TransactionOutcomeUnknown { .. })) {
             self.release(pending);
         }
-        landed(outcome)
-    }
-}
-
-/// `outcome` of a private transaction, done once Solana confirmed it: every
-/// read waits for the indexer to reach the RPC's slot, so one the indexer lags
-/// on is read once it catches up.
-fn landed(outcome: Result<(), ClientError>) -> Result<(), WalletError> {
-    match outcome {
-        Err(ClientError::TransactionNotIndexed { .. }) => Ok(()),
-        outcome => Ok(outcome?),
+        outcome
     }
 }
 
@@ -1584,6 +1681,122 @@ fn merge_expiry() -> u64 {
         .unwrap_or_default()
         .saturating_add(MERGE_LIFETIME)
         .as_secs()
+}
+
+/// How a send whose response was lost is looked up: on the indexer poll's
+/// schedule, then at its longest delay until the blockhash expires.
+const SEND_LOOKUP: IndexerPollConfig = IndexerPollConfig {
+    num_retries: 10,
+    delay_ms: 400,
+    max_delay_ms: 8_000,
+};
+
+/// What a status lookup says of a transaction whose send went unanswered.
+enum SendStatus {
+    /// Landed and confirmed, without an error.
+    Confirmed,
+    /// Landed and confirmed, and the chain refused it.
+    Refused(ChainError),
+    /// Landed but not confirmed yet: it may still be dropped with its fork.
+    Processed,
+    /// Not seen, and its blockhash still lets it land.
+    Pending,
+    /// Not seen, and its blockhash no longer lets it land.
+    Expired,
+}
+
+/// What became of `signature`, whose send went unanswered: looked up until it
+/// is confirmed, refused by the chain or expired. Lookups that fail one after
+/// another, a landed transaction that does not confirm, and, without
+/// `last_valid_block_height`, one never seen, end after `poll`'s retries as
+/// [`WalletError::TransactionOutcomeUnknown`].
+fn reconcile(
+    rpc: &impl Rpc,
+    signature: Signature,
+    last_valid_block_height: Option<u64>,
+    poll: IndexerPollConfig,
+) -> Result<(), WalletError> {
+    let unknown = |message: String| WalletError::TransactionOutcomeUnknown {
+        signature: signature.to_string(),
+        message,
+    };
+    let mut delays = poll
+        .backoff()
+        .chain(std::iter::repeat(Duration::from_millis(poll.max_delay_ms)));
+    let (mut failed_lookups, mut processed_lookups, mut unseen_lookups) = (0, 0, 0);
+    loop {
+        match send_status(rpc, signature, last_valid_block_height) {
+            Ok(SendStatus::Confirmed) => return Ok(()),
+            Ok(SendStatus::Refused(failure)) => {
+                return Err(ClientError::SolanaRpcTransaction {
+                    operation: "process_transaction",
+                    source: failure.into(),
+                }
+                .into())
+            }
+            Ok(SendStatus::Expired) => {
+                return Err(WalletError::TransactionExpired {
+                    signature: signature.to_string(),
+                })
+            }
+            Ok(SendStatus::Pending) => {
+                failed_lookups = 0;
+                unseen_lookups += 1;
+                if last_valid_block_height.is_none() && unseen_lookups > poll.num_retries {
+                    return Err(unknown(
+                        "not seen, and without its last valid block height it cannot be told expired"
+                            .to_string(),
+                    ));
+                }
+            }
+            Ok(SendStatus::Processed) => {
+                failed_lookups = 0;
+                processed_lookups += 1;
+                if processed_lookups > poll.num_retries {
+                    return Err(unknown("landed but not confirmed".to_string()));
+                }
+            }
+            Err(failure) => {
+                failed_lookups += 1;
+                if failed_lookups > poll.num_retries {
+                    return Err(unknown(client_message(&failure)));
+                }
+            }
+        }
+        sleep(delays.next().unwrap_or_default());
+    }
+}
+
+/// One look at `signature` in the RPC's status cache, which holds a landed
+/// transaction for longer than its blockhash lets it land, so one missing once
+/// `last_valid_block_height` passed never landed.
+fn send_status(
+    rpc: &impl Rpc,
+    signature: Signature,
+    last_valid_block_height: Option<u64>,
+) -> Result<SendStatus, ClientError> {
+    let status = rpc
+        .get_signature_statuses(vec![signature])?
+        .into_iter()
+        .next()
+        .flatten();
+    Ok(match status {
+        Some(status) if status.satisfies_commitment(CommitmentConfig::confirmed()) => {
+            match status.err {
+                None => SendStatus::Confirmed,
+                Some(failure) => SendStatus::Refused(failure),
+            }
+        }
+        Some(_) => SendStatus::Processed,
+        None if last_valid_block_height
+            .map(|height| Ok::<_, ClientError>(rpc.get_block_height()? > height))
+            .transpose()?
+            .unwrap_or(false) =>
+        {
+            SendStatus::Expired
+        }
+        None => SendStatus::Pending,
+    })
 }
 
 /// Poll until Solana confirms `signature`, with the indexer's backoff.
@@ -1701,6 +1914,9 @@ fn parse_pubkey(value: &str) -> Result<Pubkey, WalletError> {
 mod tests {
     use solana_keypair::Keypair;
     use solana_signer::Signer;
+    use solana_transaction_status_client_types::{
+        TransactionConfirmationStatus, TransactionStatus,
+    };
     use zolana_client::{compile_message, ClientError, ComputeBudgetConfig};
     use zolana_transaction::instructions::transact::canonical_shape;
 
@@ -1794,6 +2010,7 @@ mod tests {
             message,
             last_valid_block_height: 0,
             spends: Vec::new(),
+            outputs: Vec::new(),
         }
     }
 
@@ -1851,57 +2068,112 @@ mod tests {
         serde_json::json!({"result": {"context": {"slot": 5}, "value": value}})
     }
 
-    /// A send whose response was lost: a deposit, spend or merge is looked up
-    /// before the wallet reports a failure; a registration fails with the
-    /// send's error, and preparing it again finds one that landed.
+    /// A send whose confirmation the RPC lost, for a transaction that landed
+    /// (or did not): the wallet looks for it before it reports a failure.
     #[test]
-    fn a_lost_send_is_looked_up_unless_it_is_a_registration() {
+    fn a_send_error_is_checked_against_the_signature_status() {
         let signer = Keypair::new();
+        let internal =
+            || serde_json::json!({"error": {"code": -32603, "message": "Internal error"}});
+        let registration = |signer: &Keypair| PreparedTransaction {
+            operation: Operation::Registration,
+            ..unsigned(signer)
+        };
         let signed = |pending: &PreparedTransaction| {
             vec![signer.sign_message(&pending.message()).as_ref().to_vec()]
         };
-        let lost = |landed: bool| {
-            move |method: &str, params: &serde_json::Value| match method {
-                "sendTransaction" => {
-                    serde_json::json!({"error": {"code": -32603, "message": "Internal error"}})
-                }
-                "getSignatureStatuses" => status(landed),
-                "getBlockHeight" => serde_json::json!({"result": 10}),
-                "getSlot" => serde_json::json!({"result": 100}),
-                _ if landed => indexed_answer(
-                    Signature::from_str(params["txSignature"].as_str().unwrap()).unwrap(),
-                ),
-                _ => serde_json::json!({"result": {
-                    "context": {"blockTime": 0, "slot": 100},
-                    "transactions": [],
-                }}),
-            }
-        };
-        let deposit = PreparedTransaction {
-            operation: Operation::Deposit {
-                mint: None,
-                amount: 1,
-                creates_spl_interface: false,
-            },
-            ..unsigned(&signer)
-        };
 
-        let (wallet, _) = rpc_wallet_asked(&signer, config(), lost(true));
+        let (wallet, asked) = rpc_wallet(&signer, move |method| match method {
+            "sendTransaction" => internal(),
+            _ => status(true),
+        });
+        let pending = registration(&signer);
+        let signature = wallet
+            .submit(&pending, signed(&pending))
+            .expect("it landed");
         assert_eq!(
-            wallet.submit(&deposit, signed(&deposit)),
-            Ok(signer.sign_message(&deposit.message()).to_string())
+            signature,
+            signer.sign_message(&pending.message()).to_string()
         );
+        assert!(asked
+            .lock()
+            .unwrap()
+            .contains(&"getSignatureStatuses".to_string()));
 
-        let (wallet, _) = rpc_wallet_asked(&signer, config(), lost(false));
-        assert!(matches!(
-            wallet.submit(&deposit, signed(&deposit)),
-            Err(WalletError::TransactionExpired { .. })
-        ));
-        let registration = unsigned(&signer);
-        assert!(matches!(
-            wallet.submit(&registration, signed(&registration)),
-            Err(WalletError::Client { .. })
-        ));
+        // Not seen, and past its blockhash: it can be sent again.
+        let (wallet, _) = rpc_wallet(&signer, move |method| match method {
+            "sendTransaction" => internal(),
+            "getBlockHeight" => serde_json::json!({"result": 10}),
+            _ => status(false),
+        });
+        assert_eq!(
+            wallet.submit(&pending, signed(&pending)).unwrap_err(),
+            WalletError::TransactionExpired {
+                signature: signer.sign_message(&pending.message()).to_string()
+            }
+        );
+    }
+
+    /// What one status lookup answers.
+    #[derive(Clone)]
+    enum Lookup {
+        Fails,
+        Missing,
+        Processed,
+        Confirmed(Option<ChainError>),
+    }
+
+    /// An RPC whose status lookups answer `lookups` in turn, the last one from
+    /// then on, at `block_height`. Counts the lookups.
+    struct Lookups {
+        lookups: Mutex<std::collections::VecDeque<Lookup>>,
+        block_height: u64,
+        asked: Mutex<u32>,
+    }
+
+    impl Lookups {
+        fn new(lookups: &[Lookup], block_height: u64) -> Self {
+            Self {
+                lookups: Mutex::new(lookups.iter().cloned().collect()),
+                block_height,
+                asked: Mutex::new(0),
+            }
+        }
+    }
+
+    impl Rpc for Lookups {
+        fn get_block_height(&self) -> Result<u64, ClientError> {
+            Ok(self.block_height)
+        }
+
+        fn get_signature_statuses(
+            &self,
+            signatures: Vec<Signature>,
+        ) -> Result<Vec<Option<TransactionStatus>>, ClientError> {
+            *self.asked.lock().unwrap() += 1;
+            let mut lookups = self.lookups.lock().unwrap();
+            let lookup = if lookups.len() > 1 {
+                lookups.pop_front()
+            } else {
+                lookups.front().cloned()
+            };
+            let level = |err, confirmation_status| {
+                Some(TransactionStatus {
+                    slot: 1,
+                    confirmations: Some(1),
+                    status: Ok(()),
+                    err,
+                    confirmation_status: Some(confirmation_status),
+                })
+            };
+            let status = match lookup.expect("a scripted lookup") {
+                Lookup::Fails => return Err(ClientError::Rpc("lookup timed out".into())),
+                Lookup::Missing => None,
+                Lookup::Processed => level(None, TransactionConfirmationStatus::Processed),
+                Lookup::Confirmed(err) => level(err, TransactionConfirmationStatus::Confirmed),
+            };
+            Ok(signatures.iter().map(|_| status.clone()).collect())
+        }
     }
 
     const QUICK: IndexerPollConfig = IndexerPollConfig {
@@ -1909,6 +2181,67 @@ mod tests {
         delay_ms: 1,
         max_delay_ms: 1,
     };
+
+    fn reconciled(rpc: &Lookups) -> Result<(), WalletError> {
+        reconcile(rpc, Signature::from([3; 64]), Some(100), QUICK)
+    }
+
+    /// The lookups last until the blockhash expires, however short the
+    /// retry schedule, and only a confirmed status counts: a processed one
+    /// can still be dropped with its fork.
+    #[test]
+    fn a_lost_send_is_looked_up_until_it_is_confirmed() {
+        let unseen = Lookups::new(
+            &[
+                Lookup::Missing,
+                Lookup::Missing,
+                Lookup::Missing,
+                Lookup::Missing,
+                Lookup::Confirmed(None),
+            ],
+            99,
+        );
+        assert_eq!(reconciled(&unseen), Ok(()));
+
+        let processed = Lookups::new(&[Lookup::Processed, Lookup::Confirmed(None)], 99);
+        assert_eq!(reconciled(&processed), Ok(()));
+        assert_eq!(*processed.asked.lock().unwrap(), 2);
+
+        let flaky = Lookups::new(&[Lookup::Fails, Lookup::Confirmed(None)], 99);
+        assert_eq!(reconciled(&flaky), Ok(()));
+    }
+
+    /// Each outcome says whether sending again is safe.
+    #[test]
+    fn a_lost_send_ends_refused_expired_or_unknown() {
+        let refused = Lookups::new(
+            &[Lookup::Confirmed(Some(ChainError::InsufficientFundsForFee))],
+            99,
+        );
+        assert!(matches!(
+            reconciled(&refused),
+            Err(WalletError::Client { message }) if message.contains("Insufficient funds for fee")
+        ));
+
+        let expired = Lookups::new(&[Lookup::Missing], 101);
+        assert!(matches!(
+            reconciled(&expired),
+            Err(WalletError::TransactionExpired { .. })
+        ));
+
+        let unreachable = Lookups::new(&[Lookup::Fails], 99);
+        assert!(matches!(
+            reconciled(&unreachable),
+            Err(WalletError::TransactionOutcomeUnknown { message, .. })
+                if message.contains("lookup timed out")
+        ));
+
+        let unconfirmed = Lookups::new(&[Lookup::Processed], 99);
+        assert!(matches!(
+            reconciled(&unconfirmed),
+            Err(WalletError::TransactionOutcomeUnknown { .. })
+        ));
+    }
 
     /// A send refused in simulation was never sent and settles at once; one
     /// found already processed may have landed and is looked up.
@@ -1961,7 +2294,10 @@ mod tests {
             WalletOverview {
                 balances: Vec::new(),
                 activity: Vec::new(),
-                unresolved_assets: UnresolvedAssets::default(),
+                unresolved_assets: UnresolvedAssets {
+                    asset_ids: Vec::new(),
+                    mints: Vec::new(),
+                },
             }
         );
         // One read of each stream serves both halves.
@@ -2348,7 +2684,7 @@ mod tests {
     #[test]
     fn submit_checks_every_signature_before_sending() {
         let signer = Keypair::new();
-        let wallet = open(&signer).unwrap();
+        let mut wallet = open(&signer).unwrap();
         let pending = || unsigned(&signer);
         assert_eq!(pending().signers(), vec![signer.pubkey().to_string()]);
         let valid = signer.sign_message(&pending().message());
@@ -2369,11 +2705,15 @@ mod tests {
             assert_eq!(wallet.submit(&pending(), signatures).err(), Some(expected));
         }
         // A valid signature gets as far as the transport, which answers
-        // nothing.
+        // neither the send nor the lookups after it.
+        wallet.send_lookup = QUICK;
         let error = wallet
             .submit(&pending(), vec![valid.as_ref().to_vec()])
             .unwrap_err();
-        assert!(matches!(error, WalletError::Client { .. }), "{error:?}");
+        assert!(
+            matches!(error, WalletError::TransactionOutcomeUnknown { .. }),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -2397,7 +2737,7 @@ mod tests {
     #[test]
     fn waits_for_a_transaction_by_its_signature() {
         let mut wallet = open(&Keypair::new()).unwrap();
-        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
+        wallet.send_lookup = QUICK;
         assert_eq!(
             wallet
                 .wait_for_transaction("not-a-signature".to_string(), None)
@@ -2414,122 +2754,29 @@ mod tests {
             "{error:?}"
         );
 
-        // Not seen, past its blockhash, and not at the indexer once it
-        // reached the RPC's slot: sending again is safe.
-        let (wallet, asked) = gone_from_the_cache(&Keypair::new(), |_| {
-            serde_json::json!({"result": {
-                "context": {"blockTime": 0, "slot": 100},
-                "transactions": [],
-            }})
+        // Not seen, and past its blockhash: sending again is safe.
+        let signer = Keypair::new();
+        let (wallet, _) = rpc_wallet(&signer, |method| match method {
+            "getBlockHeight" => serde_json::json!({"result": 10}),
+            _ => status(false),
         });
         assert!(matches!(
             wallet.wait_for_transaction(Signature::default().to_string(), Some(5)),
             Err(WalletError::TransactionExpired { .. })
         ));
-        assert!(asked
-            .lock()
-            .unwrap()
-            .contains(&"getShieldedTransactionsBySignature".to_string()));
     }
 
-    /// A wallet whose RPC holds no transaction, past every blockhash, and
-    /// whose indexer answers a lookup by signature with `indexer(signature)`.
-    fn gone_from_the_cache(
-        signer: &Keypair,
-        indexer: impl Fn(Signature) -> serde_json::Value + Send + Sync + 'static,
-    ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
-        rpc_wallet_asked(signer, config(), move |method, params| match method {
-            "getSignatureStatuses" => status(false),
-            "getBlockHeight" => serde_json::json!({"result": 10}),
-            "getSlot" => serde_json::json!({"result": 100}),
-            "getShieldedTransactionsBySignature" => {
-                indexer(Signature::from_str(params["txSignature"].as_str().unwrap()).unwrap())
-            }
-            _ => serde_json::json!({"error": {"code": -32601, "message": method}}),
-        })
-    }
-
-    /// The indexer's answer for `signature`, a shielded-pool transaction it
-    /// has.
-    fn indexed_answer(signature: Signature) -> serde_json::Value {
-        let hash = |byte: u8| Pubkey::new_from_array([byte; 32]).to_string();
-        serde_json::json!({"result": {
-            "context": {"blockTime": 0, "slot": 100},
-            "transactions": [{
-                "eventIndex": 0,
-                "transaction": {
-                    "slot": 5,
-                    "txSignature": signature.to_string(),
-                    "txViewingPk": null,
-                    "outputSlots": [{
-                        "viewTag": hash(0),
-                        "outputContext": {
-                            "hash": hash(1),
-                            "tree": pda::tree(0).to_string(),
-                            "treeId": 0,
-                            "leafIndex": 0,
-                        },
-                        "payload": "",
-                    }],
-                    "messages": [],
-                    "nullifiers": [],
-                    "proofless": false,
-                },
-            }],
-        }})
-    }
-
-    /// A transaction that landed long before it is waited for: gone from the
-    /// status cache, past its blockhash, and at the indexer.
-    /// `wait_for_transaction` and `confirm` end done, a spend's notes
-    /// released, without asking the cache for it again. An indexer that
-    /// cannot be read leaves it unknown.
+    /// Without its last valid block height, a transaction never seen cannot
+    /// be told expired, so it ends unknown rather than waiting forever.
     #[test]
-    fn a_transaction_gone_from_the_status_cache_is_found_at_the_indexer() {
-        let signer = Keypair::new();
-        let statuses = |asked: &Arc<Mutex<Vec<String>>>| {
-            asked
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|method| *method == "getSignatureStatuses")
-                .count()
-        };
-
-        let (wallet, asked) = gone_from_the_cache(&signer, indexed_answer);
-        let signature = Signature::from([7; 64]).to_string();
-        assert_eq!(
-            wallet.wait_for_transaction(signature.clone(), Some(5)),
-            Ok(())
-        );
-        assert_eq!(statuses(&asked), 1);
-
-        let (wallet, asked) = gone_from_the_cache(&signer, indexed_answer);
-        let pending = PreparedTransaction {
-            operation: Operation::Spend {
-                mint: None,
-                outputs: Vec::new(),
-                created_token_accounts: Vec::new(),
-            },
-            last_valid_block_height: 5,
-            ..unsigned(&signer)
-        };
-        let pending = wallet.reserve(pending, vec![[1; 32]]);
-        let sent = signer.sign_message(&pending.message()).to_string();
-        assert_eq!(wallet.confirm(&pending, sent), Ok(()));
-        assert_eq!(statuses(&asked), 1);
-        assert!(wallet.reservations().reserved.is_empty());
-
-        let (mut wallet, _) = gone_from_the_cache(
-            &signer,
-            |_| serde_json::json!({"error": {"code": -32603, "message": "Internal error"}}),
-        );
-        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
-        let error = wallet.wait_for_transaction(signature, Some(5)).unwrap_err();
-        assert!(
-            matches!(error, WalletError::TransactionOutcomeUnknown { .. }),
-            "{error:?}"
-        );
+    fn a_transaction_never_seen_without_its_height_is_unknown() {
+        let unseen = Lookups::new(&[Lookup::Missing], 1_000);
+        assert!(matches!(
+            reconcile(&unseen, Signature::from([3; 64]), None, QUICK),
+            Err(WalletError::TransactionOutcomeUnknown { message, .. })
+                if message.contains("last valid block height")
+        ));
+        assert_eq!(*unseen.asked.lock().unwrap(), QUICK.num_retries + 1);
     }
 
     #[test]
@@ -2746,6 +2993,8 @@ mod tests {
         assert_eq!(named.priority_fee_lamports(), 12_000);
         let refreshed = wallet.refresh(&named).unwrap();
         assert_eq!(fee_in_header(&refreshed), Some(12_000));
+        let free = wallet.prepare_deposit(None, 100, Some(0)).unwrap();
+        assert_eq!(fee_in_header(&free), Some(0));
     }
 
     /// The fee goes into a built message, a proved one included, and changes
@@ -3156,11 +3405,6 @@ mod tests {
         let expired = move |method: &str| match method {
             "sendTransaction" => internal(),
             "getBlockHeight" => serde_json::json!({"result": 10}),
-            "getSlot" => serde_json::json!({"result": 100}),
-            "getShieldedTransactionsBySignature" => serde_json::json!({"result": {
-                "context": {"blockTime": 0, "slot": 100},
-                "transactions": [],
-            }}),
             _ => status(false),
         };
         let (wallet, _) = rpc_wallet(&signer, expired);
@@ -3181,7 +3425,7 @@ mod tests {
         assert_eq!(held(&wallet), 0, "expired after the app sent it");
 
         let (mut wallet, _) = rpc_wallet(&signer, move |_| internal());
-        wallet.client = wallet.client.with_indexer_poll_config(QUICK);
+        wallet.send_lookup = QUICK;
         let pending = spend(&wallet);
         assert!(matches!(
             wallet.submit(&pending, signed(&pending)),
@@ -3209,5 +3453,343 @@ mod tests {
             error(wallet.prepare_spend(vec![private(&recipient, 1)], None, Some(bad), None, None)),
             invalid
         );
+    }
+
+    #[test]
+    fn refreshed_spends_keep_their_openings() {
+        let signer = Keypair::new();
+        let (wallet, _) = rpc_wallet(&signer, |_| {
+            serde_json::json!({"result": {
+                "context": {"slot": 5}, "value": {
+                    "blockhash": "11111111111111111111111111111111", "lastValidBlockHeight": 250
+                }
+            }})
+        });
+        let mut pending = unsigned(&signer);
+        pending.outputs = vec![OutputOpening::from_output(
+            &SppProofOutputUtxo::default(),
+            0,
+        )];
+        let refreshed = wallet.refresh(&pending).unwrap();
+        assert_eq!(refreshed.outputs(), pending.outputs());
+        assert_eq!(refreshed.last_valid_block_height(), 250);
+    }
+
+    #[test]
+    fn openings_preserve_all_commitment_fields() {
+        use solana_address::Address;
+        use zolana_transaction::Mint;
+
+        let wallet = open(&Keypair::new()).unwrap();
+        let mut real = SppProofOutputUtxo::new(Mint::SOL, 5, wallet.address).unwrap();
+        real.data_hash = Some([7; 32]);
+        real.ring_data_hash = Some([8; 32]);
+        real.ring_program_id = Some(Address::new_from_array([9; 32]));
+        let dummy = SppProofOutputUtxo::default();
+        let compact = SppProofOutputUtxo {
+            compact: true,
+            ..dummy.clone()
+        };
+        for output in [real, dummy, compact] {
+            let opening = OutputOpening::from_output(&output, 4);
+            assert_eq!(
+                commitment_of(&opening, wallet.address.viewing_pubkey),
+                output.hash(4).unwrap()
+            );
+            assert_eq!(opening.owner_signing_key.is_none(), output.is_dummy());
+            assert_eq!(opening.nullifier_key.is_none(), output.is_dummy());
+            assert_eq!(opening.compact, output.is_compact());
+        }
+    }
+
+    /// Golden v1 messages built with the actual SDK wire serializers, plus
+    /// Poseidon vectors for the Dart policy tests. No real funds or proofs.
+    #[test]
+    fn spend_check_vectors_match_example() {
+        use solana_address::Address;
+        use zolana_hasher::{primitives::right_align, Hasher, Poseidon};
+        use zolana_interface::instruction::{
+            CircuitId, InputUtxo, InterfaceTransfer, OwnerTag, TransactIxData, TransactOutput,
+            TransactProof, TreeContext,
+        };
+        use zolana_program::instruction::{
+            Transact, TransactSolTransferAccounts, TransactSplWithdrawalAccounts,
+        };
+        use zolana_transaction::{
+            derive_output_blinding_seed, utxo::derive_transact_output_blinding, Mint,
+        };
+
+        let signers = [1, 2, 3].map(|byte| Keypair::new_from_array([byte; 32]));
+        let wallets = signers.each_ref().map(|signer| open(signer).unwrap());
+        let payer = signers[0].pubkey();
+        let recipient = signers[1].pubkey();
+        let token_program = pda::spl_token_program_id();
+        let mint = Pubkey::new_from_array([8; 32]);
+        let mut hashes = serde_json::Map::new();
+        let mut hash = |inputs: Vec<[u8; 32]>| {
+            let result = Poseidon::hashv(
+                &inputs
+                    .iter()
+                    .map(|field| field.as_slice())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+            let key = inputs
+                .iter()
+                .map(|field| {
+                    field
+                        .iter()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join(":");
+            hashes.insert(key, serde_json::json!(result));
+            result
+        };
+        let mut cases = Vec::new();
+        for spl in [false, true] {
+            for withdraw in [false, true] {
+                let asset = if spl {
+                    Mint::new(Address::new_from_array(mint.to_bytes()), 7)
+                } else {
+                    Mint::SOL
+                };
+                let first = [1; 32];
+                let seed = derive_output_blinding_seed(&first, &[2; 32]).unwrap();
+                let mut outputs = vec![
+                    SppProofOutputUtxo::new(asset, 7, wallets[0].address).unwrap(),
+                    SppProofOutputUtxo::new(asset, 5, wallets[2].address).unwrap(),
+                ];
+                if !withdraw {
+                    outputs.push(SppProofOutputUtxo::new(asset, 100, wallets[1].address).unwrap());
+                }
+                outputs.push(SppProofOutputUtxo::default());
+                while outputs.len() < 4 {
+                    outputs.push(SppProofOutputUtxo {
+                        compact: true,
+                        ..Default::default()
+                    });
+                }
+                for (index, output) in outputs.iter_mut().enumerate() {
+                    output.blinding =
+                        derive_transact_output_blinding(&first, &seed, index as u32).unwrap();
+                    if output.is_compact() {
+                        continue;
+                    }
+                    let dummy = output.is_dummy();
+                    let owner = match output.owner_address {
+                        None => [0; 32],
+                        Some(address) => {
+                            let mut tagged = vec![0x53];
+                            tagged.extend_from_slice(&address.signing_pubkey.as_ed25519().unwrap());
+                            let identity = hash(vec![
+                                right_align::<31>(tagged[..31].try_into().unwrap()),
+                                right_align::<2>(tagged[31..].try_into().unwrap()),
+                            ]);
+                            hash(vec![identity, address.nullifier_pubkey])
+                        }
+                    };
+                    let asset_hash = if dummy {
+                        [0; 32]
+                    } else {
+                        hash(vec![
+                            right_align::<31>(asset.asset.as_array()[..31].try_into().unwrap()),
+                            right_align::<1>(asset.asset.as_array()[31..].try_into().unwrap()),
+                        ])
+                    };
+                    let ring = hash(vec![[0; 32], [0; 32]]);
+                    let owner_utxo = hash(vec![owner, output.blinding]);
+                    let commitment = hash(vec![
+                        right_align(&(if dummy { 1u16 } else { 3u16 }).to_be_bytes()),
+                        [0; 32],
+                        asset_hash,
+                        right_align(&(if dummy { 0 } else { output.amount }).to_be_bytes()),
+                        [0; 32],
+                        ring,
+                        owner_utxo,
+                    ]);
+                    assert_eq!(commitment, output.hash(0).unwrap());
+                }
+                let user_token =
+                    pda::associated_token_address_with_program(&recipient, &mint, &token_program);
+                let (transfers, settlement) = if !withdraw {
+                    (vec![], vec![])
+                } else if spl {
+                    let (spl_interface, bump) = pda::spl_interface_with_bump(&mint);
+                    (
+                        vec![InterfaceTransfer::SplWithdrawal {
+                            amount: 100,
+                            spl_interface_bump: bump,
+                        }],
+                        vec![TransactInterfaceTransferAccounts::SplWithdrawal(
+                            TransactSplWithdrawalAccounts {
+                                mint,
+                                spl_interface,
+                                user_token_account: user_token,
+                                token_program,
+                            },
+                        )],
+                    )
+                } else {
+                    (
+                        vec![InterfaceTransfer::SolWithdrawal { amount: 100 }],
+                        vec![TransactInterfaceTransferAccounts::Sol(
+                            TransactSolTransferAccounts { recipient },
+                        )],
+                    )
+                };
+                let builder = Transact {
+                    payer,
+                    input_trees: vec![pda::tree(0)],
+                    output_tree: pda::tree(0),
+                    owner_signers: vec![payer],
+                    interface_transfer_accounts: settlement,
+                    data: TransactIxData {
+                        expiry_unix_ts: u64::MAX,
+                        tx_viewing_pk: [0; 33],
+                        salt: [0; 16],
+                        interface_transfers: transfers,
+                        data_hash: None,
+                        ring_data_hash: None,
+                        outputs: outputs
+                            .iter()
+                            .filter(|output| !output.is_compact())
+                            .map(|output| TransactOutput {
+                                utxo_hash: output.hash(0).unwrap(),
+                                owner_tag: match output.owner_address {
+                                    Some(address) if address == wallets[0].address => {
+                                        OwnerTag::Account(0)
+                                    }
+                                    Some(address) => OwnerTag::Inline(
+                                        address.signing_pubkey.confidential_view_tag().unwrap(),
+                                    ),
+                                    None => OwnerTag::Inline([9; 32]),
+                                },
+                                data: Some(vec![42; 8]),
+                            })
+                            .collect(),
+                        messages: vec![],
+                        private_tx_hash: [0; 32],
+                        circuit: CircuitId::ConfidentialEddsa(2, 4, 3),
+                        proof: TransactProof::zeroed(),
+                        inputs: vec![
+                            InputUtxo {
+                                nullifier_hash: first,
+                                tree_index: 0,
+                            },
+                            InputUtxo {
+                                nullifier_hash: [3; 32],
+                                tree_index: 0,
+                            },
+                        ],
+                        tree_contexts: vec![TreeContext {
+                            utxo_tree_root_index: 0,
+                            nullifier_tree_root_index: 0,
+                        }],
+                    },
+                };
+                for create in [false, true] {
+                    if create && !(spl && withdraw) {
+                        continue;
+                    }
+                    let mut instructions = Vec::new();
+                    if create {
+                        instructions.push(
+                            CreateAssociatedTokenAccount {
+                                payer,
+                                owner: recipient,
+                                mint,
+                                token_program,
+                            }
+                            .instruction(),
+                        );
+                    }
+                    instructions.push(builder.instruction());
+                    let message = compile_message(
+                        &payer,
+                        &instructions,
+                        Default::default(),
+                        ComputeBudgetConfig::new(1_000_000),
+                    )
+                    .unwrap();
+                    let openings = outputs.iter().map(|output| {
+                        let o = OutputOpening::from_output(output, 0);
+                        serde_json::json!({
+                            "ownerSigningKey": o.owner_signing_key, "nullifierKey": o.nullifier_key,
+                            "mint": o.mint, "amount": o.amount.to_string(), "blinding": o.blinding,
+                            "treeId": o.tree_id, "compact": o.compact,
+                        })
+                    }).collect::<Vec<_>>();
+                    cases.push(serde_json::json!({
+                        "name": format!("{}-{}{}", if spl { "spl" } else { "sol" }, if withdraw { "withdraw" } else { "private" }, if create { "-create" } else { "" }),
+                        "message": message.serialize(), "openings": openings,
+                        "mint": spl.then(|| mint.to_string()), "withdraw": withdraw,
+                        "tokenAccount": user_token.to_string(), "tokenProgram": token_program.to_string(),
+                    }));
+                }
+            }
+        }
+        let fixture = serde_json::json!({
+            "sender": payer.to_string(), "recipient": recipient.to_string(),
+            "collector": signers[2].pubkey().to_string(), "tree": pda::tree(0).to_string(),
+            "nullifiers": signers.iter().zip(&wallets).map(|(signer, wallet)| (signer.pubkey().to_string(), wallet.address.nullifier_pubkey.to_vec())).collect::<std::collections::BTreeMap<_, _>>(),
+            "hashes": hashes, "cases": cases,
+        });
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../example/test/fixtures/spend_checks.json");
+        if std::env::var_os("UPDATE_SPEND_CHECK_FIXTURE").is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, serde_json::to_string(&fixture).unwrap() + "\n").unwrap();
+        }
+        let expected: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(
+            fixture, expected,
+            "regenerate with UPDATE_SPEND_CHECK_FIXTURE=1"
+        );
+    }
+
+    fn commitment_of(opening: &OutputOpening, viewing: zolana_keypair::X25519Pubkey) -> [u8; 32] {
+        use std::str::FromStr;
+
+        use solana_address::Address;
+        use zolana_keypair::PublicKey;
+        use zolana_transaction::{Mint, SppProofOutputUtxo};
+
+        let owner_address = match (&opening.owner_signing_key, &opening.nullifier_key) {
+            (Some(signing), Some(nullifier)) => Some(zolana_keypair::ShieldedAddress {
+                signing_pubkey: PublicKey::from_bytes(signing.as_slice().try_into().unwrap())
+                    .unwrap(),
+                nullifier_pubkey: nullifier.as_slice().try_into().unwrap(),
+                viewing_pubkey: viewing,
+            }),
+            _ => None,
+        };
+        let asset = match &opening.mint {
+            None => Mint::SOL,
+            Some(mint) => Mint::new(Address::from_str(mint).unwrap(), 0),
+        };
+        let output = SppProofOutputUtxo {
+            asset,
+            amount: opening.amount,
+            blinding: opening.blinding.as_slice().try_into().unwrap(),
+            ring_program_id: opening
+                .ring_program_id
+                .as_deref()
+                .map(|id| Address::from_str(id).unwrap()),
+            ring_data_hash: opening
+                .ring_data_hash
+                .as_deref()
+                .map(|hash| hash.try_into().unwrap()),
+            data_hash: opening
+                .data_hash
+                .as_deref()
+                .map(|hash| hash.try_into().unwrap()),
+            owner_address,
+            compact: opening.compact,
+            ..SppProofOutputUtxo::default()
+        };
+        output.hash(opening.tree_id).unwrap()
     }
 }

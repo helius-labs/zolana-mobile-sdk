@@ -33,7 +33,12 @@
 //! funded accounts, such as the example's demo accounts, where airdrops are
 //! rate limited; otherwise fresh accounts are airdropped.
 
-use std::{env, time::Duration};
+use std::{
+    env,
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use solana_address::Address;
 use solana_instruction::{AccountMeta, Instruction};
@@ -47,8 +52,9 @@ use zolana_interface::{
 };
 use zolana_mobile::{
     derivation_message, ActivityKind, MintConfig, MobileWallet, Operation, Output,
-    PreparedTransaction, Proving, RegistrationStatus, Transport, TransportFailure,
-    TransportOutcome, TransportRequest, TransportResponse, WalletConfig, WalletError,
+    PreparedTransaction, Proving, RegistrationStatus, TransactionLookupStatus, Transport,
+    TransportFailure, TransportOutcome, TransportRequest, TransportResponse, WalletConfig,
+    WalletError,
 };
 use zolana_program::instruction::CreateAssociatedTokenAccount;
 
@@ -111,11 +117,22 @@ fn config() -> WalletConfig {
 /// same thread would panic. Proof requests to [`REPLAYING_PROVER`] get the
 /// fixture proof.
 fn transport() -> Transport {
+    transport_traced(None)
+}
+
+fn transport_traced(calls: Option<Arc<Mutex<Vec<String>>>>) -> Transport {
     let http = reqwest::blocking::Client::builder()
         .timeout(None)
         .build()
         .expect("HTTP client");
     Transport::new(move |request| {
+        if let Some(calls) = &calls {
+            if let Ok(body) = serde_json::from_slice::<serde_json::Value>(&request.body) {
+                if let Some(method) = body["method"].as_str() {
+                    calls.lock().unwrap().push(method.to_string());
+                }
+            }
+        }
         let http = http.clone();
         let outcome = match std::thread::spawn(move || send(&http, request))
             .join()
@@ -209,8 +226,58 @@ fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PreparedTransact
         .iter()
         .map(|s| s.sign_message(&pending.message()).as_ref().to_vec())
         .collect();
-    println!("{:?}", pending.operation());
-    wallet.submit(&pending, signatures).expect("submit")
+    let operation = pending.operation();
+    println!("{operation:?}");
+    let signature = wallet.submit(&pending, signatures).expect("submit");
+    if matches!(
+        operation,
+        Operation::Deposit { .. } | Operation::Spend { .. } | Operation::Merge { .. }
+    ) {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let owner = zolana_keypair::ShieldedAddress::from_str(&wallet.shielded_address())
+            .unwrap()
+            .solana_address()
+            .unwrap();
+        let mut cold = MobileWallet::open_with_keys(
+            config(),
+            owner.to_string(),
+            wallet.export_keys(),
+            transport_traced(Some(Arc::clone(&calls))),
+        )
+        .unwrap();
+        let lookup = cold
+            .transaction(signature.clone())
+            .expect("cold signature lookup");
+        assert_eq!(
+            lookup.status,
+            TransactionLookupStatus::Ready,
+            "lookup after {operation:?}"
+        );
+        assert!(
+            calls.lock().unwrap().iter().all(|method| ![
+                "getShieldedTransactionsByTags",
+                "getShieldedTransactionsByNullifiers",
+                "getEncryptedUtxosByTags",
+            ]
+            .contains(&method.as_str())),
+            "a lookup must not scan history"
+        );
+        let expected = cold
+            .activity()
+            .unwrap()
+            .into_iter()
+            .filter(|entry| entry.signature == signature)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            lookup.entries, expected,
+            "signature lookup agrees with history"
+        );
+        println!(
+            "cold lookup returned {} rows without history pages",
+            lookup.entries.len()
+        );
+    }
+    signature
 }
 
 /// The private SOL balance, read from the indexer now.

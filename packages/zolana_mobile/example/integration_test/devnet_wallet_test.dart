@@ -7,6 +7,7 @@ import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
 import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
+import 'package:zolana_mobile_demo/spend_checks.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// Private sends from demo account A to B on Zolana devnet: one proved on the
@@ -51,10 +52,76 @@ void main() {
     mints: [for (final asset in demoAssets) ?asset.config],
   );
 
-  Future<ZolanaWallet> open(DemoAccount account) async => ZolanaWallet.open(
-    signer: await DemoSigner.fromSeedHex(account.seedHex),
-    config: await config(),
+  final signers = <ZolanaWallet, DemoSigner>{};
+  Future<ZolanaWallet> open(
+    DemoAccount account, {
+    String? proverUrl,
+    ZolanaTransport? transport,
+  }) async {
+    final signer = await DemoSigner.fromSeedHex(
+      account.seedHex,
+      spendChecks: SpendChecks(TestClusterRpc(Network.devnet.rpcUrl)),
+    );
+    final wallet = await ZolanaWallet.open(
+      signer: signer,
+      config: await config(proverUrl: proverUrl),
+      transport: transport,
+    );
+    signers[wallet] = signer;
+    return wallet;
+  }
+
+  Future<String> checkedSpend(
+    ZolanaWallet wallet, {
+    required List<Output> outputs,
+    String? mint,
+    Proving? proving,
+  }) => signers[wallet]!.spend(
+    wallet,
+    outputs: outputs,
+    mint: mint,
+    proving: proving,
   );
+
+  Future<void> checkFreshLookup(ZolanaWallet wallet, String signature) async {
+    final transport = AppTransport();
+    final cold = await ZolanaWallet.openWithKeys(
+      config: await config(),
+      solanaPublicKey: wallet.solanaPublicKey,
+      keys: await wallet.exportKeys(),
+      transport: transport.send,
+    );
+    try {
+      final clock = Stopwatch()..start();
+      final result = await cold.transaction(signature);
+      // ignore: avoid_print
+      print(
+        'cold signature lookup: ${clock.elapsedMilliseconds} ms, ${result.entries.length} rows',
+      );
+      expect(result.status, TransactionLookupStatus.ready);
+      expect(
+        transport.sent,
+        anyElement(endsWith('/getShieldedTransactionsBySignature')),
+      );
+      expect(
+        transport.sent.where(
+          (request) => [
+            '/getShieldedTransactionsByTags',
+            '/getShieldedTransactionsByNullifiers',
+            '/getEncryptedUtxosByTags',
+          ].any(request.endsWith),
+        ),
+        isEmpty,
+      );
+      final expected = (await wallet.activity())
+          .where((row) => row.signature == signature)
+          .toList();
+      expect(result.entries, orderedEquals(expected));
+    } finally {
+      await cold.close();
+      transport.close();
+    }
+  }
 
   testWidgets('sends privately from A to B, proving on this device', (
     tester,
@@ -104,11 +171,25 @@ void main() {
       prepared.operation,
       Operation.spend(outputs: outputs, createdTokenAccounts: const []),
     );
+    final checks = SpendChecks(TestClusterRpc(Network.devnet.rpcUrl));
+    final request = SpendRequest(outputs: outputs);
+    await checks.verify(
+      message: prepared.message,
+      openings: prepared.outputs,
+      sender: signer.publicKey,
+      request: request,
+    );
     // A slow approval: the same proof under a new blockhash.
     final transaction = await sender.refresh(prepared);
     expect(
       transaction.lastValidBlockHeight,
       greaterThanOrEqualTo(prepared.lastValidBlockHeight),
+    );
+    await checks.verify(
+      message: transaction.message,
+      openings: transaction.outputs,
+      sender: signer.publicKey,
+      request: request,
     );
     final signature = await sender.submit(transaction, [
       await signer.signMessage(transaction.message, transaction: transaction),
@@ -118,6 +199,10 @@ void main() {
       'sent $signature in ${DateTime.now().difference(started).inMilliseconds} ms '
       '(proving key download, proof, signing, confirmation)',
     );
+
+    await checkFreshLookup(sender, signature);
+    await checkFreshLookup(recipient, signature);
+    await checkFreshLookup(collector, signature);
 
     // The transfer returned once the indexer had it, so both balances
     // already read its notes.
@@ -137,11 +222,8 @@ void main() {
     final lamports = BigInt.from(1000000);
     final transport = AppTransport();
     addTearDown(transport.close);
-    Future<ZolanaWallet> sender({String? proverUrl}) async => ZolanaWallet.open(
-      signer: await DemoSigner.fromSeedHex(demoAccounts[0].seedHex),
-      config: await config(proverUrl: proverUrl),
-      transport: transport.send,
-    );
+    Future<ZolanaWallet> sender({String? proverUrl}) =>
+        open(demoAccounts[0], proverUrl: proverUrl, transport: transport.send);
     final local = await sender();
     addTearDown(local.close);
     await expectLater(
@@ -168,7 +250,8 @@ void main() {
     final recipientBefore = await recipient.privateBalance();
 
     final started = DateTime.now();
-    final signature = await remote.spend(
+    final signature = await checkedSpend(
+      remote,
       outputs: [
         Output.private(recipient: demoAccounts[1].publicKey, amount: lamports),
       ],
@@ -179,6 +262,7 @@ void main() {
       'sent $signature in ${DateTime.now().difference(started).inMilliseconds} ms '
       '(remote proof, verification, signing, confirmation)',
     );
+    await checkFreshLookup(remote, signature);
     expect(await remote.privateBalance(), senderBefore - lamports);
     expect(await recipient.privateBalance(), recipientBefore + lamports);
     // ignore: avoid_print
@@ -227,12 +311,15 @@ void main() {
     await sender.deposit(shield, mint: mint);
     expect(await sender.privateBalance(mint: mint), senderBefore + shield);
 
-    final sent = await sender.spend(
+    final sent = await checkedSpend(
+      sender,
       outputs: [
         Output.private(recipient: demoAccounts[1].publicKey, amount: send),
       ],
       mint: mint,
     );
+    await checkFreshLookup(sender, sent);
+    await checkFreshLookup(recipient, sent);
     expect(
       await sender.privateBalance(mint: mint),
       senderBefore + shield - send,
@@ -248,12 +335,14 @@ void main() {
       demoAccounts[1].publicKey,
       mint,
     );
-    await recipient.spend(
+    final withdrawn = await checkedSpend(
+      recipient,
       outputs: [
         Output.public(recipient: demoAccounts[1].publicKey, amount: unshield),
       ],
       mint: mint,
     );
+    await checkFreshLookup(recipient, withdrawn);
     expect(
       await rpc.tokenBalance(demoAccounts[1].publicKey, mint),
       publicBefore + unshield,
@@ -283,6 +372,7 @@ void main() {
       final before = await wallet.privateBalance();
       final started = DateTime.now();
       final signature = await wallet.merge(maxInputs: 8, proving: proving);
+      await checkFreshLookup(wallet, signature);
       // ignore: avoid_print
       print(
         'merged ${proving.name} in '

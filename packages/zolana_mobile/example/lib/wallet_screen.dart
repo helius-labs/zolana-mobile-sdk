@@ -11,6 +11,7 @@ import 'demo_keys.dart';
 import 'demo_signer.dart';
 import 'format.dart';
 import 'main.dart' show DemoScreen;
+import 'spend_checks.dart';
 import 'spend_limit.dart';
 import 'test_cluster_rpc.dart';
 
@@ -53,6 +54,7 @@ class _WalletScreenState extends State<WalletScreen> {
   _Phase _phase = _Phase.opening;
   String? _error;
   ZolanaWallet? _wallet;
+  DemoSigner? _signer;
 
   /// Every asset's balances and history from the last refresh: switching
   /// assets only filters them.
@@ -86,6 +88,7 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() {
       _phase = _Phase.opening;
       _wallet = null;
+      _signer = null;
       _balances = null;
       _publics = const {};
       _history = const [];
@@ -102,6 +105,7 @@ class _WalletScreenState extends State<WalletScreen> {
       final signer = await DemoSigner.fromSeedHex(
         _account.seedHex,
         onSign: _snack,
+        spendChecks: SpendChecks(TestClusterRpc(_network.rpcUrl)),
       );
       final keys =
           '${(await getApplicationSupportDirectory()).path}/proving-keys';
@@ -126,6 +130,7 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
       _wallet = wallet;
+      _signer = signer;
       await _finishSetup(generation);
     } catch (error) {
       _fail(generation, error);
@@ -262,6 +267,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Future<void> _act(WalletAction action) async {
     final wallet = _wallet!;
+    final signer = _signer!;
     final balance = _balance;
     // Notes an unfinished payment holds are not free for this one.
     final free = balance == null
@@ -300,7 +306,8 @@ class _WalletScreenState extends State<WalletScreen> {
         },
         fee: action == WalletAction.shield ? null : demoFee,
         run: (units, recipient) => switch (action) {
-          WalletAction.send => wallet.spend(
+          WalletAction.send => signer.spend(
+            wallet,
             outputs: [
               Output.private(recipient: recipient!, amount: units),
               ?fee(units),
@@ -310,7 +317,8 @@ class _WalletScreenState extends State<WalletScreen> {
           WalletAction.shield => wallet.deposit(units, mint: mint),
           // A token goes to the recipient's token account, which must exist:
           // this account's holds the demo token already.
-          WalletAction.unshield => wallet.spend(
+          WalletAction.unshield => signer.spend(
+            wallet,
             outputs: [
               Output.public(recipient: recipient!, amount: units),
               ?fee(units),

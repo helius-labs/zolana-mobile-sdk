@@ -218,6 +218,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Output> dco_decode_list_output(dynamic raw);
 
   @protected
+  List<OutputOpening> dco_decode_list_output_opening(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
 
   @protected
@@ -284,7 +287,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<MintConfig>? dco_decode_opt_list_mint_config(dynamic raw);
 
   @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
+
+  @protected
   Output dco_decode_output(dynamic raw);
+
+  @protected
+  OutputOpening dco_decode_output_opening(dynamic raw);
 
   @protected
   ProvedRequest dco_decode_proved_request(dynamic raw);
@@ -309,6 +318,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenBalance dco_decode_token_balance(dynamic raw);
+
+  @protected
+  TransactionLookup dco_decode_transaction_lookup(dynamic raw);
+
+  @protected
+  TransactionLookupStatus dco_decode_transaction_lookup_status(dynamic raw);
 
   @protected
   TransportFailure dco_decode_transport_failure(dynamic raw);
@@ -530,6 +545,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
   @protected
+  List<OutputOpening> sse_decode_list_output_opening(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
 
   @protected
@@ -608,7 +628,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
   Output sse_decode_output(SseDeserializer deserializer);
+
+  @protected
+  OutputOpening sse_decode_output_opening(SseDeserializer deserializer);
 
   @protected
   ProvedRequest sse_decode_proved_request(SseDeserializer deserializer);
@@ -639,6 +665,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TokenBalance sse_decode_token_balance(SseDeserializer deserializer);
+
+  @protected
+  TransactionLookup sse_decode_transaction_lookup(SseDeserializer deserializer);
+
+  @protected
+  TransactionLookupStatus sse_decode_transaction_lookup_status(
+    SseDeserializer deserializer,
+  );
 
   @protected
   TransportFailure sse_decode_transport_failure(SseDeserializer deserializer);
@@ -905,6 +939,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_output(List<Output> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_output_opening(
+    List<OutputOpening> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_32_loose(
     List<int> self,
     SseSerializer serializer,
@@ -1011,7 +1051,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_output(Output self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_output_opening(OutputOpening self, SseSerializer serializer);
 
   @protected
   void sse_encode_proved_request(ProvedRequest self, SseSerializer serializer);
@@ -1048,6 +1097,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_token_balance(TokenBalance self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_transaction_lookup(
+    TransactionLookup self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_transaction_lookup_status(
+    TransactionLookupStatus self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_transport_failure(
