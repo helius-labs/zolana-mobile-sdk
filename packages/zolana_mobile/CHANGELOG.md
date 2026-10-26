@@ -2,6 +2,11 @@
 
 Unreleased.
 
+* Fix historical transaction recovery in `waitForTransaction`, `confirm` and
+  lost-send handling: search RPC history and accept matching indexed events.
+  Missing history remains `transactionOutcomeUnknown` after blockhash expiry;
+  the SDK no longer reports it as `transactionExpired`.
+
 * `ZolanaWallet.transaction(signature)` fetches and decrypts one signature
   without history pagination. Its result distinguishes ready (possibly empty),
   pending indexing, not found and incomplete details. Outgoing reads can also
@@ -86,11 +91,9 @@ Unreleased.
   A merge needs only the fee payer's signature and expires ten minutes after
   it is prepared.
 * `submit` looks the signature up after a send error that is not the chain's
-  verdict, until Solana confirms it, the chain refuses it or its blockhash
-  expires, so a transaction that landed is not reported as failed. It fails
-  with `WalletError.transactionExpired` when sending again is safe and
-  `WalletError.transactionOutcomeUnknown` when it is not known whether the
-  transaction landed.
+  verdict, using RPC history and indexed events. It returns
+  `WalletError.transactionOutcomeUnknown` when neither source establishes
+  an outcome, including after blockhash expiry.
   A spend of a note the chain already spent fails with
   `WalletError.notesAlreadySpent`.
 * Balances, activity and every spend wait for the indexer to reach the RPC's
@@ -125,10 +128,10 @@ Unreleased.
   `register()` never replaces a record that holds other keys.
 * Prepared spends reserve their notes, so the next spend selects others;
   `release(tx)` frees them, and so does a send with a verdict: landed,
-  refused by the chain, expired, or a note already spent. A send whose
+  refused by the chain, or a note already spent. A send whose
   outcome is unknown keeps them. `waitForTransaction(signature,
   lastValidBlockHeight:)` waits for a transaction sent before a restart and
-  ends confirmed, refused, expired or unknown, as `submit` does.
+  ends confirmed, refused or unknown, as `submit` does.
 * `refresh(tx)`: a prepared transaction with a new blockhash and the same
   proof, for slow approvals. Every prepared transaction carries its
   `operation`, `feePayer`, `signers`, `message` and `lastValidBlockHeight`.

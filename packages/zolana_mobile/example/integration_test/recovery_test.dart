@@ -15,8 +15,8 @@ import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
 
 /// The recovery cases of `lib/recovery.dart` on Zolana devnet, with demo
 /// account B: restoring on a new phone from the user's signature, reopening
-/// from saved keys without one, and a send found again after a restart or
-/// sent again after it expired. B pays itself 0.0001 SOL twice, so its
+/// from saved keys without one, a send found again after a restart, and
+/// retaining unresolved sends. B pays itself 0.0001 SOL once, so its
 /// private balance does not move; it pays the network fees in public SOL.
 /// Opt in, since it spends devnet SOL and needs a Helius key for devnet:
 ///
@@ -87,7 +87,10 @@ void main() {
       phone.overview(),
       old.overview(),
     ]);
-    expect(restored.balances, original.balances);
+    expect(
+      restored.balances.map((b) => (b.mint, b.amount, b.notes, b.reserved)),
+      original.balances.map((b) => (b.mint, b.amount, b.notes, b.reserved)),
+    );
     expect(
       restored.activity.map((entry) => entry.signature),
       original.activity.map((entry) => entry.signature),
@@ -183,7 +186,9 @@ void main() {
     );
   }, skip: !_enabled);
 
-  testWidgets('sends again after a send expired', (tester) async {
+  testWidgets('keeps an unresolved send instead of sending again', (
+    tester,
+  ) async {
     final pending = MemoryPendingSends();
     final network = _Network();
     addTearDown(network.close);
@@ -196,33 +201,17 @@ void main() {
     addTearDown(wallet.close);
     final transaction = await payItself(wallet);
 
-    // The send never reaches the network, and the blockhash expires.
+    // Only the app's transport knows the send never reached the network.
+    // Missing RPC history cannot establish that fact for the SDK.
     network.dropSends = true;
-    String? expired;
-    try {
-      await saveAndSend(wallet, await signer(), pending, transaction);
-    } on WalletError_TransactionExpired catch (error) {
-      expired = error.signature;
-    }
-    expect(expired, isNotNull);
-    expect(await pending.read(_account.publicKey), isNull);
-
-    // It can no longer land: the same proof under a new blockhash is safe
-    // to send.
-    network.dropSends = false;
-    final signature = await saveAndSend(
-      wallet,
-      await signer(),
-      pending,
-      await wallet.refresh(transaction),
+    await expectLater(
+      saveAndSend(wallet, await signer(), pending, transaction),
+      throwsA(isA<WalletError_TransactionOutcomeUnknown>()),
     );
-    expect(await pending.read(_account.publicKey), isNull);
-    final sent = (await wallet.activity()).map((entry) => entry.signature);
-    expect(sent, contains(signature));
-    expect(sent, isNot(contains(expired)));
+    expect(await pending.read(_account.publicKey), isNotNull);
   }, skip: !_enabled);
 
-  testWidgets('drops a send that never went out once it expired', (
+  testWidgets('keeps an unknown send after its saved block height', (
     tester,
   ) async {
     final pending = MemoryPendingSends();
@@ -240,11 +229,11 @@ void main() {
     );
     await pending.write(_account.publicKey, (
       signature: base58Encode(signed),
-      lastValidBlockHeight: transaction.lastValidBlockHeight,
+      lastValidBlockHeight: BigInt.zero,
     ));
     await wallet.close();
 
-    // The next launch finds it never landed: sending again is safe.
+    // Even with a past block height, missing history is not a verdict.
     final restarted = await openWallet(
       config: await config(),
       signer: await signer(),
@@ -253,9 +242,9 @@ void main() {
     addTearDown(restarted.close);
     await expectLater(
       settlePendingSend(restarted, pending),
-      throwsA(isA<WalletError_TransactionExpired>()),
+      throwsA(isA<WalletError_TransactionOutcomeUnknown>()),
     );
-    expect(await pending.read(_account.publicKey), isNull);
+    expect(await pending.read(_account.publicKey), isNotNull);
   }, skip: !_enabled);
 }
 

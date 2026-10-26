@@ -65,10 +65,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// confirms it and, for shielded-pool transactions, the indexer has it,
   /// so the next balance or spend reads the notes it created and not the
   /// ones it spent; the chain's error when the chain refused it;
-  /// [`WalletError::TransactionExpired`] when it did not land before
-  /// `last_valid_block_height`; and [`WalletError::TransactionOutcomeUnknown`]
-  /// when that cannot be told. A spend's notes are released with every
-  /// outcome but the unknown one.
+  /// [`WalletError::TransactionOutcomeUnknown`] when history cannot
+  /// establish its outcome, even after blockhash expiry. A spend's notes
+  /// are released with every outcome but the unknown one.
   ///
   /// `signature` is the transaction signature, the fee payer's; it is
   /// checked against `pending` before anything is asked.
@@ -259,8 +258,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// `signatures` follows [`PreparedTransaction::signers`]; each is checked
   /// before anything is sent. A spend's notes are released once the send
   /// has an outcome: spent when it landed, free again when the chain
-  /// refused it, it expired or it spent a note the chain already had. They
-  /// stay reserved while the outcome is unknown, since it may still land.
+  /// refused it or it spent a note the chain already had. An unknown
+  /// outcome does not release them; reservations still expire at
+  /// the prepared transaction's last valid block height.
   Future<String> submit({
     required PreparedTransaction pending,
     required List<Uint8List> signatures,
@@ -281,17 +281,16 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// there are no activity rows for this wallet's configured assets.
   Future<TransactionLookup> transaction({required String signature});
 
-  /// Wait for a shielded-pool transaction by its signature, such as one sent
-  /// before the application restarted, until its outcome is known, as
-  /// [`Self::submit`] tells a send whose response was lost: done once Solana
-  /// confirms it and the indexer has it, so the next balance reads its
-  /// notes; the chain's error when the chain refused it;
-  /// [`WalletError::TransactionExpired`] when it did not land before
-  /// `last_valid_block_height`, so sending it again is safe; and
-  /// [`WalletError::TransactionOutcomeUnknown`] when that cannot be told.
-  /// Save the prepared transaction's last valid block height with its
-  /// signature: without it, a transaction never seen cannot be told expired
-  /// and ends unknown.
+  /// Recover a shielded-pool transaction by its signature, including after
+  /// an application restart. Searches RPC history and accepts a matching
+  /// indexed event when RPC history is unavailable. Success waits for the
+  /// indexer so balances include the transaction; confirmed chain errors
+  /// are returned immediately.
+  ///
+  /// Missing history returns [`WalletError::TransactionOutcomeUnknown`],
+  /// even after blockhash expiry: absence does not prove it never landed.
+  /// `last_valid_block_height` can stop the wait early, but does not make a
+  /// replacement payment safe. Keep the signature to check again.
   Future<void> waitForTransaction({
     required String signature,
     BigInt? lastValidBlockHeight,
@@ -1334,16 +1333,14 @@ sealed class WalletError with _$WalletError implements FrbException {
     required String signature,
   }) = WalletError_TransactionNotConfirmed;
 
-  /// A transaction whose send went unanswered did not land before its
-  /// blockhash expired. It can no longer land, so sending it again is safe:
-  /// `refresh` it, or prepare it again.
+  /// Retained for compatibility with older SDK versions. Missing history
+  /// after blockhash expiry now returns `TransactionOutcomeUnknown`.
   const factory WalletError.transactionExpired({required String signature}) =
       WalletError_TransactionExpired;
 
-  /// Whether a transaction whose send went unanswered landed could not be
-  /// told: the status lookups kept failing, or it landed and did not
-  /// confirm. Wait for it with `wait_for_transaction` before sending it
-  /// again.
+  /// RPC history and the indexer could not establish a confirmed outcome.
+  /// Keep the signature and check with `wait_for_transaction` again. An
+  /// expired blockhash does not prove that the payment never succeeded.
   const factory WalletError.transactionOutcomeUnknown({
     required String signature,
     required String message,

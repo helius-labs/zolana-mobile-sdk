@@ -83,14 +83,12 @@ pub enum WalletError {
     SignatureCountMismatch { expected: u64, got: u64 },
     /// Solana did not confirm the transaction within the wait.
     TransactionNotConfirmed { signature: String },
-    /// A transaction whose send went unanswered did not land before its
-    /// blockhash expired. It can no longer land, so sending it again is safe:
-    /// `refresh` it, or prepare it again.
+    /// Retained for compatibility with older SDK versions. Missing history
+    /// after blockhash expiry now returns `TransactionOutcomeUnknown`.
     TransactionExpired { signature: String },
-    /// Whether a transaction whose send went unanswered landed could not be
-    /// told: the status lookups kept failing, or it landed and did not
-    /// confirm. Wait for it with `wait_for_transaction` before sending it
-    /// again.
+    /// RPC history and the indexer could not establish a confirmed outcome.
+    /// Keep the signature and check with `wait_for_transaction` again. An
+    /// expired blockhash does not prove that the payment never succeeded.
     TransactionOutcomeUnknown { signature: String, message: String },
     /// The spend asked for remote proving and `WalletConfig.prover_url` is
     /// not set.

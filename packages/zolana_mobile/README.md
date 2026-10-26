@@ -353,7 +353,7 @@ Every failure throws one of these `WalletError` variants. Amounts are in base un
 | `signatureInvalid` | | a signature is malformed or not the signer's over the message |
 | `signatureCountMismatch` | `expected`, `got` | `submit` received the wrong number of signatures |
 | `transactionNotConfirmed` | `signature` | Solana did not confirm the transaction within the wait |
-| `transactionExpired` | `signature` | a send went unanswered and the transaction did not land before its blockhash expired; sending it again is safe |
+| `transactionExpired` | `signature` | retained for compatibility; missing history after expiry now returns `transactionOutcomeUnknown` |
 | `transactionOutcomeUnknown` | `signature`, `message` | a send went unanswered and whether it landed could not be told; wait for it before sending it again |
 | `remoteProverMissing` | | the spend asked for remote proving without `WalletConfig.proverUrl` |
 | `proofMalformed` | | the remote prover's response is not a proof of the pinned proving key |
@@ -494,28 +494,22 @@ sends through the wallet's RPC instead.
   with `WalletError.notesReserved`; `TokenBalance.reserved` says how much the
   reserved notes hold. `register`, `deposit` and `spend` release the notes
   themselves when signing fails. A send with a verdict releases them at
-  once: the chain refused it, it expired, or it spent a note the chain
-  already had. One whose outcome is unknown keeps them, since it may still
-  land.
-- After a restart the prepared transaction is gone, but its signature and
-  its `lastValidBlockHeight`, saved before sending, are enough:
-  `wallet.waitForTransaction(signature, lastValidBlockHeight: height)` ends
-  as `submit` does after a lost send: done once Solana confirms it and the
-  indexer has it, the chain's error when the chain refused it,
-  `WalletError.transactionExpired` when it can no longer land, or
-  `WalletError.transactionOutcomeUnknown`. Without the height, a transaction
-  never seen ends unknown, since it cannot be told expired.
+  once: the chain refused it or it spent a note the chain already had.
+  An unknown outcome leaves reservations unchanged; their block height
+  still limits their lifetime. Reservations do not replace the application's
+  pending-payment tracking.
+- After a restart, call
+  `wallet.waitForTransaction(signature, lastValidBlockHeight: height)` with
+  the signature saved before sending. It searches RPC history and matching
+  indexed events, returns a confirmed chain error when available, and waits
+  for indexing on success. Missing history remains
+  `WalletError.transactionOutcomeUnknown`, including after blockhash expiry.
+  The optional height stops waiting early; it does not establish non-inclusion.
 - A send can fail after the transaction went out, for example when the RPC
-  loses its confirmation. `submit` then looks the signature up until the
-  outcome is known, and the result says whether sending again is safe: the
-  signature once Solana confirms it; the chain's error when the chain refused
-  it, or refused it in simulation so it was never sent;
-  `WalletError.transactionExpired` when it did not land before its blockhash
-  expired, so `refresh` or prepare it again; `WalletError.transactionOutcomeUnknown`
-  when the lookups kept failing or it landed without confirming, so call
-  `waitForTransaction(signature)` before sending it again. An application
-  that sends itself does the same after any send error that is not the
-  chain's verdict.
+  loses its confirmation. `submit` uses the same recovery checks. When its
+  outcome remains unknown, keep the signature and call `waitForTransaction`
+  again before preparing a replacement payment. `confirm` applies those
+  checks when the application sends the transaction itself.
 - Balances, activity and every spend first wait for the indexer to reach
   the RPC's confirmed slot, so a spend made moments ago, in this session or
   another, is read. An indexer still behind after about ten seconds fails
@@ -552,14 +546,18 @@ sends through the wallet's RPC instead.
 ```dart
 try {
   await saveAndSend(wallet, signer, pending, tx);
-} on WalletError_TransactionExpired {
-  // It can no longer land: the same proof under a new blockhash is safe.
-  await saveAndSend(wallet, signer, pending, await wallet.refresh(tx));
 } on WalletError_TransactionOutcomeUnknown {
-  // It may still land: wait for it before sending again.
+  // Keep the signature: expiry alone does not make a replacement safe.
   await settlePendingSend(wallet, pending);
 }
 ```
+
+`waitForTransaction` searches RPC history, including transactions no longer
+in the recent status cache, and can recover from matching indexed events
+when RPC history is unavailable. If neither source establishes an outcome,
+it returns `transactionOutcomeUnknown`, even after `lastValidBlockHeight`.
+That height stops waiting early; it does not prove the payment never landed.
+The application keeps the pending signature and decides when to check again.
 
 ### Backend proving
 
