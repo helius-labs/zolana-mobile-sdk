@@ -83,6 +83,46 @@ void main() {
     proving: proving,
   );
 
+  Future<void> checkFreshLookup(ZolanaWallet wallet, String signature) async {
+    final transport = AppTransport();
+    final cold = await ZolanaWallet.openWithKeys(
+      config: await config(),
+      solanaPublicKey: wallet.solanaPublicKey,
+      keys: await wallet.exportKeys(),
+      transport: transport.send,
+    );
+    try {
+      final clock = Stopwatch()..start();
+      final result = await cold.transaction(signature);
+      // ignore: avoid_print
+      print(
+        'cold signature lookup: ${clock.elapsedMilliseconds} ms, ${result.entries.length} rows',
+      );
+      expect(result.status, TransactionLookupStatus.ready);
+      expect(
+        transport.sent,
+        anyElement(endsWith('/getShieldedTransactionsBySignature')),
+      );
+      expect(
+        transport.sent.where(
+          (request) => [
+            '/getShieldedTransactionsByTags',
+            '/getShieldedTransactionsByNullifiers',
+            '/getEncryptedUtxosByTags',
+          ].any(request.endsWith),
+        ),
+        isEmpty,
+      );
+      final expected = (await wallet.activity())
+          .where((row) => row.signature == signature)
+          .toList();
+      expect(result.entries, orderedEquals(expected));
+    } finally {
+      await cold.close();
+      transport.close();
+    }
+  }
+
   testWidgets('sends privately from A to B, proving on this device', (
     tester,
   ) async {
@@ -160,6 +200,10 @@ void main() {
       '(proving key download, proof, signing, confirmation)',
     );
 
+    await checkFreshLookup(sender, signature);
+    await checkFreshLookup(recipient, signature);
+    await checkFreshLookup(collector, signature);
+
     // The transfer returned once the indexer had it, so both balances
     // already read its notes.
     expect(await sender.privateBalance(), senderBefore - lamports - fee);
@@ -218,6 +262,7 @@ void main() {
       'sent $signature in ${DateTime.now().difference(started).inMilliseconds} ms '
       '(remote proof, verification, signing, confirmation)',
     );
+    await checkFreshLookup(remote, signature);
     expect(await remote.privateBalance(), senderBefore - lamports);
     expect(await recipient.privateBalance(), recipientBefore + lamports);
     // ignore: avoid_print
@@ -273,6 +318,8 @@ void main() {
       ],
       mint: mint,
     );
+    await checkFreshLookup(sender, sent);
+    await checkFreshLookup(recipient, sent);
     expect(
       await sender.privateBalance(mint: mint),
       senderBefore + shield - send,
@@ -288,13 +335,14 @@ void main() {
       demoAccounts[1].publicKey,
       mint,
     );
-    await checkedSpend(
+    final withdrawn = await checkedSpend(
       recipient,
       outputs: [
         Output.public(recipient: demoAccounts[1].publicKey, amount: unshield),
       ],
       mint: mint,
     );
+    await checkFreshLookup(recipient, withdrawn);
     expect(
       await rpc.tokenBalance(demoAccounts[1].publicKey, mint),
       publicBefore + unshield,
@@ -324,6 +372,7 @@ void main() {
       final before = await wallet.privateBalance();
       final started = DateTime.now();
       final signature = await wallet.merge(maxInputs: 8, proving: proving);
+      await checkFreshLookup(wallet, signature);
       // ignore: avoid_print
       print(
         'merged ${proving.name} in '

@@ -270,6 +270,17 @@ class ZolanaWallet {
   /// indexer does not say which spends were withdrawals.
   Future<List<native.ActivityEntry>> activity() => _serial(_wallet.activity);
 
+  /// Fetch and decrypt every activity row for one signature, without scanning
+  /// wallet history. May also read the confirmed transaction and asset or
+  /// recipient registrations. Works for a freshly opened wallet.
+  ///
+  /// Only [native.TransactionLookupStatus.ready] with an empty list means no
+  /// rows for the wallet's configured assets. Pending indexing, unavailable
+  /// transactions and incomplete details have distinct statuses; network
+  /// errors throw. Row identities match [activity] and [overview].
+  Future<native.TransactionLookup> transaction(String signature) =>
+      _serial(() => _wallet.transaction(signature: signature));
+
   /// [balances] and [activity] from one read of the indexer, which each of
   /// them makes on its own: a screen that shows both calls this once.
   Future<native.WalletOverview> overview() => _serial(_wallet.overview);

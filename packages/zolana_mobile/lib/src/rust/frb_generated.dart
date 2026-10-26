@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1928669408;
+  int get rustContentHash => 2022246054;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -193,6 +193,11 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
     required PreparedTransaction pending,
     required List<Uint8List> signatures,
+  });
+
+  Future<TransactionLookup> zolanaMobileMobileWalletTransaction({
+    required MobileWallet that,
+    required String signature,
   });
 
   Future<void> zolanaMobileMobileWalletWaitForTransaction({
@@ -1233,6 +1238,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<TransactionLookup> zolanaMobileMobileWalletTransaction({
+    required MobileWallet that,
+    required String signature,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_String(signature, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_transaction_lookup,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletTransactionConstMeta,
+        argValues: [that, signature],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletTransactionConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_transaction",
+        argNames: ["that", "signature"],
+      );
+
+  @override
   Future<void> zolanaMobileMobileWalletWaitForTransaction({
     required MobileWallet that,
     required String signature,
@@ -1251,7 +1294,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1284,7 +1327,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1315,7 +1358,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -1348,7 +1391,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -1379,7 +1422,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_operation,
@@ -1410,7 +1453,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_output_opening,
@@ -1441,7 +1484,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -1473,7 +1516,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1512,7 +1555,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1555,7 +1598,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1595,7 +1638,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1631,7 +1674,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1664,7 +1707,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1695,7 +1738,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1725,7 +1768,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1755,7 +1798,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 41,
             port: port_,
           );
         },
@@ -1782,7 +1825,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 42,
             port: port_,
           );
         },
@@ -2094,14 +2137,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ActivityEntry dco_decode_activity_entry(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return ActivityEntry(
       kind: dco_decode_activity_kind(arr[0]),
       mint: dco_decode_opt_String(arr[1]),
       amount: dco_decode_u_64(arr[2]),
       signature: dco_decode_String(arr[3]),
       slot: dco_decode_u_64(arr[4]),
+      index: dco_decode_u_64(arr[5]),
     );
   }
 
@@ -2538,6 +2582,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       reserved: dco_decode_u_64(arr[3]),
       limits: dco_decode_list_spend_limit(arr[4]),
     );
+  }
+
+  @protected
+  TransactionLookup dco_decode_transaction_lookup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return TransactionLookup(
+      status: dco_decode_transaction_lookup_status(arr[0]),
+      entries: dco_decode_list_activity_entry(arr[1]),
+      slot: dco_decode_opt_box_autoadd_u_64(arr[2]),
+      indexedSlot: dco_decode_u_64(arr[3]),
+    );
+  }
+
+  @protected
+  TransactionLookupStatus dco_decode_transaction_lookup_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return TransactionLookupStatus.values[raw as int];
   }
 
   @protected
@@ -3052,12 +3116,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_amount = sse_decode_u_64(deserializer);
     var var_signature = sse_decode_String(deserializer);
     var var_slot = sse_decode_u_64(deserializer);
+    var var_index = sse_decode_u_64(deserializer);
     return ActivityEntry(
       kind: var_kind,
       mint: var_mint,
       amount: var_amount,
       signature: var_signature,
       slot: var_slot,
+      index: var_index,
     );
   }
 
@@ -3663,6 +3729,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransactionLookup sse_decode_transaction_lookup(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_status = sse_decode_transaction_lookup_status(deserializer);
+    var var_entries = sse_decode_list_activity_entry(deserializer);
+    var var_slot = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_indexedSlot = sse_decode_u_64(deserializer);
+    return TransactionLookup(
+      status: var_status,
+      entries: var_entries,
+      slot: var_slot,
+      indexedSlot: var_indexedSlot,
+    );
+  }
+
+  @protected
+  TransactionLookupStatus sse_decode_transaction_lookup_status(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return TransactionLookupStatus.values[inner];
+  }
+
+  @protected
   TransportFailure sse_decode_transport_failure(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_message = sse_decode_String(deserializer);
@@ -4262,6 +4354,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.amount, serializer);
     sse_encode_String(self.signature, serializer);
     sse_encode_u_64(self.slot, serializer);
+    sse_encode_u_64(self.index, serializer);
   }
 
   @protected
@@ -4811,6 +4904,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.notes, serializer);
     sse_encode_u_64(self.reserved, serializer);
     sse_encode_list_spend_limit(self.limits, serializer);
+  }
+
+  @protected
+  void sse_encode_transaction_lookup(
+    TransactionLookup self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_transaction_lookup_status(self.status, serializer);
+    sse_encode_list_activity_entry(self.entries, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.slot, serializer);
+    sse_encode_u_64(self.indexedSlot, serializer);
+  }
+
+  @protected
+  void sse_encode_transaction_lookup_status(
+    TransactionLookupStatus self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -5390,6 +5504,24 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
     pending: pending,
     signatures: signatures,
   );
+
+  /// Fetch only the shielded events of `signature` and their confirmed
+  /// Solana transaction, then decrypt this wallet's rows. Does not scan or
+  /// warm the wallet's history or spendable-note cache. Asset/recipient
+  /// registry reads may be needed, but no history pages are fetched.
+  ///
+  /// A cold wallet can read its default-ring outgoing transfers and public
+  /// withdrawals using its transaction viewing key, without old input notes.
+  /// `Incomplete` reports unsupported spends or missing metadata rather than
+  /// returning an incorrect empty result. Recipient-tagged dummy padding
+  /// (possible on an exact-balance private send) is also incomplete: a cold
+  /// reader cannot authenticate it as padding without input-note history.
+  /// Only `Ready` with no entries means
+  /// there are no activity rows for this wallet's configured assets.
+  Future<TransactionLookup> transaction({required String signature}) => RustLib
+      .instance
+      .api
+      .zolanaMobileMobileWalletTransaction(that: this, signature: signature);
 
   /// Wait for a shielded-pool transaction by its signature, such as one sent
   /// before the application restarted, until its outcome is known, as

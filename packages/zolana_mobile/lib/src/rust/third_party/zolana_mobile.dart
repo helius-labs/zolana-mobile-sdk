@@ -256,6 +256,21 @@ abstract class MobileWallet implements RustOpaqueInterface {
     required List<Uint8List> signatures,
   });
 
+  /// Fetch only the shielded events of `signature` and their confirmed
+  /// Solana transaction, then decrypt this wallet's rows. Does not scan or
+  /// warm the wallet's history or spendable-note cache. Asset/recipient
+  /// registry reads may be needed, but no history pages are fetched.
+  ///
+  /// A cold wallet can read its default-ring outgoing transfers and public
+  /// withdrawals using its transaction viewing key, without old input notes.
+  /// `Incomplete` reports unsupported spends or missing metadata rather than
+  /// returning an incorrect empty result. Recipient-tagged dummy padding
+  /// (possible on an exact-balance private send) is also incomplete: a cold
+  /// reader cannot authenticate it as padding without input-note history.
+  /// Only `Ready` with no entries means
+  /// there are no activity rows for this wallet's configured assets.
+  Future<TransactionLookup> transaction({required String signature});
+
   /// Wait for a shielded-pool transaction by its signature, such as one sent
   /// before the application restarted, until its outcome is known, as
   /// [`Self::submit`] tells a send whose response was lost: done once Solana
@@ -361,12 +376,18 @@ class ActivityEntry {
   final String signature;
   final BigInt slot;
 
+  /// Stable asset-row index: the pool's asset id (1 for SOL), not the row's
+  /// position in a list or the TS SDK's output-leaf index. Together with
+  /// `signature` and `slot`, this identifies the same row across reads.
+  final BigInt index;
+
   const ActivityEntry({
     required this.kind,
     this.mint,
     required this.amount,
     required this.signature,
     required this.slot,
+    required this.index,
   });
 
   @override
@@ -375,7 +396,8 @@ class ActivityEntry {
       mint.hashCode ^
       amount.hashCode ^
       signature.hashCode ^
-      slot.hashCode;
+      slot.hashCode ^
+      index.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -386,7 +408,8 @@ class ActivityEntry {
           mint == other.mint &&
           amount == other.amount &&
           signature == other.signature &&
-          slot == other.slot;
+          slot == other.slot &&
+          index == other.index;
 }
 
 /// What a history entry did, from this wallet's side.
@@ -859,6 +882,56 @@ class TokenBalance {
           notes == other.notes &&
           reserved == other.reserved &&
           limits == other.limits;
+}
+
+/// A signature-scoped read. Network failures throw; they are never empty
+/// wallet results. Only `ready` may carry entries.
+class TransactionLookup {
+  final TransactionLookupStatus status;
+  final List<ActivityEntry> entries;
+  final BigInt? slot;
+
+  /// Highest slot the indexer had persisted for this lookup.
+  final BigInt indexedSlot;
+
+  const TransactionLookup({
+    required this.status,
+    required this.entries,
+    this.slot,
+    required this.indexedSlot,
+  });
+
+  @override
+  int get hashCode =>
+      status.hashCode ^ entries.hashCode ^ slot.hashCode ^ indexedSlot.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransactionLookup &&
+          runtimeType == other.runtimeType &&
+          status == other.status &&
+          entries == other.entries &&
+          slot == other.slot &&
+          indexedSlot == other.indexedSlot;
+}
+
+/// Whether a signature has a complete wallet result at the indexed slot.
+enum TransactionLookupStatus {
+  /// The complete result for configured assets. `entries` may be empty.
+  ready,
+
+  /// The confirmed transaction's slot is ahead of the indexer. Retry later.
+  pendingIndexing,
+
+  /// Neither the indexer nor the confirmed RPC returned the transaction.
+  /// This does not prove it never existed: the RPC may prune old history.
+  notFound,
+
+  /// The transaction was found, but this SDK cannot reconstruct every
+  /// wallet row from its format, ciphertexts or available RPC metadata.
+  /// No partial entries are returned and no history scan is attempted.
+  incomplete,
 }
 
 /// Why the application's transport has no response.

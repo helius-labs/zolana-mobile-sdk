@@ -156,6 +156,42 @@ await wallet.spend(
   execution. Registration, deposit and merge approvals retain their existing
   behavior. Openings are confidential: keep them out of logs and analytics.
 
+- **One transaction**: use `await wallet.transaction(signature)` on a detail
+  screen. It requests `getShieldedTransactionsBySignature` and the confirmed
+  Solana transaction, decrypts only that signature's events, and returns every
+  asset row. It may read asset and recipient registrations, but never calls
+  the transaction/UTXO history pagers or warms the spendable-note cache.
+
+  ```dart
+  final result = await wallet.transaction(signature);
+  switch (result.status) {
+    case TransactionLookupStatus.ready:
+      showRows(result.entries); // Empty means no rows for configured assets.
+    case TransactionLookupStatus.pendingIndexing:
+      showIndexing(); // The indexer has not reached result.slot yet.
+    case TransactionLookupStatus.notFound:
+      showUnavailable(); // Neither indexer nor confirmed RPC found it.
+    case TransactionLookupStatus.incomplete:
+      showDetailsUnavailable(); // Never a partial or guessed amount.
+  }
+  ```
+
+  Network errors throw `WalletError`. `notFound` does not prove a transaction
+  never existed: an RPC may prune old transactions. A fresh wallet can read
+  deposits, received notes, merges, default-ring sends with authenticatable
+  recipient outputs, and public withdrawals without first scanning its input
+  notes. Missing settlement metadata, unsupported spend formats, and
+  recipient-tagged dummy padding return `incomplete`. The last case can occur
+  on an exact-balance private send with no change: a cold reader cannot tell
+  that padding from an unreadable recipient note. The method does not hide
+  that limitation behind a full-history scan.
+
+  Every `ActivityEntry` from this method, `activity()` and `overview()` has
+  `{signature, slot, index}`. `index` is the pool's immutable asset id (1 for
+  SOL), so it does not move when rows are filtered or another asset is added.
+  Mobile rows aggregate one asset per signature; this index is not the TS
+  SDK's per-output leaf index and should not be compared numerically with it.
+
 - **What is public**: a deposit shows this account, the asset and the amount.
   A spend shows this account, the asset, each public output's recipient and
   amount, and the Solana address each private output's note is tagged with
