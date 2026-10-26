@@ -66,7 +66,7 @@ String friendlyError(Object error, {DemoAsset asset = sol}) {
     WalletError_InsufficientPrivateBalance(:final available) =>
       'Insufficient private balance: ${asset.format(available)} available.',
     WalletError_MergeRequired(:final maxInputs) =>
-      'This amount needs more than $maxInputs notes. Send a smaller amount.',
+      'This amount needs more than $maxInputs notes. Merge notes first or send a smaller amount.',
     WalletError_TooManyInputTrees() =>
       'Your balance is split across trees. Send a smaller amount.',
     WalletError_AmountZero() => 'Enter an amount above zero.',
