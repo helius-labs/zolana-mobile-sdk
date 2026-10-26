@@ -218,6 +218,35 @@ fn open_with(signer: &Keypair, config: WalletConfig) -> MobileWallet {
         .expect("open wallet")
 }
 
+/// Read-only recovery check for an old successful shielded transaction.
+/// RPC providers differ in how long they retain recent statuses; unit tests
+/// cover the cache miss independently of the provider's retention.
+#[test]
+#[ignore = "needs ZOLANA_E2E_HISTORICAL_SIGNATURE and a live RPC/indexer"]
+fn recovers_a_historical_transaction() {
+    let signature = required("ZOLANA_E2E_HISTORICAL_SIGNATURE").parse().unwrap();
+    let rpc = SolanaRpc::new(required("ZOLANA_E2E_RPC_URL"));
+    let recent = rpc.client().get_signature_statuses(&[signature]).unwrap();
+    let history = rpc
+        .client()
+        .get_signature_statuses_with_history(&[signature])
+        .unwrap();
+    let status = history.value[0].as_ref().expect("historical status");
+    assert!(status.err.is_none());
+    assert!(status.satisfies_commitment(solana_commitment_config::CommitmentConfig::confirmed()));
+
+    // An intentionally past height must not override evidence of success.
+    let wallet = open(&account("ZOLANA_E2E_SENDER_SEED"));
+    wallet
+        .wait_for_transaction(signature.to_string(), Some(0))
+        .unwrap();
+    println!(
+        "Recovered historical transaction {signature} at slot {}; recent lookup present: {}",
+        status.slot,
+        recent.value[0].is_some()
+    );
+}
+
 /// Sign as `signers`, which must be the required signers in order.
 fn submit(wallet: &MobileWallet, signers: &[&Keypair], pending: PreparedTransaction) -> String {
     let expected: Vec<String> = signers.iter().map(|s| s.pubkey().to_string()).collect();

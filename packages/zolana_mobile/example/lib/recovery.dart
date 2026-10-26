@@ -77,8 +77,7 @@ Future<ZolanaWallet> openWallet({
 }
 
 /// A send whose outcome is not known yet: its signature, and the last block
-/// height at which it can land, which tells a send that never went out from
-/// one still on its way.
+/// height at which it can land. Expiry alone does not tell whether it landed.
 typedef PendingSend = ({String signature, BigInt lastValidBlockHeight});
 
 /// Where the application keeps each account's [PendingSend] until its
@@ -117,10 +116,9 @@ class MemoryPendingSends implements PendingSends {
 /// transaction landed: [WalletError.transactionOutcomeUnknown], or
 /// [WalletError.walletClosed] when the application locked during the send.
 /// [settlePendingSend] then waits for it before anything else is sent. Any
-/// other result is the outcome, and the signature is dropped. After
-/// [WalletError.transactionExpired] the transaction can no longer land:
-/// sending it again, through `ZolanaWallet.refresh` or prepared anew, is
-/// safe.
+/// other result is the outcome, and the signature is dropped. Missing
+/// history stays unknown even after blockhash expiry; do not automatically
+/// prepare a replacement payment.
 Future<String> saveAndSend(
   ZolanaWallet wallet,
   SolanaSigner signer,
@@ -164,8 +162,7 @@ Future<String> saveAndSend(
 /// before the next spend.
 ///
 /// Fails as `ZolanaWallet.waitForTransaction` does. The saved send is
-/// dropped once the outcome is known, including the chain's refusal and
-/// [WalletError.transactionExpired], after which sending again is safe; it
+/// dropped once the outcome is known, including the chain's refusal; it
 /// stays saved after [WalletError.transactionOutcomeUnknown] or
 /// [WalletError.walletClosed], to look it up again before anything else is
 /// sent.
