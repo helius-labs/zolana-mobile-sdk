@@ -69,6 +69,9 @@ class FakePending implements PreparedTransaction {
   final Operation operation;
 
   @override
+  List<OutputOpening> get outputs => const [];
+
+  @override
   BigInt get lastValidBlockHeight => BigInt.from(height);
 
   @override

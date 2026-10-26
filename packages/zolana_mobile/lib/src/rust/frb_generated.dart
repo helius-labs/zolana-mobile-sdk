@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 108739387;
+  int get rustContentHash => 1928669408;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -214,6 +214,10 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Operation zolanaMobilePreparedTransactionOperation({
+    required PreparedTransaction that,
+  });
+
+  List<OutputOpening> zolanaMobilePreparedTransactionOutputs({
     required PreparedTransaction that,
   });
 
@@ -1395,7 +1399,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  List<String> zolanaMobilePreparedTransactionSigners({
+  List<OutputOpening> zolanaMobilePreparedTransactionOutputs({
     required PreparedTransaction that,
   }) {
     return handler.executeSync(
@@ -1407,6 +1411,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_output_opening,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobilePreparedTransactionOutputsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobilePreparedTransactionOutputsConstMeta =>
+      const TaskConstMeta(
+        debugName: "PreparedTransaction_outputs",
+        argNames: ["that"],
+      );
+
+  @override
+  List<String> zolanaMobilePreparedTransactionSigners({
+    required PreparedTransaction that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -1438,7 +1473,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1477,7 +1512,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 32,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1520,7 +1555,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1560,7 +1595,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 35,
             port: port_,
           );
         },
@@ -1596,7 +1631,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1629,7 +1664,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1660,7 +1695,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1690,7 +1725,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1720,7 +1755,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 40,
             port: port_,
           );
         },
@@ -1747,7 +1782,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 41,
             port: port_,
           );
         },
@@ -2184,6 +2219,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<OutputOpening> dco_decode_list_output_opening(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_output_opening).toList();
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_32_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -2357,6 +2398,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
+  }
+
+  @protected
   Output dco_decode_output(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
@@ -2373,6 +2420,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       default:
         throw Exception("unreachable");
     }
+  }
+
+  @protected
+  OutputOpening dco_decode_output_opening(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    return OutputOpening(
+      ownerSigningKey: dco_decode_opt_list_prim_u_8_strict(arr[0]),
+      nullifierKey: dco_decode_opt_list_prim_u_8_strict(arr[1]),
+      mint: dco_decode_opt_String(arr[2]),
+      amount: dco_decode_u_64(arr[3]),
+      blinding: dco_decode_list_prim_u_8_strict(arr[4]),
+      treeId: dco_decode_u_16(arr[5]),
+      dataHash: dco_decode_opt_list_prim_u_8_strict(arr[6]),
+      ringDataHash: dco_decode_opt_list_prim_u_8_strict(arr[7]),
+      ringProgramId: dco_decode_opt_String(arr[8]),
+      compact: dco_decode_bool(arr[9]),
+    );
   }
 
   @protected
@@ -3149,6 +3216,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<OutputOpening> sse_decode_list_output_opening(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <OutputOpening>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_output_opening(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -3413,6 +3494,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_u_8_strict(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   Output sse_decode_output(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3429,6 +3521,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       default:
         throw UnimplementedError('');
     }
+  }
+
+  @protected
+  OutputOpening sse_decode_output_opening(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_ownerSigningKey = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_nullifierKey = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_mint = sse_decode_opt_String(deserializer);
+    var var_amount = sse_decode_u_64(deserializer);
+    var var_blinding = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_treeId = sse_decode_u_16(deserializer);
+    var var_dataHash = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_ringDataHash = sse_decode_opt_list_prim_u_8_strict(deserializer);
+    var var_ringProgramId = sse_decode_opt_String(deserializer);
+    var var_compact = sse_decode_bool(deserializer);
+    return OutputOpening(
+      ownerSigningKey: var_ownerSigningKey,
+      nullifierKey: var_nullifierKey,
+      mint: var_mint,
+      amount: var_amount,
+      blinding: var_blinding,
+      treeId: var_treeId,
+      dataHash: var_dataHash,
+      ringDataHash: var_ringDataHash,
+      ringProgramId: var_ringProgramId,
+      compact: var_compact,
+    );
   }
 
   @protected
@@ -4297,6 +4416,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_output_opening(
+    List<OutputOpening> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_output_opening(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_32_loose(
     List<int> self,
     SseSerializer serializer,
@@ -4558,6 +4689,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_u_8_strict(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_output(Output self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
@@ -4570,6 +4714,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(recipient, serializer);
         sse_encode_u_64(amount, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_output_opening(OutputOpening self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_list_prim_u_8_strict(self.ownerSigningKey, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.nullifierKey, serializer);
+    sse_encode_opt_String(self.mint, serializer);
+    sse_encode_u_64(self.amount, serializer);
+    sse_encode_list_prim_u_8_strict(self.blinding, serializer);
+    sse_encode_u_16(self.treeId, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.dataHash, serializer);
+    sse_encode_opt_list_prim_u_8_strict(self.ringDataHash, serializer);
+    sse_encode_opt_String(self.ringProgramId, serializer);
+    sse_encode_bool(self.compact, serializer);
   }
 
   @protected
@@ -5297,6 +5456,11 @@ class PreparedTransactionImpl extends RustOpaque
   /// What it does, with what it moves and to whom.
   Operation get operation =>
       RustLib.instance.api.zolanaMobilePreparedTransactionOperation(that: this);
+
+  /// Output slots of a spend, in proof order, including padding. Empty
+  /// unless this is a spend. Do not log them.
+  List<OutputOpening> get outputs =>
+      RustLib.instance.api.zolanaMobilePreparedTransactionOutputs(that: this);
 
   /// Base58 public keys that must sign, in signature order. The first is
   /// the fee payer, whose signature is the transaction signature.
