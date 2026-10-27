@@ -536,18 +536,22 @@ sends through the wallet's RPC instead.
 - **The app closed while sending**: sign the prepared transaction in the
   application and, before `submit`, save its signature (the fee payer's,
   base58) in storage that survives a restart. Keep it when `submit` fails
-  with `WalletError.transactionOutcomeUnknown`, or with
+  with `WalletError.transactionOutcomeUnknown`, `WalletError.client`
+  (including an indexing timeout after the payment succeeded), or with
   `WalletError.walletClosed` because the app locked during the send; drop it
   on any other result. Save the transaction's `lastValidBlockHeight` with
   it. After a restart, call `waitForTransaction(signature,
-  lastValidBlockHeight: height)` before anything else is sent. With the example's `saveAndSend` and
-  `settlePendingSend`:
+  lastValidBlockHeight: height)` before anything else is sent. The example's
+  `saveAndSend` and `settlePendingSend` retain the saved send on those errors:
 
 ```dart
 try {
   await saveAndSend(wallet, signer, pending, tx);
 } on WalletError_TransactionOutcomeUnknown {
   // Keep the signature: expiry alone does not make a replacement safe.
+  await settlePendingSend(wallet, pending);
+} on WalletError_Client {
+  // The payment may have succeeded: finish indexing before sending again.
   await settlePendingSend(wallet, pending);
 }
 ```
