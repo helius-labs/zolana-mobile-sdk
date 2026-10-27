@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
@@ -6,6 +7,7 @@ import 'package:zolana_mobile_demo/app_transport.dart';
 import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
+import 'package:zolana_mobile_demo/merge_sheet.dart';
 import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
 import 'package:zolana_mobile_demo/spend_checks.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
@@ -48,6 +50,7 @@ void main() {
     indexerUrl: Network.devnet.indexerUrl,
     provingKeyDir:
         '${(await getApplicationSupportDirectory()).path}/proving-keys',
+    maxSpendInputs: 8,
     proverUrl: proverUrl,
     mints: [for (final asset in demoAssets) ?asset.config],
   );
@@ -366,12 +369,53 @@ void main() {
       transport: transport.send,
     );
     addTearDown(wallet.close);
-    await wallet.setMerging(true);
-    expect(await wallet.mergingEnabled(), isTrue);
+    await wallet.setMerging(false);
     for (final proving in [Proving.remote, Proving.local]) {
+      // Each pass has enough notes even when an earlier test already merged.
+      for (var i = 0; i < 2; i++) {
+        await wallet.deposit(BigInt.from(1000000));
+      }
       final before = await wallet.privateBalance();
       final started = DateTime.now();
-      final signature = await wallet.merge(maxInputs: 8, proving: proving);
+      late String signature;
+      if (proving == Proving.remote) {
+        final balance = (await wallet.balances()).firstWhere(
+          (b) => b.mint == null,
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MergeSheet(
+                asset: sol,
+                notes: balance.notes,
+                readEnabled: wallet.mergingEnabled,
+                setEnabled: (enabled) => wallet.setMerging(enabled),
+                merge: () async {
+                  signature = await wallet.merge(proving: Proving.remote);
+                  return signature;
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(Switch));
+        await tester.pumpAndSettle();
+        expect(await wallet.mergingEnabled(), isTrue);
+        await tester.tap(find.widgetWithText(FilledButton, 'Merge with TEE'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Notes merged. Your private balance is unchanged.'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byType(Switch));
+        await tester.pumpAndSettle();
+        expect(await wallet.mergingEnabled(), isFalse);
+        await tester.pumpWidget(const SizedBox.shrink());
+      } else {
+        await wallet.setMerging(true);
+        signature = await wallet.merge(maxInputs: 8, proving: proving);
+      }
       await checkFreshLookup(wallet, signature);
       // ignore: avoid_print
       print(
@@ -389,6 +433,7 @@ void main() {
       transport.sent.where((r) => r.startsWith('POST ') && _isProof(r)),
       hasLength(1),
     );
+    expect(transport.sent, contains('GET /tee/v1/attestation'));
   }, skip: !_enabled);
 }
 

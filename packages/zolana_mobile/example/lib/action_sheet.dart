@@ -131,7 +131,9 @@ class _ActionSheetState extends State<ActionSheet> {
     if (total > widget.available) return 'More than available';
     // The notes would not fit in one proof; a wallet that merges its notes
     // first can send it.
-    if (total > _cap) return 'More than one payment can take now';
+    if (total > _cap) {
+      return 'Merge notes with the TEE first to send this amount';
+    }
     return null;
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import 'demo_keys.dart';
 import 'demo_signer.dart';
 import 'format.dart';
 import 'main.dart' show DemoScreen;
+import 'merge_sheet.dart';
 import 'spend_checks.dart';
 import 'spend_limit.dart';
 import 'test_cluster_rpc.dart';
@@ -24,10 +26,11 @@ final _feeReserve = BigInt.from(10000000);
 final _setupMinimum = BigInt.from(5000000);
 
 class Network {
-  const Network(this.rpcUrl, this.indexerUrl);
+  const Network(this.rpcUrl, this.indexerUrl, this.proverUrl);
 
   final String rpcUrl;
   final String indexerUrl;
+  final String proverUrl;
 
   /// Zolana's devnet-d deployment: Solana RPC through Helius, keyed by the
   /// Helius key from `--dart-define=ZOLANA_API_KEY=...`, and the deployment's
@@ -35,6 +38,7 @@ class Network {
   static const devnet = Network(
     'https://beta-devnet.helius-rpc.com/?api-key=$_apiKey',
     'https://d21d98xh5lgv3b.cloudfront.net',
+    'https://d1unet9hn0mci0.cloudfront.net',
   );
 }
 
@@ -112,7 +116,9 @@ class _WalletScreenState extends State<WalletScreen> {
       final config = WalletConfig(
         rpcUrl: _network.rpcUrl,
         indexerUrl: _network.indexerUrl,
+        proverUrl: _network.proverUrl,
         provingKeyDir: keys,
+        maxSpendInputs: 8,
         mints: [for (final asset in demoAssets) ?asset.config],
       );
       final wallet = await ZolanaWallet.open(
@@ -236,8 +242,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   List<ActivityEntry> get _activity => [
     for (final entry in _history)
-      if (entry.mint == _asset.mint && entry.kind != ActivityKind.selfTransfer)
-        entry,
+      if (entry.mint == _asset.mint) entry,
   ];
 
   Future<void> _airdrop() async {
@@ -346,6 +351,35 @@ class _WalletScreenState extends State<WalletScreen> {
     builder: (_) => ReceiveSheet(address: _wallet!.solanaPublicKey),
   );
 
+  Future<void> _merge() async {
+    final prover = Uri.tryParse(_network.proverUrl);
+    if (prover == null ||
+        prover.scheme != 'https' ||
+        prover.host.isEmpty ||
+        prover.host == 'localhost' ||
+        (InternetAddress.tryParse(prover.host)?.isLoopback ?? false)) {
+      _snack('Set a remote HTTPS TEE prover in Network first.');
+      return;
+    }
+    final wallet = _wallet!;
+    final asset = _asset;
+    final generation = _generation;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => MergeSheet(
+        asset: asset,
+        notes: _balance?.notes ?? BigInt.zero,
+        readEnabled: wallet.mergingEnabled,
+        setEnabled: (enabled) => wallet.setMerging(enabled),
+        merge: () => wallet.merge(mint: asset.mint, proving: Proving.remote),
+      ),
+    );
+    if (_current(generation)) await _refresh();
+  }
+
   void _snack(String message) =>
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
@@ -353,6 +387,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _editNetwork() async {
     final rpc = TextEditingController(text: _network.rpcUrl);
     final indexer = TextEditingController(text: _network.indexerUrl);
+    final prover = TextEditingController(text: _network.proverUrl);
     final saved = await showDialog<Network>(
       context: context,
       builder: (context) => AlertDialog(
@@ -368,6 +403,10 @@ class _WalletScreenState extends State<WalletScreen> {
               controller: indexer,
               decoration: const InputDecoration(labelText: 'Zolana indexer'),
             ),
+            TextField(
+              controller: prover,
+              decoration: const InputDecoration(labelText: 'TEE prover'),
+            ),
           ],
         ),
         actions: [
@@ -378,7 +417,7 @@ class _WalletScreenState extends State<WalletScreen> {
           FilledButton(
             onPressed: () => Navigator.pop(
               context,
-              Network(rpc.text.trim(), indexer.text.trim()),
+              Network(rpc.text.trim(), indexer.text.trim(), prover.text.trim()),
             ),
             child: const Text('Save'),
           ),
@@ -387,6 +426,7 @@ class _WalletScreenState extends State<WalletScreen> {
     );
     rpc.dispose();
     indexer.dispose();
+    prover.dispose();
     if (saved != null) {
       _network = saved;
       await _open();
@@ -511,6 +551,12 @@ class _WalletScreenState extends State<WalletScreen> {
                 balance: _balance,
                 refreshing: _refreshing,
               ),
+              const SizedBox(height: 12),
+              const Text(
+                'Local proofs use at most 8 input notes. '
+                'Merge with the TEE first if a payment needs more.',
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 32),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -542,6 +588,12 @@ class _WalletScreenState extends State<WalletScreen> {
                         : null,
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _refreshing ? null : _merge,
+                icon: const Icon(Icons.merge),
+                label: const Text('Merge with TEE'),
               ),
               if (_unresolved > 0)
                 Padding(
