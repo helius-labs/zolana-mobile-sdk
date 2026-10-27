@@ -464,7 +464,7 @@ class ZolanaWallet {
       return _prepare(
         _wallet.prepareCachedSpend(
           outputs: outputs,
-          cachedInputs: cachedInputs,
+          cachedInputs: [for (final input in cachedInputs) input.copy()],
           mint: mint,
           feePayer: feePayer,
           priorityFeeLamports: priorityFeeLamports,
@@ -484,7 +484,13 @@ class ZolanaWallet {
 
   /// Verify the expected commitments and run metadata on the confirmed cache.
   Future<void> verifyCachedOutputs(List<native.CachedOutput> outputs) =>
-      _serial(() => _wallet.verifyCachedOutputs(outputs: outputs));
+      _serial(
+        () => _wallet.verifyCachedOutputs(
+          // Vec<CachedOutput> transfers ownership across the native bridge.
+          // Keep the caller's handles usable for retries and payment approval.
+          outputs: [for (final output in outputs) output.copy()],
+        ),
+      );
 
   /// Sensitive, authenticated restart state; store in secure app storage.
   Future<String> exportPreparedTransaction(PreparedTransaction transaction) =>

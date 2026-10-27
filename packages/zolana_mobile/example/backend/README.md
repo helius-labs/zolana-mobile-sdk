@@ -238,3 +238,25 @@ in `native/zolana-mobile/tests/wallet_flow.rs`; it submits devnet transactions
 and requires funded demo keys. It has been run successfully against the pinned
 devnet deployment. This is not a claim of compatibility with the client's staging
 proxy or production quote contract.
+
+The opt-in Flutter test runs the same flow through the public Dart API and the
+example's encrypted storage and signing checks. It requests queued TEE proofs,
+reopens the wallet after the first merge and before payment approval, checks
+relayer replay, refreshes the unsigned payment and confirms the recipient's
+balance and a cold transaction lookup. It covers both SOL and the demo TEST mint.
+With the backend running and the public demo accounts funded, run from
+`packages/zolana_mobile/example`:
+
+```sh
+flutter test integration_test/sponsored_merge_test.dart -d DEVICE \
+  --dart-define=ZOLANA_E2E=true \
+  --dart-define=ZOLANA_API_KEY=your-devnet-helius-key \
+  --dart-define=ZOLANA_BACKEND_URL=http://127.0.0.1:8788/ \
+  --dart-define=ZOLANA_BACKEND_AUTH=replace-with-a-random-development-token
+```
+
+Use `http://10.0.2.2:8788/` on an Android emulator. These flags can also be passed
+using `--dart-define-from-file` with a private, untracked JSON file.
+The prover can return proofs inline when no queue is configured; the test reports
+the actual status-request count. Add `--dart-define=ZOLANA_E2E_REQUIRE_QUEUED=true`
+to require live polling coverage on a deployment with a queue.

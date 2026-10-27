@@ -29,6 +29,9 @@ abstract class CachedOutput implements RustOpaqueInterface {
 
   Uint8List get commitment;
 
+  /// An independent handle for bridge calls that take ownership of inputs.
+  CachedOutput copy();
+
   String? get mint;
 
   CacheTarget get target;

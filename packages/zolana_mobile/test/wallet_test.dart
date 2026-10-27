@@ -90,9 +90,27 @@ class FakePending implements PreparedTransaction {
   bool get isDisposed => false;
 }
 
+class FakeCachedOutput implements CachedOutput {
+  @override
+  bool isDisposed = false;
+
+  @override
+  void dispose() => isDisposed = true;
+
+  @override
+  CachedOutput copy() {
+    if (isDisposed) throw StateError('cached output was consumed');
+    return FakeCachedOutput();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class FakeWallet implements MobileWallet {
   CacheTarget? cachedTarget;
   List<CachedOutput>? cachedSpendInputs;
+  bool cacheReady = true;
   @override
   Future<PreparedTransaction> prepareCachedMerge({
     required CacheTarget target,
@@ -120,6 +138,9 @@ class FakeWallet implements MobileWallet {
     BigInt? priorityFeeLamports,
   }) async {
     cachedSpendInputs = cachedInputs;
+    for (final input in cachedInputs) {
+      input.dispose(); // The bridge takes ownership, including on failures.
+    }
     return prepareSpend(
       outputs: outputs,
       mint: mint,
@@ -132,7 +153,13 @@ class FakeWallet implements MobileWallet {
   @override
   Future<void> verifyCachedOutputs({
     required List<CachedOutput> outputs,
-  }) async {}
+  }) async {
+    for (final output in outputs) {
+      output.dispose();
+    }
+    if (!cacheReady) throw const WalletError.client(message: 'cache not ready');
+  }
+
   @override
   Future<String> exportPreparedTransaction({
     required PreparedTransaction pending,
@@ -1309,6 +1336,28 @@ void main() {
       );
       final restored = await wallet.restorePreparedTransaction('snapshot');
       expect(await wallet.exportPreparedTransaction(restored), 'snapshot');
+    },
+  );
+
+  test(
+    'cached handles survive failed checks, retries and preparation',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+      final cached = FakeCachedOutput();
+      native.cacheReady = false;
+      await expectLater(
+        wallet.verifyCachedOutputs([cached]),
+        throwsA(isA<WalletError>()),
+      );
+      expect(cached.isDisposed, isFalse);
+      native.cacheReady = true;
+      await wallet.verifyCachedOutputs([cached]);
+      await wallet.prepareSpend(
+        outputs: [Output.public(recipient: owner, amount: BigInt.one)],
+        cachedInputs: [cached],
+      );
+      expect(cached.isDisposed, isFalse);
+      await wallet.verifyCachedOutputs([cached]);
     },
   );
 

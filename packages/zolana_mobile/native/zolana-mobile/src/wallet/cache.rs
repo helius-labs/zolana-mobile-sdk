@@ -84,6 +84,12 @@ pub struct CachedOutput {
     pub(super) commitment: [u8; 32],
 }
 impl CachedOutput {
+    /// An independent handle for bridge calls that take ownership of inputs.
+    #[flutter_rust_bridge::frb(sync)]
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
     #[flutter_rust_bridge::frb(sync, getter)]
     pub fn target(&self) -> CacheTarget {
         self.target.clone()
