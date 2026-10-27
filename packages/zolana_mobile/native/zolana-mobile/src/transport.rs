@@ -135,6 +135,35 @@ impl Transport {
     }
 
     /// The SDK's prover client of the prover at `url`, through this transport.
+    pub(crate) fn configured_prover(
+        &self,
+        url: String,
+        require_tee: bool,
+        policy_json: Option<&str>,
+        sync_only: bool,
+    ) -> Result<ProverClient, WalletError> {
+        let mut client = ProverClient::with_client(
+            url,
+            ProverSender {
+                sender: Sender(self.clone()),
+                sync_only,
+            },
+        );
+        if require_tee || policy_json.is_some() {
+            use zolana_client::prover::tee::TeePolicy;
+            let policy = match policy_json {
+                Some(json) => TeePolicy::from_file_json(json),
+                None => TeePolicy::default_deployment(),
+            }
+            .map_err(|error| WalletError::Client {
+                message: error.to_string(),
+            })?;
+            client = client.with_tee(policy);
+        }
+        Ok(client)
+    }
+
+    #[cfg(test)]
     pub(crate) fn prover(&self, url: String) -> ProverClient {
         ProverClient::with_client(url, Sender(self.clone()))
     }
@@ -349,6 +378,9 @@ pub(crate) mod tests {
             proving_key_url: None,
             proving: None,
             prover_url: None,
+            require_prover_tee: None,
+            prover_tee_policy: None,
+            prover_sync_only: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
@@ -528,5 +560,97 @@ pub(crate) mod tests {
             assert!(error.contains("401"), "{error}");
             assert!(!error.contains("secret"), "{error}");
         }
+    }
+}
+
+/// Refuse queue fallback before it can reach the application's HTTP stack.
+/// This also catches a jobId returned with HTTP 200 after TEE decryption.
+#[derive(Debug)]
+struct ProverSender {
+    sender: Sender,
+    sync_only: bool,
+}
+impl BlockingHttpClient for ProverSender {
+    fn send(&self, request: HttpRequest) -> Result<HttpResponse, ApiError> {
+        if self.sync_only
+            && (request.headers.contains_key("x-async")
+                || (request.method == http::Method::GET
+                    && request
+                        .url
+                        .split('?')
+                        .next()
+                        .unwrap_or("")
+                        .ends_with("/status")))
+        {
+            // A local refusal must be an HTTP client error: upstream retries
+            // transport failures during polling. No request reaches the app.
+            // For TEE calls the absent encrypted response also fails closed.
+            return Ok(HttpResponse {
+                status: StatusCode::BAD_REQUEST,
+                headers: HeaderMap::new(),
+                body: b"synchronous-only prover: queue/status polling refused".to_vec(),
+            });
+        }
+        self.sender.send(request)
+    }
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::*;
+    use zolana_client::prover::{ExpectedProvingKey, ProveRequest};
+    use zolana_client::{prover::Delivery, Prover};
+    struct Merge;
+    impl ProveRequest for Merge {
+        fn body(&self) -> Result<zeroize::Zeroizing<String>, zolana_client::ClientError> {
+            Ok("{}".to_owned().into())
+        }
+        fn proving_key(&self) -> Result<ExpectedProvingKey, zolana_client::ClientError> {
+            Ok(ExpectedProvingKey {
+                name: "merge_8_1.key".into(),
+                sha256: [0; 32],
+            })
+        }
+        fn delivery(&self) -> Delivery {
+            Delivery::InResponse
+        }
+    }
+    #[test]
+    fn queued_result_never_reaches_status_route_in_sync_only_mode() {
+        for status in [200, 202] {
+            let (transport, requests) = tests::fake(move |_| {
+                Ok(TransportResponse {
+                    status,
+                    headers: HashMap::new(),
+                    body: br#"{"jobId":"queued"}"#.to_vec(),
+                })
+            });
+            let client = transport
+                .configured_prover("http://localhost:1234/v1/zolana".into(), false, None, true)
+                .unwrap();
+            assert!(client.prove(&Merge).is_err());
+            let requests = requests.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].method, "POST");
+            assert!(requests[0].url.ends_with("/v1/zolana/prove/merge_8_1"));
+        }
+    }
+    #[test]
+    fn localhost_proxy_can_require_pinned_attestation() {
+        let (transport, requests) = tests::fake(|_| {
+            Ok(TransportResponse {
+                status: 404,
+                headers: HashMap::new(),
+                body: b"missing".to_vec(),
+            })
+        });
+        let client = transport
+            .configured_prover("http://localhost:1234/v1/zolana".into(), true, None, true)
+            .unwrap();
+        assert!(client.has_tee());
+        assert!(client.prove(&Merge).is_err());
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].url.contains("/tee/v1/attestation?nonce="));
     }
 }

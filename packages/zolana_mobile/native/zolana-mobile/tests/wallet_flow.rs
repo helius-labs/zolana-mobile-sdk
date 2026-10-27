@@ -102,6 +102,9 @@ fn config() -> WalletConfig {
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
         proving: None,
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
+        require_prover_tee: env::var("ZOLANA_E2E_REQUIRE_TEE").ok().map(|v| v == "true"),
+        prover_tee_policy: None,
+        prover_sync_only: env::var("ZOLANA_E2E_SYNC_ONLY").ok().map(|v| v == "true"),
         max_spend_inputs: None,
         reuse_notes_ms: None,
         mints: None,
@@ -174,6 +177,17 @@ fn send(
         .body(request.body);
     for (name, value) in request.headers {
         outgoing = outgoing.header(name, value);
+    }
+    if let (Ok(base), Ok(token)) = (
+        env::var("ZOLANA_E2E_PROVER_URL"),
+        env::var("ZOLANA_E2E_PROVER_AUTH"),
+    ) {
+        if request
+            .url
+            .starts_with(&format!("{}/", base.trim_end_matches('/')))
+        {
+            outgoing = outgoing.header("x-sf-auth", token);
+        }
     }
     if let Some(timeout) = request.timeout_ms {
         outgoing = outgoing.timeout(Duration::from_millis(timeout.into()));
@@ -946,5 +960,141 @@ fn merges_notes_proved_remotely_and_on_the_device() {
         let signature = submit(&wallet, &[&payer], pending);
         assert_eq!(private_sol(&mut wallet), before);
         newest(&mut wallet, &signature, ActivityKind::SelfTransfer, merged);
+    }
+}
+
+/// The example backend, real remote merge proofs and local final proofs.
+#[test]
+#[ignore = "needs funded devnet demo accounts, indexer, TEE and example backend"]
+fn sponsored_cache_rounds_restore_and_pay_locally() {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde_json::json;
+    use zolana_mobile::CacheTarget;
+    let backend = required("ZOLANA_E2E_BACKEND_URL");
+    let token = required("ZOLANA_E2E_PROVER_AUTH");
+    let http = reqwest::blocking::Client::new();
+    let owner = account("ZOLANA_E2E_SENDER_SEED");
+    let recipient = account("ZOLANA_E2E_RECIPIENT_SEED");
+    let mut wallet = open(&owner);
+    register(&mut wallet, &owner);
+    let mut receiver = open(&recipient);
+    register(&mut receiver, &recipient);
+    if let Some(pending) = wallet.prepare_merging(true, None).unwrap() {
+        submit(&wallet, &[&owner], pending);
+    }
+    let mut mints = vec![None];
+    if let Ok(mint) = env::var("ZOLANA_E2E_MINT") {
+        mints.push(Some(mint));
+    }
+    for mint in mints {
+        for _ in 0..4 {
+            let pending = wallet.prepare_deposit(mint.clone(), SPLIT, None).unwrap();
+            submit(&wallet, &[&owner], pending);
+        }
+        let run: serde_json::Value = http
+            .post(format!("{backend}/runs"))
+            .header("x-sf-auth", &token)
+            .json(&json!({"owner":owner.pubkey().to_string(),"treeId":0,"slots":2}))
+            .send()
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .unwrap();
+        let target: CacheTarget = serde_json::from_value(run["target"].clone()).unwrap();
+        let id = run["id"].as_str().unwrap();
+        let mut snapshots = Vec::new();
+        for slot in 0..2 {
+            let target = CacheTarget {
+                slot,
+                ..target.clone()
+            };
+            let pending = wallet
+                .prepare_cached_merge(
+                    target,
+                    mint.clone(),
+                    Some(2),
+                    Some(Proving::Remote),
+                    Some(5_000),
+                )
+                .expect("prepare cached merge through authenticated TEE proxy");
+            assert_eq!(pending.signers(), vec![pending.fee_payer()]);
+            assert_eq!(pending.priority_fee_lamports(), 5_000);
+            let snapshot = wallet.export_prepared_transaction(&pending).unwrap();
+            let body = json!({"slot":slot,"message":STANDARD.encode(pending.message())});
+            let relay = || {
+                http.post(format!("{backend}/runs/{id}/merges"))
+                    .header("x-sf-auth", &token)
+                    .json(&body)
+                    .send()
+                    .unwrap()
+                    .error_for_status()
+                    .unwrap()
+                    .json::<serde_json::Value>()
+                    .unwrap()
+            };
+            let submitted = relay();
+            assert_eq!(
+                submitted["signature"],
+                relay()["signature"],
+                "relayer retries preserve signed bytes"
+            );
+            let output = pending.cached_output().unwrap();
+            let mut ready = false;
+            for _ in 0..60 {
+                if wallet.verify_cached_outputs(vec![output.clone()]).is_ok() {
+                    ready = true;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            assert!(ready, "expected cache commitment should land");
+            snapshots.push(snapshot);
+            // Reopen between rounds too: restore original-input and predicted
+            // output reservations before discovering the next round's inputs.
+            drop(wallet);
+            wallet = open(&owner);
+            for snapshot in &snapshots {
+                wallet
+                    .restore_prepared_transaction(snapshot.clone())
+                    .unwrap();
+            }
+        }
+        drop(wallet);
+        wallet = open(&owner);
+        let restored: Vec<_> = snapshots
+            .into_iter()
+            .map(|snapshot| wallet.restore_prepared_transaction(snapshot).unwrap())
+            .collect();
+        let cached: Vec<_> = restored
+            .iter()
+            .map(|pending| pending.cached_output().unwrap())
+            .collect();
+        let total: u64 = cached.iter().map(|output| output.amount()).sum();
+        let amount = total / 4;
+        let outputs = vec![
+            Output::Private {
+                recipient: recipient.pubkey().to_string(),
+                amount,
+            },
+            Output::Public {
+                recipient: owner.pubkey().to_string(),
+                amount,
+            },
+        ];
+        let payment = wallet
+            .prepare_cached_spend(outputs, cached, mint.clone(), None, Some(5_000))
+            .expect("cached send and withdrawal proved locally");
+        assert_eq!(payment.signers(), vec![owner.pubkey().to_string()]);
+        assert!(!payment.outputs().is_empty());
+        let saved = wallet.export_prepared_transaction(&payment).unwrap();
+        drop(wallet);
+        wallet = open(&owner);
+        let payment = wallet.restore_prepared_transaction(saved).unwrap();
+        let signature = submit(&wallet, &[&owner], payment);
+        println!(
+            "cached send + withdrawal confirmed for {}: {signature}",
+            mint.as_deref().unwrap_or("SOL")
+        );
     }
 }

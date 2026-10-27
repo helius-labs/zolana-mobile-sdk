@@ -21,6 +21,8 @@ async-trait = "0.1"
 flutter_rust_bridge = "=2.11.1"
 futures-executor = "0.3"
 http = "1"
+hmac = "0.12"
+bytemuck = "1"
 mopro-ffi = { git = "https://github.com/sergeytimoshin/mopro", rev = "c1071f96fa5a28dca8e567dd3944331047450a2b", optional = true }
 # Only its types: the wallet sends through the application's transport.
 reqwest = { version = "0.12", default-features = false }
@@ -69,7 +71,6 @@ zopro-zolana = { git = "https://github.com/helius-labs/zk-tools.git", rev = "683
 
 [dev-dependencies]
 base64 = "0.22"
-bytemuck = "1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 solana-keypair = "3"
 solana-signer = "3.0"

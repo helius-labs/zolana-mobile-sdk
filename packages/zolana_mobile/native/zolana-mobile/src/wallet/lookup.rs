@@ -188,14 +188,13 @@ impl MobileWallet {
                 } else if matches!(slot.output_data(), Some(OutputDataEncoding::Encrypted(ref blob))
                     if blob.first() == Some(&EncryptedScheme::Confidential.as_byte()) &&
                     Confidential::embedded_viewing_pk(&blob[1..]).ok() == Some(self.address.viewing_pubkey))
+                    || slot.proofless_output().is_some_and(|output| {
+                        output.owner == own_hash
+                            && assets
+                                .asset_id(&Pubkey::new_from_array(output.asset))
+                                .is_ok()
+                    })
                 {
-                    return Ok(Details::Incomplete);
-                } else if slot.proofless_output().is_some_and(|output| {
-                    output.owner == own_hash
-                        && assets
-                            .asset_id(&Pubkey::new_from_array(output.asset))
-                            .is_ok()
-                }) {
                     return Ok(Details::Incomplete);
                 } else if !tags.contains(&slot.view_tag) {
                     pays_another = true;
@@ -246,7 +245,7 @@ impl MobileWallet {
             let Some(cx) = context else {
                 return Ok(Details::Incomplete);
             };
-            if !matches!(cx.data.circuit, CircuitId::ConfidentialEddsa(..))
+            if !matches!(cx.data.circuit.uncached(), CircuitId::ConfidentialEddsa(..))
                 || cx.owners != [self.owner]
             {
                 return Ok(Details::Incomplete);

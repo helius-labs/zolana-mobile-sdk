@@ -563,6 +563,70 @@ it returns `transactionOutcomeUnknown`, even after `lastValidBlockHeight`.
 That height stops waiting early; it does not prove the payment never landed.
 The application keeps the pending signature and decides when to check again.
 
+### Sponsored cache merges (v0.5)
+
+For a backend that accepts `[CreateCache, MergeTransact]`, pass a `cacheTarget`
+to `prepareMerge`, then use each merge's `cachedOutput` in the final
+`prepareSpend(cachedInputs: ...)`. Without a target, `prepareMerge` retains its
+ordinary tree flow; changing only `feePayer` does not create a cache transaction.
+
+```dart
+// Terms and slot assigned by your authenticated backend run.
+final merge = await wallet.prepareMerge(
+  cacheTarget: CacheTarget(
+    sponsor: sponsor, nonce: nonce, treeId: treeId, expiresAt: expiresAt,
+    slot: slot, maxPriorityFeeLamports: priorityCap, computeUnitLimit: mergeCu,
+  ),
+  maxInputs: 8,
+  proving: Proving.remote,
+  priorityFeeLamports: BigInt.from(5000),
+);
+final snapshot = await wallet.exportPreparedTransaction(merge);
+// Persist snapshot securely BEFORE handing merge.message to the relayer.
+// The sponsor signs; the wallet user does not sign this merge.
+// After the relayer submits it, check its predicted output in the cache:
+await wallet.verifyCachedOutputs([merge.cachedOutput!]);
+final payment = await wallet.prepareSpend(
+  outputs: [Output.public(recipient: destination, amount: amount)],
+  cachedInputs: [merge.cachedOutput!], // Or distinct slots of this same cache.
+  proving: Proving.local,
+  priorityFeeLamports: BigInt.from(5000),
+);
+// Persist payment too, independently check outputs, obtain user approval,
+// sign payment.message and submit. No sponsor signature is needed here.
+```
+
+Cached payment preparation always proves locally and rejects an explicit remote
+proving request. It uses only the supplied cached inputs, from one cache and one
+asset. Cached merges select original notes from the target tree (24 by default,
+51 at most with CreateCache); each round writes one slot. Merge outputs are also
+published to the tree, but the cache removes the final payment's wait for their
+indexed inclusion paths. Existing input/witness discovery still uses the indexer.
+
+`verifyCachedOutputs` checks the confirmed account's owner, layout, run metadata
+and exact output commitments. A not-yet-created or wrong cache fails, so wait or
+reconcile the relayer submission before proceeding. The fee is chosen before
+preparation and must fit the run's priority cap. Full quote/prepayment validation
+is the backend's responsibility. Cache cleanup is separate from the user payment
+in the example, after expiry, so it does not add a sponsor signature.
+
+Save snapshots and submission signatures across rounds. On restart, reopen the
+same wallet and call `restorePreparedTransaction(snapshot)` before allowing new
+spends; restored transactions include cache descriptors, openings and input
+reservations. Snapshots contain private data and are authenticated, **not
+encrypted**. Store them securely. Cached and restored reservations require an
+explicit release or a settled outcome; a lost submission response or an expired
+blockhash does not make a replacement payment safe. Refresh only an unsigned
+payment; it rechecks cache validity but cannot renew its expiry or proof roots.
+
+The [runnable proxy/relayer example](example/backend/README.md) includes
+`x-sf-auth`, synchronous and queued TEE merge routes, persistent run recovery and a Flutter entry
+point (`example/lib/main_sponsored.dart`). Both use upstream
+`ded44879b3df35482d2871bc1d0f32f2d1be2879` (v0.5.0-alpha) and the artifacts in
+this checkout. These mobile APIs are unreleased; e30b328a does not expose them.
+See the example for migration boundaries, trusted TEE policy configuration and
+the production responsibilities it intentionally leaves to the client backend.
+
 ### Backend proving
 
 A spend can be proved by a remote prover instead of the device: the
@@ -595,7 +659,9 @@ await wallet.spend(
   query of `proverUrl` (an `api-key`, for example) stays on every request.
   When the prover queues the proof and answers with a `jobId`, the wallet
   polls `GET <proverUrl>/prove/<key>/status?jobId=<jobId>` until the job
-  completes or fails.
+  completes or fails. Set `WalletConfig.proverSyncOnly: true` when the backend
+  supports synchronous responses only; queued or asynchronous fallbacks then
+  fail without sending a status-polling request.
   The Helius gateway (`https://*.helius-rpc.com/v1/zolana`) routes proofs
   by their body, so for it the paths are `/prove` and `/prove/status`.
 - **Attestation**: from every prover but a loopback one, the Helius gateway
@@ -603,10 +669,17 @@ await wallet.spend(
   `GET <proverUrl>/tee/v1/attestation?nonce=<hex>`, checks that the prover
   runs the enclave the Zolana SDK pins (devnet-d's
   prover at `https://d1unet9hn0mci0.cloudfront.net`), and encrypts every
-  request body to it, with the `Zolana-Tee`, `Zolana-Tee-Enc` and
-  `Zolana-Tee-Ciphertext` headers. Each request is bound to its method and
+  request body to it, with `Zolana-Tee` and `Zolana-Tee-Enc` headers.
+  POST ciphertext is in the octet-stream body; encrypted GET uses the
+  `Zolana-Tee-Ciphertext` header. Each request is bound to its method and
   its route below `proverUrl`. A remote prover that does not attest fails
-  every remote spend: no setting sends it plaintext.
+  every remote spend: no setting sends it plaintext. Set
+  `requireProverTee: true` to enforce this for a localhost proxy too. Optional
+  `proverTeePolicy` takes trusted `TeePolicy` JSON (or a deployment pin file)
+  instead of the default deployment; it also forces TEE. Distribute that policy
+  through the application's trusted configuration, never from the prover being
+  verified. Verification checks vendor evidence, freshness, nonce/key binding
+  and the policy's deployment measurements and key/GPU constraints.
 - **The application's backend** serves these routes, the attestation
   included, as a proxy of an attested Zolana prover: it forwards the body
   and the `X-Sync` / `X-Async` and `Zolana-Tee*` headers to the same route
@@ -702,14 +775,15 @@ final signature = await wallet.merge(proving: Proving.remote);
   then a merge fails with `WalletError.mergingDisabled`.
 - **What a merge takes**: `prepareMerge` takes the smallest notes of `mint`
   (SOL when null) on the tree that holds the most of them, at most
-  `maxInputs` (24 by default, 54 at most), and leaves out notes that
+  `maxInputs` (24 by default, bounded by the pinned merge shape), and leaves out notes that
   prepared spends reserve. Fewer than two fails with
   `WalletError.nothingToMerge`. It reserves its notes as a spend does.
 - **Who signs**: nobody but the fee payer. `feePayer` (this account when
   null) pays and signs alone, so the application's backend can pay for it.
 - **Proving**: `proving` works as for spends. Through `proverUrl` the
-  backend proxies the same `/prove` routes; the merge keys are 56 MB (8
-  notes), 173 MB (24) and 380 MB (54), so remote proving suits most phones.
+  backend proxies the same `/prove` routes; remote merges need no merge-key
+  download on the device. The pinned merge shapes are 8, 24 and 52 inputs.
+  Local merges load the corresponding key; use `provingKeys()` for its size.
 - **What the prover receives** (`Proving.remote`): for each note its amount,
   blinding, asset, nullifier and Merkle paths; the account's owner hash and
   nullifier public key; and the wallet's **nullifier secret**. No signing or

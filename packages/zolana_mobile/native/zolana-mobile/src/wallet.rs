@@ -75,7 +75,9 @@ use crate::{
     transport::Transport,
 };
 
+mod cache;
 mod lookup;
+pub use cache::{CacheTarget, CachedOutput};
 
 /// Where the wallet reads chain state and stores proving keys.
 pub struct WalletConfig {
@@ -94,6 +96,12 @@ pub struct WalletConfig {
     /// secret included, encrypted to the enclave the Zolana SDK pins once the
     /// prover attests to it; only a loopback prover gets it in plaintext.
     pub prover_url: Option<String>,
+    /// Require attestation even for a loopback proxy. Remote URLs always attest.
+    pub require_prover_tee: Option<bool>,
+    /// Trusted deployment policy JSON, supplied by the app, never by the prover.
+    pub prover_tee_policy: Option<String>,
+    /// Refuse queue fallback and status polling for remote proofs.
+    pub prover_sync_only: Option<bool>,
     /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
     /// A spend that needs more fails with [`WalletError::MergeRequired`]
     /// naming this cap, before proving. Proof time and memory grow with the
@@ -142,7 +150,7 @@ pub enum RegistrationStatus {
 
 /// What a prepared transaction does, to show the user before signing.
 /// Amounts are in base units; `mint` is `None` for SOL.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[flutter_rust_bridge::frb(non_opaque)]
 pub enum Operation {
     /// Publishes the wallet's shielded address so others can pay it.
@@ -184,7 +192,7 @@ pub enum Operation {
 
 /// One output of a spend, in the spend's asset. `recipient` is a base58
 /// Solana account, `amount` in base units.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[flutter_rust_bridge::frb(non_opaque)]
 pub enum Output {
     /// A private note for a registered wallet. The amount is hidden; the
@@ -216,7 +224,7 @@ impl Output {
 ///
 /// A dummy has no owner. A compact slot is left out of the transaction; its
 /// commitment is 32 zero bytes. The list position is the proof slot index.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[flutter_rust_bridge::frb(non_opaque)]
 pub struct OutputOpening {
     /// 34-byte signing key: scheme, 32-byte key, zero padding. Absent for a dummy.
@@ -298,6 +306,8 @@ pub struct PreparedTransaction {
     spends: Vec<[u8; 32]>,
     /// Output slots of a spend, in proof order. Empty for any other transaction.
     outputs: Vec<OutputOpening>,
+    cached_output: Option<CachedOutput>,
+    cache_inputs: Vec<CachedOutput>,
 }
 
 impl PreparedTransaction {
@@ -345,6 +355,12 @@ impl PreparedTransaction {
             .iter()
             .map(ToString::to_string)
             .collect()
+    }
+
+    /// Predicted output of a cache-targeted merge; persist with the transaction.
+    #[flutter_rust_bridge::frb(sync, getter)]
+    pub fn cached_output(&self) -> Option<CachedOutput> {
+        self.cached_output.clone()
     }
 
     /// Output slots of a spend, in proof order, including padding. Empty
@@ -509,8 +525,15 @@ struct RecentRead {
 #[derive(Default)]
 struct Reservations {
     next_id: u64,
-    /// Nullifiers and last valid block height, by transaction id.
-    reserved: HashMap<u64, (Vec<[u8; 32]>, u64)>,
+    reserved: HashMap<u64, Reservation>,
+}
+
+struct Reservation {
+    message: Vec<u8>,
+    spends: Vec<[u8; 32]>,
+    /// Exclude the cached output's tree copy from later merge rounds.
+    cached_output: Option<[u8; 32]>,
+    until: u64,
 }
 
 /// A private wallet. It holds its keys, the asset ids of the mints it has
@@ -538,6 +561,7 @@ pub struct MobileWallet {
     send_lookup: IndexerPollConfig,
     /// Default whole-transaction priority fee in lamports.
     priority_fee: Option<u64>,
+    recovery_domain: String,
     proving_keys: Arc<KeyStore>,
     /// The device prover, the client's too: [`Self::proving_keys`] proves
     /// with it so that a key stays loaded between the two.
@@ -638,6 +662,7 @@ impl MobileWallet {
         let native_prover = NativeProver::new(Arc::clone(&proving_keys));
         // With its own prover, the client fetches every Merkle proof from the
         // indexer itself: the wallet's provers prove only complete witnesses.
+        let recovery_domain = format!("{}\n{}", config.rpc_url, config.indexer_url);
         let client = ZolanaClient::with_prover(
             transport.solana_rpc(config.rpc_url)?,
             transport.indexer(&config.indexer_url),
@@ -657,9 +682,22 @@ impl MobileWallet {
             proving: config.proving.unwrap_or(Proving::Local),
             send_lookup: SEND_LOOKUP,
             priority_fee: config.priority_fee_lamports,
+            recovery_domain,
             proving_keys,
             native_prover,
-            remote_prover: config.prover_url.map(|url| Arc::new(transport.prover(url))),
+            remote_prover: config
+                .prover_url
+                .map(|url| {
+                    transport
+                        .configured_prover(
+                            url,
+                            config.require_prover_tee.unwrap_or(false),
+                            config.prover_tee_policy.as_deref(),
+                            config.prover_sync_only.unwrap_or(false),
+                        )
+                        .map(Arc::new)
+                })
+                .transpose()?,
             client,
         })
     }
@@ -810,7 +848,7 @@ impl MobileWallet {
             },
             unsigned,
         );
-        Ok(self.reserve(pending, spends))
+        self.reserve(pending, spends)
     }
 
     /// Deposit public SOL (`mint` `None`) or tokens from this account into
@@ -1033,6 +1071,25 @@ impl MobileWallet {
         proving: Option<Proving>,
         priority_fee_lamports: Option<u64>,
     ) -> Result<PreparedTransaction, WalletError> {
+        self.prepare_spend_inner(
+            outputs,
+            mint,
+            fee_payer,
+            proving,
+            priority_fee_lamports,
+            Vec::new(),
+        )
+    }
+
+    pub(super) fn prepare_spend_inner(
+        &mut self,
+        outputs: Vec<Output>,
+        mint: Option<String>,
+        fee_payer: Option<String>,
+        proving: Option<Proving>,
+        priority_fee_lamports: Option<u64>,
+        cached: Vec<CachedOutput>,
+    ) -> Result<PreparedTransaction, WalletError> {
         if outputs.is_empty() {
             return Err(WalletError::NoOutputs);
         }
@@ -1052,11 +1109,20 @@ impl MobileWallet {
         let asset = self.asset(mint)?;
         let (legs, inputs) = beside(
             || self.legs(asset, &outputs, &recipients),
-            || self.select_notes(asset, total, proof_outputs(&outputs)),
+            || {
+                if cached.is_empty() {
+                    self.select_notes(asset, total, proof_outputs(&outputs))
+                } else {
+                    self.select_cached_notes(&cached, asset, total, proof_outputs(&outputs))
+                }
+            },
         );
         let (legs, inputs) = (legs?, inputs?);
         let spends = nullifiers(&inputs);
         let mut transaction = ConfidentialTransaction::new(inputs, payer)?;
+        if let Some(first) = cached.first() {
+            transaction = transaction.with_output_tree_id(first.target.tree_id)?;
+        }
         let mut settlements = Vec::new();
         let mut created = Vec::new();
         for leg in legs {
@@ -1099,7 +1165,8 @@ impl MobileWallet {
                 .collect(),
             None => Vec::new(),
         };
-        let (unsigned, openings) = self.prove(transaction, settlements, payer, proving)?;
+        let (unsigned, openings) =
+            self.prove_with_cache(transaction, settlements, payer, proving, &cached)?;
         let mut unsigned = with_setup(unsigned, &payer, &setup)?;
         unsigned.message = self.with_priority_fee(unsigned.message, priority_fee_lamports)?;
         let mut pending = self.proved(
@@ -1111,7 +1178,9 @@ impl MobileWallet {
             unsigned,
         );
         pending.outputs = openings;
-        Ok(self.reserve(pending, spends))
+        pending.cache_inputs = cached;
+        self.check_cached_transaction(&pending)?;
+        self.reserve(pending, spends)
     }
 
     /// `outputs` with each recipient checked on chain: a private recipient
@@ -1219,6 +1288,8 @@ impl MobileWallet {
             last_valid_block_height: unsigned.last_valid_block_height,
             spends: Vec::new(),
             outputs: Vec::new(),
+            cached_output: None,
+            cache_inputs: Vec::new(),
         }
     }
 
@@ -1226,15 +1297,53 @@ impl MobileWallet {
     /// can no longer land.
     fn reserve(
         &self,
+        pending: PreparedTransaction,
+        spends: Vec<[u8; 32]>,
+    ) -> Result<PreparedTransaction, WalletError> {
+        let until = if pending.cached_output.is_some() || !pending.cache_inputs.is_empty() {
+            u64::MAX
+        } else {
+            pending.last_valid_block_height
+        };
+        self.reserve_until(pending, spends, until)
+    }
+
+    fn reserve_until(
+        &self,
         mut pending: PreparedTransaction,
         spends: Vec<[u8; 32]>,
-    ) -> PreparedTransaction {
-        self.reservations().reserved.insert(
+        until: u64,
+    ) -> Result<PreparedTransaction, WalletError> {
+        let cached_output = pending
+            .cached_output
+            .as_ref()
+            .map(|output| self.cached_note(output).map(|note| note.nullifier))
+            .transpose()?;
+        for output in &pending.cache_inputs {
+            self.cached_note(output)?;
+        }
+        let message = pending.message();
+        let mut reservations = self.reservations();
+        // Restoring the same message is idempotent. Sharing inputs does not
+        // make two different transactions the same pending submission.
+        if let Some((&id, _)) = reservations
+            .reserved
+            .iter()
+            .find(|(_, held)| held.message == message)
+        {
+            pending.id = id;
+        }
+        reservations.reserved.insert(
             pending.id,
-            (spends.clone(), pending.last_valid_block_height),
+            Reservation {
+                message,
+                spends: spends.clone(),
+                cached_output,
+                until,
+            },
         );
         pending.spends = spends;
-        pending
+        Ok(pending)
     }
 
     /// Release the notes `pending` reserves, so the next spend can select
@@ -1286,18 +1395,19 @@ impl MobileWallet {
     /// Reservations past their last valid block height are dropped: those
     /// transactions can no longer land.
     fn reserved(&self) -> Result<HashSet<[u8; 32]>, WalletError> {
-        if self.reservations().reserved.is_empty() {
-            return Ok(HashSet::new());
+        {
+            let reservations = self.reservations();
+            if reservations.reserved.is_empty() {
+                return Ok(HashSet::new());
+            }
         }
         let height = self.client.get_block_height()?;
         let mut reservations = self.reservations();
-        reservations
-            .reserved
-            .retain(|_, (_, last_valid_block_height)| *last_valid_block_height >= height);
+        reservations.reserved.retain(|_, held| held.until >= height);
         Ok(reservations
             .reserved
             .values()
-            .flat_map(|(spends, _)| spends.iter().copied())
+            .flat_map(|held| held.spends.iter().copied().chain(held.cached_output))
             .collect())
     }
 
@@ -1316,14 +1426,18 @@ impl MobileWallet {
         &self,
         pending: &PreparedTransaction,
     ) -> Result<PreparedTransaction, WalletError> {
+        self.check_cached_transaction(pending)?;
         let mut refreshed = self.pending(pending.operation.clone(), pending.message.clone())?;
+        refreshed.cached_output = pending.cached_output.clone();
+        refreshed.cache_inputs = pending.cache_inputs.clone();
         refreshed.outputs = pending.outputs.clone();
-        self.release(pending);
-        Ok(if pending.spends.is_empty() {
-            refreshed
-        } else {
-            self.reserve(refreshed, pending.spends.clone())
-        })
+        if !pending.spends.is_empty() {
+            refreshed = self.reserve(refreshed, pending.spends.clone())?;
+        }
+        if refreshed.id != pending.id {
+            self.release(pending);
+        }
+        Ok(refreshed)
     }
 
     /// SOL for `None`, otherwise a configured or discovered mint.
@@ -1409,14 +1523,29 @@ impl MobileWallet {
 
     /// Encrypt and prove `transaction` where `proving` says, and build the
     /// Solana message `payer` pays for.
-    fn prove(
+    fn prove_with_cache(
         &self,
         transaction: ConfidentialTransaction,
         settlement_transfers: Vec<TransactInterfaceTransferAccounts>,
         payer: Pubkey,
         proving: Proving,
+        cached: &[CachedOutput],
     ) -> Result<(UnsignedMessage, Vec<OutputOpening>), WalletError> {
-        let inputs = transaction.encrypt(&self.keys)?;
+        let mut inputs = transaction.encrypt(&self.keys)?;
+        if let Some(first) = cached.first() {
+            inputs = inputs.with_read_cache(first.target.address()?);
+            for input in inputs
+                .input_utxos
+                .iter_mut()
+                .filter(|input| !input.is_dummy())
+            {
+                let output = cached
+                    .iter()
+                    .find(|c| c.commitment == input.utxo_hash)
+                    .ok_or_else(|| cache::invalid("cached input commitment mismatch"))?;
+                *input = input.clone().with_cache_slot(output.target.slot)?;
+            }
+        }
         let openings = output_openings(&inputs);
         let signed = SignedPrivateTransaction {
             transaction: inputs,
@@ -1440,8 +1569,8 @@ impl MobileWallet {
     /// before anything is sent. A spend's notes are released once the send
     /// has an outcome: spent when it landed, free again when the chain
     /// refused it or it spent a note the chain already had. An unknown
-    /// outcome does not release them; reservations still expire at
-    /// the prepared transaction's last valid block height.
+    /// outcome does not release them. Ordinary preparation reservations expire
+    /// at the last valid block height; cached and restored ones remain held.
     pub fn submit(
         &self,
         pending: &PreparedTransaction,
@@ -1889,7 +2018,7 @@ mod tests {
     use super::*;
     use crate::transport::tests::unreachable;
 
-    fn config() -> WalletConfig {
+    pub(super) fn config() -> WalletConfig {
         WalletConfig {
             rpc_url: "https://rpc.example".to_string(),
             indexer_url: "https://indexer.example/v1/zolana".to_string(),
@@ -1897,6 +2026,9 @@ mod tests {
             proving_key_url: None,
             proving: None,
             prover_url: None,
+            require_prover_tee: None,
+            prover_tee_policy: None,
+            prover_sync_only: None,
             max_spend_inputs: None,
             reuse_notes_ms: None,
             mints: None,
@@ -1904,7 +2036,7 @@ mod tests {
         }
     }
 
-    fn open(signer: &Keypair) -> Result<MobileWallet, WalletError> {
+    pub(super) fn open(signer: &Keypair) -> Result<MobileWallet, WalletError> {
         open_with(signer, config())
     }
 
@@ -1959,7 +2091,7 @@ mod tests {
     }
 
     /// A deposit-kind message `signer` pays for, with no instructions.
-    fn unsigned(signer: &Keypair) -> PreparedTransaction {
+    pub(super) fn unsigned(signer: &Keypair) -> PreparedTransaction {
         let message = compile_message(
             &signer.pubkey(),
             &[],
@@ -1977,13 +2109,15 @@ mod tests {
             last_valid_block_height: 0,
             spends: Vec::new(),
             outputs: Vec::new(),
+            cached_output: None,
+            cache_inputs: Vec::new(),
         }
     }
 
     /// A wallet whose Solana RPC answers each JSON-RPC method with
     /// `answer(method)`: `{"result": ..}` or `{"error": ..}`. Returns the
     /// methods it was asked, in order.
-    fn rpc_wallet(
+    pub(super) fn rpc_wallet(
         signer: &Keypair,
         answer: impl Fn(&str) -> serde_json::Value + Send + Sync + 'static,
     ) -> (MobileWallet, Arc<Mutex<Vec<String>>>) {
@@ -3431,7 +3565,7 @@ mod tests {
                 last_valid_block_height: 5,
                 ..unsigned(&signer)
             };
-            wallet.reserve(pending, vec![[1; 32]])
+            wallet.reserve(pending, vec![[1; 32]]).unwrap()
         };
         let signed = |pending: &PreparedTransaction| {
             vec![signer.sign_message(&pending.message()).as_ref().to_vec()]
@@ -3691,7 +3825,7 @@ mod tests {
                         )],
                     )
                 };
-                let builder = Transact {
+                let mut builder = Transact {
                     payer,
                     input_trees: vec![pda::tree(0)],
                     output_tree: pda::tree(0),
@@ -3779,6 +3913,35 @@ mod tests {
                         "mint": spl.then(|| mint.to_string()), "withdraw": withdraw,
                         "tokenAccount": user_token.to_string(), "tokenProgram": token_program.to_string(),
                     }));
+                    let cache = pda::cache(&payer, 42).0;
+                    builder.data.circuit = CircuitId::ConfidentialEddsaCached(
+                        2,
+                        4,
+                        3,
+                        zolana_interface::verifying_keys::CacheAccess {
+                            read_bitmap: 5,
+                            write_slots: zolana_interface::verifying_keys::CacheAccess::NO_WRITES,
+                        },
+                    );
+                    instructions.pop();
+                    instructions.push(builder.instruction_with_cache_read(cache));
+                    let cached_message = compile_message(
+                        &payer,
+                        &instructions,
+                        Default::default(),
+                        ComputeBudgetConfig::new(1_000_000),
+                    )
+                    .unwrap();
+                    let mut cached_case = cases.last().unwrap().clone();
+                    cached_case["name"] = serde_json::json!(format!(
+                        "{}-cached",
+                        cached_case["name"].as_str().unwrap()
+                    ));
+                    cached_case["message"] = serde_json::json!(cached_message.serialize());
+                    cached_case["cacheAddress"] = serde_json::json!(cache.to_string());
+                    cached_case["cacheSlots"] = serde_json::json!([0, 2]);
+                    cases.push(cached_case);
+                    builder.data.circuit = CircuitId::ConfidentialEddsa(2, 4, 3);
                 }
             }
         }
