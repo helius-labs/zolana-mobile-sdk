@@ -112,9 +112,10 @@ class MemoryPendingSends implements PendingSends {
 /// send the application was closed during is found again after a restart.
 /// Returns the signature.
 ///
-/// The signature stays saved when the wallet cannot tell whether the
-/// transaction landed: [WalletError.transactionOutcomeUnknown], or
-/// [WalletError.walletClosed] when the application locked during the send.
+/// The signature stays saved after [WalletError.transactionOutcomeUnknown],
+/// [WalletError.client] (including an indexing timeout after the payment
+/// succeeded), or [WalletError.walletClosed] when the application locked
+/// during the send.
 /// [settlePendingSend] then waits for it before anything else is sent. Any
 /// other result is the outcome, and the signature is dropped. Missing
 /// history stays unknown even after blockhash expiry; do not automatically
@@ -146,6 +147,7 @@ Future<String> saveAndSend(
     await wallet.submit(transaction, [signed]);
   } on WalletError catch (error) {
     if (error is! WalletError_TransactionOutcomeUnknown &&
+        error is! WalletError_Client &&
         error is! WalletError_WalletClosed) {
       await pending.delete(account);
     }
@@ -163,7 +165,8 @@ Future<String> saveAndSend(
 ///
 /// Fails as `ZolanaWallet.waitForTransaction` does. The saved send is
 /// dropped once the outcome is known, including the chain's refusal; it
-/// stays saved after [WalletError.transactionOutcomeUnknown] or
+/// stays saved after [WalletError.transactionOutcomeUnknown],
+/// [WalletError.client] (including indexing failures after confirmation), or
 /// [WalletError.walletClosed], to look it up again before anything else is
 /// sent.
 Future<String?> settlePendingSend(
@@ -180,6 +183,7 @@ Future<String?> settlePendingSend(
     );
   } on WalletError catch (error) {
     if (error is! WalletError_TransactionOutcomeUnknown &&
+        error is! WalletError_Client &&
         error is! WalletError_WalletClosed) {
       await pending.delete(account);
     }
