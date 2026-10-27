@@ -12,3 +12,6 @@
 *.iml
 .DS_Store
 /.timing/
+
+# Local example relayer journals and sponsor keys
+.example-runs/

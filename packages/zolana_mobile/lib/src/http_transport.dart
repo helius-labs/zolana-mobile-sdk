@@ -24,10 +24,16 @@ import 'rust/third_party/zolana_mobile.dart'
 /// `ZolanaWallet.open` checks the URLs before the wallet uses it (see
 /// [isSecureUrl]).
 class HttpTransport {
-  HttpTransport({http.Client? client, this.stall = const Duration(seconds: 30)})
-    : _client = client ?? http.Client();
+  HttpTransport({
+    http.Client? client,
+    this.stall = const Duration(seconds: 30),
+    this.followRedirects = true,
+  }) : _client = client ?? http.Client();
 
   final http.Client _client;
+
+  /// Disable for authenticated proxies to prevent forwarding credentials on redirects.
+  final bool followRedirects;
 
   /// The longest wait for the response, or the next part of its body, of a
   /// request without [TransportRequest.timeoutMs].
@@ -35,6 +41,7 @@ class HttpTransport {
 
   Future<TransportResponse> send(TransportRequest request) async {
     final outgoing = http.Request(request.method, Uri.parse(request.url))
+      ..followRedirects = followRedirects
       ..headers.addAll(request.headers)
       ..bodyBytes = request.body;
     final timeoutMs = request.timeoutMs;

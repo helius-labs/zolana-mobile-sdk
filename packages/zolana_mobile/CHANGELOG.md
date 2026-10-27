@@ -2,6 +2,21 @@
 
 Unreleased.
 
+* Add sponsored cache merges: `prepareMerge(cacheTarget: ...)` builds unsigned
+  CreateCache + MergeTransact; `prepareSpend(cachedInputs: ...)` consumes verified
+  cache slots with a local proof. The sponsor signs merges and the user signs
+  the final payment. Both paths enforce the supplied priority fee cap.
+* Add wallet-authenticated prepared-transaction export/restore, retaining cache
+  descriptors, output openings and pending reservations across restarts.
+* Add explicit TEE enforcement/custom trusted policy and synchronous-only remote
+  proving. The example also supports encrypted queued-proof status polling.
+  Include an `x-sf-auth` proxy, validating sponsor relayer, persistent
+  run journal and Flutter sponsored-flow example for the pinned v0.5 protocol.
+* Recognize cached spends in cold transaction lookup and the example's independent
+  output checks. Validate SOL and SPL cache rounds and locally proved final
+  send/withdrawal against devnet.
+
+
 * Fix historical transaction recovery in `waitForTransaction`, `confirm` and
   lost-send handling: search RPC history and accept matching indexed events.
   Missing history remains `transactionOutcomeUnknown` after blockhash expiry;

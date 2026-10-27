@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -344406715;
+  int get rustContentHash => 1103601123;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -80,6 +80,16 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  BigInt zolanaMobileCachedOutputAmount({required CachedOutput that});
+
+  Uint8List zolanaMobileCachedOutputCommitment({required CachedOutput that});
+
+  CachedOutput zolanaMobileCachedOutputCopy({required CachedOutput that});
+
+  String? zolanaMobileCachedOutputMint({required CachedOutput that});
+
+  CacheTarget zolanaMobileCachedOutputTarget({required CachedOutput that});
+
   Future<void> zolanaMobileLocalProverClose({required LocalProver that});
 
   Future<LocalProver> zolanaMobileLocalProverLoad({required String keyPath});
@@ -109,6 +119,11 @@ abstract class RustLibApi extends BaseApi {
     required MobileWallet that,
   });
 
+  Future<String> zolanaMobileMobileWalletExportPreparedTransaction({
+    required MobileWallet that,
+    required PreparedTransaction pending,
+  });
+
   Future<bool> zolanaMobileMobileWalletMergingEnabled({
     required MobileWallet that,
   });
@@ -129,6 +144,24 @@ abstract class RustLibApi extends BaseApi {
 
   Future<WalletOverview> zolanaMobileMobileWalletOverview({
     required MobileWallet that,
+  });
+
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareCachedMerge({
+    required MobileWallet that,
+    required CacheTarget target,
+    String? mint,
+    int? maxInputs,
+    Proving? proving,
+    BigInt? priorityFeeLamports,
+  });
+
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareCachedSpend({
+    required MobileWallet that,
+    required List<Output> outputs,
+    required List<CachedOutput> cachedInputs,
+    String? mint,
+    String? feePayer,
+    BigInt? priorityFeeLamports,
   });
 
   Future<PreparedTransaction> zolanaMobileMobileWalletPrepareDeposit({
@@ -190,6 +223,12 @@ abstract class RustLibApi extends BaseApi {
     required PreparedTransaction pending,
   });
 
+  Future<PreparedTransaction>
+  zolanaMobileMobileWalletRestorePreparedTransaction({
+    required MobileWallet that,
+    required String snapshot,
+  });
+
   Future<String> zolanaMobileMobileWalletShieldedAddress({
     required MobileWallet that,
   });
@@ -205,10 +244,19 @@ abstract class RustLibApi extends BaseApi {
     required String signature,
   });
 
+  Future<void> zolanaMobileMobileWalletVerifyCachedOutputs({
+    required MobileWallet that,
+    required List<CachedOutput> outputs,
+  });
+
   Future<void> zolanaMobileMobileWalletWaitForTransaction({
     required MobileWallet that,
     required String signature,
     BigInt? lastValidBlockHeight,
+  });
+
+  CachedOutput? zolanaMobilePreparedTransactionCachedOutput({
+    required PreparedTransaction that,
   });
 
   String zolanaMobilePreparedTransactionFeePayer({
@@ -268,6 +316,10 @@ abstract class RustLibApi extends BaseApi {
     required FutureOr<TransportOutcome> Function(TransportRequest) send,
   });
 
+  Future<String> zolanaMobileCacheTargetCacheAddress({
+    required CacheTarget that,
+  });
+
   Future<Uint8List> zolanaMobileDerivationMessage({
     required String solanaPubkey,
   });
@@ -277,6 +329,14 @@ abstract class RustLibApi extends BaseApi {
   Future<Uint8List> zolanaMobilePoseidonHash({required List<Uint8List> inputs});
 
   Future<String> zolanaMobileSdkVersion();
+
+  RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_CachedOutput;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_CachedOutput;
+
+  CrossPlatformFinalizerArg get rust_arc_decrement_strong_count_CachedOutputPtr;
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_LocalProver;
@@ -329,6 +389,140 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  BigInt zolanaMobileCachedOutputAmount({required CachedOutput that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_64,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileCachedOutputAmountConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileCachedOutputAmountConstMeta =>
+      const TaskConstMeta(debugName: "CachedOutput_amount", argNames: ["that"]);
+
+  @override
+  Uint8List zolanaMobileCachedOutputCommitment({required CachedOutput that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileCachedOutputCommitmentConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileCachedOutputCommitmentConstMeta =>
+      const TaskConstMeta(
+        debugName: "CachedOutput_commitment",
+        argNames: ["that"],
+      );
+
+  @override
+  CachedOutput zolanaMobileCachedOutputCopy({required CachedOutput that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileCachedOutputCopyConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileCachedOutputCopyConstMeta =>
+      const TaskConstMeta(debugName: "CachedOutput_copy", argNames: ["that"]);
+
+  @override
+  String? zolanaMobileCachedOutputMint({required CachedOutput that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileCachedOutputMintConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileCachedOutputMintConstMeta =>
+      const TaskConstMeta(debugName: "CachedOutput_mint", argNames: ["that"]);
+
+  @override
+  CacheTarget zolanaMobileCachedOutputTarget({required CachedOutput that}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cache_target,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileCachedOutputTargetConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileCachedOutputTargetConstMeta =>
+      const TaskConstMeta(debugName: "CachedOutput_target", argNames: ["that"]);
+
+  @override
   Future<void> zolanaMobileLocalProverClose({required LocalProver that}) {
     return handler.executeNormal(
       NormalTask(
@@ -341,7 +535,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 6,
             port: port_,
           );
         },
@@ -369,7 +563,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 7,
             port: port_,
           );
         },
@@ -398,7 +592,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -431,7 +625,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 9,
             port: port_,
           );
         },
@@ -467,7 +661,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 10,
             port: port_,
           );
         },
@@ -503,7 +697,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 11,
             port: port_,
           );
         },
@@ -546,7 +740,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 12,
             port: port_,
           );
         },
@@ -582,7 +776,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 13,
             port: port_,
           );
         },
@@ -604,6 +798,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> zolanaMobileMobileWalletExportPreparedTransaction({
+    required MobileWallet that,
+    required PreparedTransaction pending,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+            pending,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletExportPreparedTransactionConstMeta,
+        argValues: [that, pending],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kZolanaMobileMobileWalletExportPreparedTransactionConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_export_prepared_transaction",
+        argNames: ["that", "pending"],
+      );
+
+  @override
   Future<bool> zolanaMobileMobileWalletMergingEnabled({
     required MobileWallet that,
   }) {
@@ -618,7 +854,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 15,
             port: port_,
           );
         },
@@ -660,7 +896,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 16,
             port: port_,
           );
         },
@@ -708,7 +944,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 17,
             port: port_,
           );
         },
@@ -745,7 +981,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 18,
             port: port_,
           );
         },
@@ -764,6 +1000,131 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "MobileWallet_overview",
         argNames: ["that"],
+      );
+
+  @override
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareCachedMerge({
+    required MobileWallet that,
+    required CacheTarget target,
+    String? mint,
+    int? maxInputs,
+    Proving? proving,
+    BigInt? priorityFeeLamports,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_box_autoadd_cache_target(target, serializer);
+          sse_encode_opt_String(mint, serializer);
+          sse_encode_opt_box_autoadd_u_32(maxInputs, serializer);
+          sse_encode_opt_box_autoadd_proving(proving, serializer);
+          sse_encode_opt_box_autoadd_u_64(priorityFeeLamports, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletPrepareCachedMergeConstMeta,
+        argValues: [
+          that,
+          target,
+          mint,
+          maxInputs,
+          proving,
+          priorityFeeLamports,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletPrepareCachedMergeConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_prepare_cached_merge",
+        argNames: [
+          "that",
+          "target",
+          "mint",
+          "maxInputs",
+          "proving",
+          "priorityFeeLamports",
+        ],
+      );
+
+  @override
+  Future<PreparedTransaction> zolanaMobileMobileWalletPrepareCachedSpend({
+    required MobileWallet that,
+    required List<Output> outputs,
+    required List<CachedOutput> cachedInputs,
+    String? mint,
+    String? feePayer,
+    BigInt? priorityFeeLamports,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_RefMut_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_list_output(outputs, serializer);
+          sse_encode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            cachedInputs,
+            serializer,
+          );
+          sse_encode_opt_String(mint, serializer);
+          sse_encode_opt_String(feePayer, serializer);
+          sse_encode_opt_box_autoadd_u_64(priorityFeeLamports, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletPrepareCachedSpendConstMeta,
+        argValues: [
+          that,
+          outputs,
+          cachedInputs,
+          mint,
+          feePayer,
+          priorityFeeLamports,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletPrepareCachedSpendConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_prepare_cached_spend",
+        argNames: [
+          "that",
+          "outputs",
+          "cachedInputs",
+          "mint",
+          "feePayer",
+          "priorityFeeLamports",
+        ],
       );
 
   @override
@@ -787,7 +1148,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 21,
             port: port_,
           );
         },
@@ -834,7 +1195,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 22,
             port: port_,
           );
         },
@@ -889,7 +1250,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 23,
             port: port_,
           );
         },
@@ -928,7 +1289,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 24,
             port: port_,
           );
         },
@@ -975,7 +1336,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1028,7 +1389,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1064,7 +1425,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1106,7 +1467,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1143,7 +1504,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1184,7 +1545,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 30,
             port: port_,
           );
         },
@@ -1206,6 +1567,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<PreparedTransaction>
+  zolanaMobileMobileWalletRestorePreparedTransaction({
+    required MobileWallet that,
+    required String snapshot,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_String(snapshot, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletRestorePreparedTransactionConstMeta,
+        argValues: [that, snapshot],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kZolanaMobileMobileWalletRestorePreparedTransactionConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_restore_prepared_transaction",
+        argNames: ["that", "snapshot"],
+      );
+
+  @override
   Future<String> zolanaMobileMobileWalletShieldedAddress({
     required MobileWallet that,
   }) {
@@ -1220,7 +1622,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1263,7 +1665,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1301,7 +1703,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1323,6 +1725,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> zolanaMobileMobileWalletVerifyCachedOutputs({
+    required MobileWallet that,
+    required List<CachedOutput> outputs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileWallet(
+            that,
+            serializer,
+          );
+          sse_encode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            outputs,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileMobileWalletVerifyCachedOutputsConstMeta,
+        argValues: [that, outputs],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileMobileWalletVerifyCachedOutputsConstMeta =>
+      const TaskConstMeta(
+        debugName: "MobileWallet_verify_cached_outputs",
+        argNames: ["that", "outputs"],
+      );
+
+  @override
   Future<void> zolanaMobileMobileWalletWaitForTransaction({
     required MobileWallet that,
     required String signature,
@@ -1341,7 +1784,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1363,6 +1806,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  CachedOutput? zolanaMobilePreparedTransactionCachedOutput({
+    required PreparedTransaction that,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
+            that,
+            serializer,
+          );
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 37)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobilePreparedTransactionCachedOutputConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobilePreparedTransactionCachedOutputConstMeta =>
+      const TaskConstMeta(
+        debugName: "PreparedTransaction_cached_output",
+        argNames: ["that"],
+      );
+
+  @override
   String zolanaMobilePreparedTransactionFeePayer({
     required PreparedTransaction that,
   }) {
@@ -1374,7 +1849,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 38)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1405,7 +1880,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -1438,7 +1913,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_prim_u_8_strict,
@@ -1469,7 +1944,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 41)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_operation,
@@ -1500,7 +1975,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 42)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_output_opening,
@@ -1531,7 +2006,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 43)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_64,
@@ -1563,7 +2038,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             that,
             serializer,
           );
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
@@ -1595,7 +2070,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1634,7 +2109,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1677,7 +2152,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 47,
             port: port_,
           );
         },
@@ -1717,7 +2192,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1753,7 +2228,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1786,7 +2261,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 50,
             port: port_,
           );
         },
@@ -1806,6 +2281,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "Transport_new", argNames: ["send"]);
 
   @override
+  Future<String> zolanaMobileCacheTargetCacheAddress({
+    required CacheTarget that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_cache_target(that, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 51,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_wallet_error,
+        ),
+        constMeta: kZolanaMobileCacheTargetCacheAddressConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileCacheTargetCacheAddressConstMeta =>
+      const TaskConstMeta(
+        debugName: "cache_target_cache_address",
+        argNames: ["that"],
+      );
+
+  @override
   Future<Uint8List> zolanaMobileDerivationMessage({
     required String solanaPubkey,
   }) {
@@ -1817,7 +2325,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 40,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1847,7 +2355,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 41,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1877,7 +2385,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 54,
             port: port_,
           );
         },
@@ -1904,7 +2412,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 55,
             port: port_,
           );
         },
@@ -1993,6 +2501,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   RustArcIncrementStrongCountFnType
+  get rust_arc_increment_strong_count_CachedOutput => wire
+      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput;
+
+  RustArcDecrementStrongCountFnType
+  get rust_arc_decrement_strong_count_CachedOutput => wire
+      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput;
+
+  RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_LocalProver => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLocalProver;
 
@@ -2036,6 +2552,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  CachedOutput
+  dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CachedOutputImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2090,6 +2615,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return MobileWalletImpl.frbInternalDcoDecode(raw as List<dynamic>);
+  }
+
+  @protected
+  CachedOutput
+  dco_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CachedOutputImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2159,6 +2693,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       dco_decode_list_record_string_string(raw)
           .map((e) => MapEntry(e.$1, e.$2)),
     );
+  }
+
+  @protected
+  CachedOutput
+  dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CachedOutputImpl.frbInternalDcoDecode(raw as List<dynamic>);
   }
 
   @protected
@@ -2241,6 +2784,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CachedOutput
+  dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+      raw,
+    );
+  }
+
+  @protected
   PreparedTransaction
   dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
@@ -2249,6 +2803,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
       raw,
     );
+  }
+
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  CacheTarget dco_decode_box_autoadd_cache_target(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_cache_target(raw);
   }
 
   @protected
@@ -2300,15 +2866,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CacheTarget dco_decode_cache_target(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return CacheTarget(
+      sponsor: dco_decode_String(arr[0]),
+      nonce: dco_decode_u_64(arr[1]),
+      treeId: dco_decode_u_16(arr[2]),
+      expiresAt: dco_decode_i_64(arr[3]),
+      slot: dco_decode_u_8(arr[4]),
+      maxPriorityFeeLamports: dco_decode_u_64(arr[5]),
+      computeUnitLimit: dco_decode_u_32(arr[6]),
+    );
+  }
+
+  @protected
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
   }
 
   @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeI64(raw);
+  }
+
+  @protected
   PlatformInt64 dco_decode_isize(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeI64(raw);
+  }
+
+  @protected
+  List<CachedOutput>
+  dco_decode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(
+          dco_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput,
+        )
+        .toList();
   }
 
   @protected
@@ -2470,6 +3072,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CachedOutput?
+  dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+            raw,
+          );
+  }
+
+  @protected
   PreparedTransaction?
   dco_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     dynamic raw,
@@ -2480,6 +3095,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         : dco_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
             raw,
           );
+  }
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
   }
 
   @protected
@@ -2795,8 +3416,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   WalletConfig dco_decode_wallet_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 10)
-      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return WalletConfig(
       rpcUrl: dco_decode_String(arr[0]),
       indexerUrl: dco_decode_String(arr[1]),
@@ -2804,10 +3425,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       provingKeyUrl: dco_decode_opt_String(arr[3]),
       proving: dco_decode_opt_box_autoadd_proving(arr[4]),
       proverUrl: dco_decode_opt_String(arr[5]),
-      maxSpendInputs: dco_decode_opt_box_autoadd_u_32(arr[6]),
-      reuseNotesMs: dco_decode_opt_box_autoadd_u_64(arr[7]),
-      mints: dco_decode_opt_list_mint_config(arr[8]),
-      priorityFeeLamports: dco_decode_opt_box_autoadd_u_64(arr[9]),
+      requireProverTee: dco_decode_opt_box_autoadd_bool(arr[6]),
+      proverTeePolicy: dco_decode_opt_String(arr[7]),
+      proverSyncOnly: dco_decode_opt_box_autoadd_bool(arr[8]),
+      maxSpendInputs: dco_decode_opt_box_autoadd_u_32(arr[9]),
+      reuseNotesMs: dco_decode_opt_box_autoadd_u_64(arr[10]),
+      mints: dco_decode_opt_list_mint_config(arr[11]),
+      priorityFeeLamports: dco_decode_opt_box_autoadd_u_64(arr[12]),
     );
   }
 
@@ -3005,6 +3629,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CachedOutput
+  sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return CachedOutputImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   LocalProver
   sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLocalProver(
     SseDeserializer deserializer,
@@ -3077,6 +3713,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CachedOutput
+  sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return CachedOutputImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
+  }
+
+  @protected
   LocalProver
   sse_decode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLocalProver(
     SseDeserializer deserializer,
@@ -3138,6 +3786,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_record_string_string(deserializer);
     return Map.fromEntries(inner.map((e) => MapEntry(e.$1, e.$2)));
+  }
+
+  @protected
+  CachedOutput
+  sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return CachedOutputImpl.frbInternalSseDecode(
+      sse_decode_usize(deserializer),
+      sse_decode_i_32(deserializer),
+    );
   }
 
   @protected
@@ -3240,6 +3900,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CachedOutput
+  sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+      deserializer,
+    ));
+  }
+
+  @protected
   PreparedTransaction
   sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
@@ -3248,6 +3919,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return (sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
       deserializer,
     ));
+  }
+
+  @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bool(deserializer));
+  }
+
+  @protected
+  CacheTarget sse_decode_box_autoadd_cache_target(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_cache_target(deserializer));
   }
 
   @protected
@@ -3305,15 +3990,61 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CacheTarget sse_decode_cache_target(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_sponsor = sse_decode_String(deserializer);
+    var var_nonce = sse_decode_u_64(deserializer);
+    var var_treeId = sse_decode_u_16(deserializer);
+    var var_expiresAt = sse_decode_i_64(deserializer);
+    var var_slot = sse_decode_u_8(deserializer);
+    var var_maxPriorityFeeLamports = sse_decode_u_64(deserializer);
+    var var_computeUnitLimit = sse_decode_u_32(deserializer);
+    return CacheTarget(
+      sponsor: var_sponsor,
+      nonce: var_nonce,
+      treeId: var_treeId,
+      expiresAt: var_expiresAt,
+      slot: var_slot,
+      maxPriorityFeeLamports: var_maxPriorityFeeLamports,
+      computeUnitLimit: var_computeUnitLimit,
+    );
+  }
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
   }
 
   @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
   PlatformInt64 sse_decode_isize(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
+  List<CachedOutput>
+  sse_decode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <CachedOutput>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(
+        sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+          deserializer,
+        ),
+      );
+    }
+    return ans_;
   }
 
   @protected
@@ -3567,6 +4298,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CachedOutput?
+  sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+        deserializer,
+      ));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   PreparedTransaction?
   sse_decode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     SseDeserializer deserializer,
@@ -3577,6 +4324,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       return (sse_decode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
         deserializer,
       ));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bool(deserializer));
     } else {
       return null;
     }
@@ -3968,6 +4726,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_provingKeyUrl = sse_decode_opt_String(deserializer);
     var var_proving = sse_decode_opt_box_autoadd_proving(deserializer);
     var var_proverUrl = sse_decode_opt_String(deserializer);
+    var var_requireProverTee = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_proverTeePolicy = sse_decode_opt_String(deserializer);
+    var var_proverSyncOnly = sse_decode_opt_box_autoadd_bool(deserializer);
     var var_maxSpendInputs = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_reuseNotesMs = sse_decode_opt_box_autoadd_u_64(deserializer);
     var var_mints = sse_decode_opt_list_mint_config(deserializer);
@@ -3979,6 +4740,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       provingKeyUrl: var_provingKeyUrl,
       proving: var_proving,
       proverUrl: var_proverUrl,
+      requireProverTee: var_requireProverTee,
+      proverTeePolicy: var_proverTeePolicy,
+      proverSyncOnly: var_proverSyncOnly,
       maxSpendInputs: var_maxSpendInputs,
       reuseNotesMs: var_reuseNotesMs,
       mints: var_mints,
@@ -4211,6 +4975,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    CachedOutput self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as CachedOutputImpl).frbInternalSseEncode(move: true),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLocalProver(
     LocalProver self,
     SseSerializer serializer,
@@ -4283,6 +5060,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_usize(
       (self as MobileWalletImpl).frbInternalSseEncode(move: false),
+      serializer,
+    );
+  }
+
+  @protected
+  void
+  sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    CachedOutput self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as CachedOutputImpl).frbInternalSseEncode(move: false),
       serializer,
     );
   }
@@ -4398,6 +5188,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    CachedOutput self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_usize(
+      (self as CachedOutputImpl).frbInternalSseEncode(move: null),
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerLocalProver(
     LocalProver self,
     SseSerializer serializer,
@@ -4492,6 +5295,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    CachedOutput self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+      self,
+      serializer,
+    );
+  }
+
+  @protected
+  void
   sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     PreparedTransaction self,
     SseSerializer serializer,
@@ -4501,6 +5317,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       self,
       serializer,
     );
+  }
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_cache_target(
+    CacheTarget self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_cache_target(self, serializer);
   }
 
   @protected
@@ -4564,15 +5395,49 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_cache_target(CacheTarget self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.sponsor, serializer);
+    sse_encode_u_64(self.nonce, serializer);
+    sse_encode_u_16(self.treeId, serializer);
+    sse_encode_i_64(self.expiresAt, serializer);
+    sse_encode_u_8(self.slot, serializer);
+    sse_encode_u_64(self.maxPriorityFeeLamports, serializer);
+    sse_encode_u_32(self.computeUnitLimit, serializer);
+  }
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
   }
 
   @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
   void sse_encode_isize(PlatformInt64 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
+  void
+  sse_encode_list_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    List<CachedOutput> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+        item,
+        serializer,
+      );
+    }
   }
 
   @protected
@@ -4815,6 +5680,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void
+  sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+    CachedOutput? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCachedOutput(
+        self,
+        serializer,
+      );
+    }
+  }
+
+  @protected
+  void
   sse_encode_opt_box_autoadd_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerPreparedTransaction(
     PreparedTransaction? self,
     SseSerializer serializer,
@@ -4827,6 +5709,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         self,
         serializer,
       );
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
     }
   }
 
@@ -5158,6 +6050,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_String(self.provingKeyUrl, serializer);
     sse_encode_opt_box_autoadd_proving(self.proving, serializer);
     sse_encode_opt_String(self.proverUrl, serializer);
+    sse_encode_opt_box_autoadd_bool(self.requireProverTee, serializer);
+    sse_encode_opt_String(self.proverTeePolicy, serializer);
+    sse_encode_opt_box_autoadd_bool(self.proverSyncOnly, serializer);
     sse_encode_opt_box_autoadd_u_32(self.maxSpendInputs, serializer);
     sse_encode_opt_box_autoadd_u_64(self.reuseNotesMs, serializer);
     sse_encode_opt_list_mint_config(self.mints, serializer);
@@ -5368,6 +6263,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 }
 
 @sealed
+class CachedOutputImpl extends RustOpaque implements CachedOutput {
+  // Not to be used by end users
+  CachedOutputImpl.frbInternalDcoDecode(List<dynamic> wire)
+    : super.frbInternalDcoDecode(wire, _kStaticData);
+
+  // Not to be used by end users
+  CachedOutputImpl.frbInternalSseDecode(BigInt ptr, int externalSizeOnNative)
+    : super.frbInternalSseDecode(ptr, externalSizeOnNative, _kStaticData);
+
+  static final _kStaticData = RustArcStaticData(
+    rustArcIncrementStrongCount:
+        RustLib.instance.api.rust_arc_increment_strong_count_CachedOutput,
+    rustArcDecrementStrongCount:
+        RustLib.instance.api.rust_arc_decrement_strong_count_CachedOutput,
+    rustArcDecrementStrongCountPtr:
+        RustLib.instance.api.rust_arc_decrement_strong_count_CachedOutputPtr,
+  );
+
+  BigInt get amount =>
+      RustLib.instance.api.zolanaMobileCachedOutputAmount(that: this);
+
+  Uint8List get commitment =>
+      RustLib.instance.api.zolanaMobileCachedOutputCommitment(that: this);
+
+  /// An independent handle for bridge calls that take ownership of inputs.
+  CachedOutput copy() =>
+      RustLib.instance.api.zolanaMobileCachedOutputCopy(that: this);
+
+  String? get mint =>
+      RustLib.instance.api.zolanaMobileCachedOutputMint(that: this);
+
+  CacheTarget get target =>
+      RustLib.instance.api.zolanaMobileCachedOutputTarget(that: this);
+}
+
+@sealed
 class LocalProverImpl extends RustOpaque implements LocalProver {
   // Not to be used by end users
   LocalProverImpl.frbInternalDcoDecode(List<dynamic> wire)
@@ -5464,6 +6395,15 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   Future<WalletKeys> exportKeys() =>
       RustLib.instance.api.zolanaMobileMobileWalletExportKeys(that: this);
 
+  /// Versioned, wallet-authenticated snapshot. Contains private amounts and
+  /// blindings: store securely with the run and submission signatures.
+  Future<String> exportPreparedTransaction({
+    required PreparedTransaction pending,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletExportPreparedTransaction(
+    that: this,
+    pending: pending,
+  );
+
   /// Whether this account's user record lets merges of its notes run.
   /// `false` before registration.
   Future<bool> mergingEnabled() =>
@@ -5473,6 +6413,40 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// indexer, and the assets of notes that could not be included in either.
   Future<WalletOverview> overview() =>
       RustLib.instance.api.zolanaMobileMobileWalletOverview(that: this);
+
+  /// Build an unsigned [CreateCache, MergeTransact], including an idempotent
+  /// cache creation in every round. Notes come from the target's one tree.
+  Future<PreparedTransaction> prepareCachedMerge({
+    required CacheTarget target,
+    String? mint,
+    int? maxInputs,
+    Proving? proving,
+    BigInt? priorityFeeLamports,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareCachedMerge(
+    that: this,
+    target: target,
+    mint: mint,
+    maxInputs: maxInputs,
+    proving: proving,
+    priorityFeeLamports: priorityFeeLamports,
+  );
+
+  /// Spend only these cache outputs. Deliberately does not silently add tree
+  /// inputs: the input set stays the one the app approved for this run.
+  Future<PreparedTransaction> prepareCachedSpend({
+    required List<Output> outputs,
+    required List<CachedOutput> cachedInputs,
+    String? mint,
+    String? feePayer,
+    BigInt? priorityFeeLamports,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareCachedSpend(
+    that: this,
+    outputs: outputs,
+    cachedInputs: cachedInputs,
+    mint: mint,
+    feePayer: feePayer,
+    priorityFeeLamports: priorityFeeLamports,
+  );
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
@@ -5642,6 +6616,16 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
       .api
       .zolanaMobileMobileWalletRelease(that: this, pending: pending);
 
+  /// Restore before allowing new spends. Restored reservations stay until
+  /// explicitly released or the transaction outcome is settled; expiry alone
+  /// does not establish that an interrupted submission failed.
+  Future<PreparedTransaction> restorePreparedTransaction({
+    required String snapshot,
+  }) => RustLib.instance.api.zolanaMobileMobileWalletRestorePreparedTransaction(
+    that: this,
+    snapshot: snapshot,
+  );
+
   Future<String> shieldedAddress() =>
       RustLib.instance.api.zolanaMobileMobileWalletShieldedAddress(that: this);
 
@@ -5652,8 +6636,8 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// before anything is sent. A spend's notes are released once the send
   /// has an outcome: spent when it landed, free again when the chain
   /// refused it or it spent a note the chain already had. An unknown
-  /// outcome does not release them; reservations still expire at
-  /// the prepared transaction's last valid block height.
+  /// outcome does not release them. Ordinary preparation reservations expire
+  /// at the last valid block height; cached and restored ones remain held.
   Future<String> submit({
     required PreparedTransaction pending,
     required List<Uint8List> signatures,
@@ -5680,6 +6664,14 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
       .instance
       .api
       .zolanaMobileMobileWalletTransaction(that: this, signature: signature);
+
+  /// Check account owner, layout, run metadata and every expected commitment
+  /// at RPC confirmed commitment. Does not wait for the indexer or a prover job.
+  Future<void> verifyCachedOutputs({required List<CachedOutput> outputs}) =>
+      RustLib.instance.api.zolanaMobileMobileWalletVerifyCachedOutputs(
+        that: this,
+        outputs: outputs,
+      );
 
   /// Recover a shielded-pool transaction by its signature, including after
   /// an application restart. Searches RPC history and accepts a matching
@@ -5728,6 +6720,10 @@ class PreparedTransactionImpl extends RustOpaque
         .api
         .rust_arc_decrement_strong_count_PreparedTransactionPtr,
   );
+
+  /// Predicted output of a cache-targeted merge; persist with the transaction.
+  CachedOutput? get cachedOutput => RustLib.instance.api
+      .zolanaMobilePreparedTransactionCachedOutput(that: this);
 
   /// The base58 account that pays the network fee: the first signer.
   String get feePayer =>

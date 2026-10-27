@@ -96,7 +96,9 @@ abstract interface class WalletBackend {
 /// Only the notes its prepared spends reserve are kept, in memory, in this
 /// open wallet: the next spend selects other notes until the prepared
 /// spend's outcome is known through [submit] or [confirm], it is [release]d,
-/// or it is past its [PreparedTransaction.lastValidBlockHeight]. A spend
+/// or, for an ordinary preparation, it is past its
+/// [PreparedTransaction.lastValidBlockHeight]. Cached and restored preparations
+/// keep their reservations until release or a settled outcome. A spend
 /// that would need a reserved note fails with [WalletError.notesReserved];
 /// [native.TokenBalance.reserved] says how much the reserved notes hold.
 ///
@@ -335,14 +337,37 @@ class ZolanaWallet {
   /// [prepareSpend]; a remote prover receives this wallet's nullifier
   /// secret and learns every merged amount. The proof expires ten minutes
   /// after this call, and [refresh] does not extend it.
+  ///
+  /// [cacheTarget] builds CreateCache + MergeTransact for the target sponsor,
+  /// with one output in its assigned slot (51 inputs at most). [feePayer], if
+  /// supplied, must match that sponsor. The returned cachedOutput can be used
+  /// in [prepareSpend] after the on-chain cache has been verified. The run's
+  /// priority cap and expiry are enforced before preparing the transaction.
   Future<PreparedTransaction> prepareMerge({
     String? mint,
     int? maxInputs,
     String? feePayer,
     native.Proving? proving,
     BigInt? priorityFeeLamports,
-  }) => _serial(
-    () => _prepare(
+    native.CacheTarget? cacheTarget,
+  }) => _serial(() {
+    if (cacheTarget != null) {
+      if (feePayer != null && feePayer != cacheTarget.sponsor) {
+        throw const WalletError.client(
+          message: 'feePayer must match cache sponsor',
+        );
+      }
+      return _prepare(
+        _wallet.prepareCachedMerge(
+          target: cacheTarget,
+          mint: mint,
+          maxInputs: maxInputs,
+          proving: proving,
+          priorityFeeLamports: priorityFeeLamports,
+        ),
+      );
+    }
+    return _prepare(
       _wallet.prepareMerge(
         mint: mint,
         maxInputs: maxInputs,
@@ -350,8 +375,8 @@ class ZolanaWallet {
         proving: proving,
         priorityFeeLamports: priorityFeeLamports,
       ),
-    ),
-  );
+    );
+  });
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.
@@ -409,6 +434,11 @@ class ZolanaWallet {
   /// so it cannot change afterwards. [PreparedTransaction.signers] is then
   /// `[feePayer, solanaPublicKey]`.
   ///
+  /// [cachedInputs] consumes only the supplied distinct slots of one verified
+  /// run cache. This path always proves locally and enforces the run fee cap;
+  /// an explicit `Proving.remote` is rejected. Persist prepared transactions
+  /// with [exportPreparedTransaction] for restoration between rounds.
+  ///
   /// [proving] says where the spend is proved, `WalletConfig.proving` when
   /// null. `Proving.remote` asks the prover at `WalletConfig.proverUrl`
   /// through the transport; without one it fails with
@@ -423,8 +453,25 @@ class ZolanaWallet {
     String? feePayer,
     native.Proving? proving,
     BigInt? priorityFeeLamports,
-  }) => _serial(
-    () => _prepare(
+    List<native.CachedOutput>? cachedInputs,
+  }) => _serial(() {
+    if (cachedInputs != null) {
+      if (proving == native.Proving.remote) {
+        throw const WalletError.client(
+          message: 'cached payments must be proved locally',
+        );
+      }
+      return _prepare(
+        _wallet.prepareCachedSpend(
+          outputs: outputs,
+          cachedInputs: [for (final input in cachedInputs) input.copy()],
+          mint: mint,
+          feePayer: feePayer,
+          priorityFeeLamports: priorityFeeLamports,
+        ),
+      );
+    }
+    return _prepare(
       _wallet.prepareSpend(
         outputs: outputs,
         mint: mint,
@@ -432,8 +479,29 @@ class ZolanaWallet {
         proving: proving,
         priorityFeeLamports: priorityFeeLamports,
       ),
-    ),
-  );
+    );
+  });
+
+  /// Verify the expected commitments and run metadata on the confirmed cache.
+  Future<void> verifyCachedOutputs(List<native.CachedOutput> outputs) =>
+      _serial(
+        () => _wallet.verifyCachedOutputs(
+          // Vec<CachedOutput> transfers ownership across the native bridge.
+          // Keep the caller's handles usable for retries and payment approval.
+          outputs: [for (final output in outputs) output.copy()],
+        ),
+      );
+
+  /// Sensitive, authenticated restart state; store in secure app storage.
+  Future<String> exportPreparedTransaction(PreparedTransaction transaction) =>
+      _serial(() => _wallet.exportPreparedTransaction(pending: transaction));
+
+  /// Restore before preparing new payments. Reconcile saved submission
+  /// signatures before releasing the restored input reservations.
+  Future<PreparedTransaction> restorePreparedTransaction(String snapshot) =>
+      _serial(
+        () => _prepare(_wallet.restorePreparedTransaction(snapshot: snapshot)),
+      );
 
   /// [transaction] with a new blockhash and the same proof, for an approval
   /// that outlived [PreparedTransaction.lastValidBlockHeight]. Sign the new

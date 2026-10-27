@@ -23,6 +23,20 @@ Future<String> sdkVersion() => RustLib.instance.api.zolanaMobileSdkVersion();
 Future<Uint8List> poseidonHash({required List<Uint8List> inputs}) =>
     RustLib.instance.api.zolanaMobilePoseidonHash(inputs: inputs);
 
+// Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<CachedOutput>>
+abstract class CachedOutput implements RustOpaqueInterface {
+  BigInt get amount;
+
+  Uint8List get commitment;
+
+  /// An independent handle for bridge calls that take ownership of inputs.
+  CachedOutput copy();
+
+  String? get mint;
+
+  CacheTarget get target;
+}
+
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<LocalProver>>
 abstract class LocalProver implements RustOpaqueInterface {
   /// Release the key, after the proof in progress, which then fails with
@@ -79,6 +93,12 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// The keys [`Self::open_with_keys`] opens this wallet from.
   Future<WalletKeys> exportKeys();
 
+  /// Versioned, wallet-authenticated snapshot. Contains private amounts and
+  /// blindings: store securely with the run and submission signatures.
+  Future<String> exportPreparedTransaction({
+    required PreparedTransaction pending,
+  });
+
   /// Whether this account's user record lets merges of its notes run.
   /// `false` before registration.
   Future<bool> mergingEnabled();
@@ -117,6 +137,26 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// [`Self::balances`] and [`Self::activity`] from one read of the
   /// indexer, and the assets of notes that could not be included in either.
   Future<WalletOverview> overview();
+
+  /// Build an unsigned [CreateCache, MergeTransact], including an idempotent
+  /// cache creation in every round. Notes come from the target's one tree.
+  Future<PreparedTransaction> prepareCachedMerge({
+    required CacheTarget target,
+    String? mint,
+    int? maxInputs,
+    Proving? proving,
+    BigInt? priorityFeeLamports,
+  });
+
+  /// Spend only these cache outputs. Deliberately does not silently add tree
+  /// inputs: the input set stays the one the app approved for this run.
+  Future<PreparedTransaction> prepareCachedSpend({
+    required List<Output> outputs,
+    required List<CachedOutput> cachedInputs,
+    String? mint,
+    String? feePayer,
+    BigInt? priorityFeeLamports,
+  });
 
   /// Deposit public SOL (`mint` `None`) or tokens from this account into
   /// its own private balance. Deposits carry no proof.
@@ -250,6 +290,13 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// outcome is known.
   Future<void> release({required PreparedTransaction pending});
 
+  /// Restore before allowing new spends. Restored reservations stay until
+  /// explicitly released or the transaction outcome is settled; expiry alone
+  /// does not establish that an interrupted submission failed.
+  Future<PreparedTransaction> restorePreparedTransaction({
+    required String snapshot,
+  });
+
   Future<String> shieldedAddress();
 
   /// Attach the signatures, send, and wait as [`Self::confirm`] does.
@@ -259,8 +306,8 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// before anything is sent. A spend's notes are released once the send
   /// has an outcome: spent when it landed, free again when the chain
   /// refused it or it spent a note the chain already had. An unknown
-  /// outcome does not release them; reservations still expire at
-  /// the prepared transaction's last valid block height.
+  /// outcome does not release them. Ordinary preparation reservations expire
+  /// at the last valid block height; cached and restored ones remain held.
   Future<String> submit({
     required PreparedTransaction pending,
     required List<Uint8List> signatures,
@@ -281,6 +328,10 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// there are no activity rows for this wallet's configured assets.
   Future<TransactionLookup> transaction({required String signature});
 
+  /// Check account owner, layout, run metadata and every expected commitment
+  /// at RPC confirmed commitment. Does not wait for the indexer or a prover job.
+  Future<void> verifyCachedOutputs({required List<CachedOutput> outputs});
+
   /// Recover a shielded-pool transaction by its signature, including after
   /// an application restart. Searches RPC history and accepts a matching
   /// indexed event when RPC history is unavailable. Success waits for the
@@ -299,6 +350,9 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreparedTransaction>>
 abstract class PreparedTransaction implements RustOpaqueInterface {
+  /// Predicted output of a cache-targeted merge; persist with the transaction.
+  CachedOutput? get cachedOutput;
+
   /// The base58 account that pays the network fee: the first signer.
   String get feePayer;
 
@@ -441,6 +495,54 @@ enum ActivityKind {
 
   /// Notes moved within this wallet: a merge, or a transfer to itself.
   selfTransfer,
+}
+
+/// Terms supplied by the sponsor. This version uses the sponsor as payer and
+/// cache writer, so the unsigned merge requires only its signature.
+class CacheTarget {
+  final String sponsor;
+  final BigInt nonce;
+  final int treeId;
+  final PlatformInt64 expiresAt;
+  final int slot;
+  final BigInt maxPriorityFeeLamports;
+  final int computeUnitLimit;
+
+  const CacheTarget({
+    required this.sponsor,
+    required this.nonce,
+    required this.treeId,
+    required this.expiresAt,
+    required this.slot,
+    required this.maxPriorityFeeLamports,
+    required this.computeUnitLimit,
+  });
+
+  Future<String> cacheAddress() =>
+      RustLib.instance.api.zolanaMobileCacheTargetCacheAddress(that: this);
+
+  @override
+  int get hashCode =>
+      sponsor.hashCode ^
+      nonce.hashCode ^
+      treeId.hashCode ^
+      expiresAt.hashCode ^
+      slot.hashCode ^
+      maxPriorityFeeLamports.hashCode ^
+      computeUnitLimit.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CacheTarget &&
+          runtimeType == other.runtimeType &&
+          sponsor == other.sponsor &&
+          nonce == other.nonce &&
+          treeId == other.treeId &&
+          expiresAt == other.expiresAt &&
+          slot == other.slot &&
+          maxPriorityFeeLamports == other.maxPriorityFeeLamports &&
+          computeUnitLimit == other.computeUnitLimit;
 }
 
 /// A proof by a [`LocalProver`] and where its time went, in milliseconds.
@@ -1132,6 +1234,15 @@ class WalletConfig {
   /// prover attests to it; only a loopback prover gets it in plaintext.
   final String? proverUrl;
 
+  /// Require attestation even for a loopback proxy. Remote URLs always attest.
+  final bool? requireProverTee;
+
+  /// Trusted deployment policy JSON, supplied by the app, never by the prover.
+  final String? proverTeePolicy;
+
+  /// Refuse queue fallback and status polling for remote proofs.
+  final bool? proverSyncOnly;
+
   /// The most notes a spend takes on the device, 1 to 40; 40 when `None`.
   /// A spend that needs more fails with [`WalletError::MergeRequired`]
   /// naming this cap, before proving. Proof time and memory grow with the
@@ -1168,6 +1279,9 @@ class WalletConfig {
     this.provingKeyUrl,
     this.proving,
     this.proverUrl,
+    this.requireProverTee,
+    this.proverTeePolicy,
+    this.proverSyncOnly,
     this.maxSpendInputs,
     this.reuseNotesMs,
     this.mints,
@@ -1182,6 +1296,9 @@ class WalletConfig {
       provingKeyUrl.hashCode ^
       proving.hashCode ^
       proverUrl.hashCode ^
+      requireProverTee.hashCode ^
+      proverTeePolicy.hashCode ^
+      proverSyncOnly.hashCode ^
       maxSpendInputs.hashCode ^
       reuseNotesMs.hashCode ^
       mints.hashCode ^
@@ -1198,6 +1315,9 @@ class WalletConfig {
           provingKeyUrl == other.provingKeyUrl &&
           proving == other.proving &&
           proverUrl == other.proverUrl &&
+          requireProverTee == other.requireProverTee &&
+          proverTeePolicy == other.proverTeePolicy &&
+          proverSyncOnly == other.proverSyncOnly &&
           maxSpendInputs == other.maxSpendInputs &&
           reuseNotesMs == other.reuseNotesMs &&
           mints == other.mints &&

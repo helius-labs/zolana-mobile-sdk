@@ -308,7 +308,12 @@ mod tests {
             + 'static,
     ) -> (ProverClient, Requests) {
         let (transport, requests) = fake(answer);
-        (transport.prover(PROVER_URL.to_string()), requests)
+        (
+            transport
+                .configured_prover(PROVER_URL.to_string(), false, None, false)
+                .unwrap(),
+            requests,
+        )
     }
 
     fn sent(requests: &Requests) -> Vec<(String, String)> {
@@ -402,6 +407,36 @@ mod tests {
         for poll in &requests.lock().unwrap()[1..] {
             assert!(poll.headers.is_empty() && poll.body.is_empty());
             assert_eq!(poll.timeout_ms, Some(29_000));
+        }
+    }
+
+    #[test]
+    fn queued_failure_and_timeout_stop_without_resubmitting() {
+        for fails in [true, false] {
+            let (prover, requests) = remote(move |request| match request.method.as_str() {
+                "POST" => ok(r#"{"jobId":"job-1","status":"queued"}"#),
+                _ if fails => ok(r#"{"status":"failed","error":"proof rejected"}"#),
+                _ => ok(r#"{"status":"processing"}"#),
+            });
+            let prover = prover.with_async_poll_config(zolana_client::prover::AsyncPollConfig {
+                poll_interval_secs: 1,
+                max_wait_secs: if fails { 5 } else { 0 },
+            });
+            let error = prover
+                .prove(&Captured(transfer_2_2_key()))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                if fails {
+                    error.contains("failed")
+                } else {
+                    error.contains("timed out")
+                },
+                "{error}"
+            );
+            let requests = requests.lock().unwrap();
+            assert_eq!(requests.iter().filter(|r| r.method == "POST").count(), 1);
+            assert!(requests.iter().any(|r| r.method == "GET"));
         }
     }
 

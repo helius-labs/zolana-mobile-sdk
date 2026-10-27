@@ -1,0 +1,31 @@
+[package]
+name = "zolana-example-backend"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+rand = "0.8"
+subtle = "2.6"
+solana-keypair = "3"
+solana-signer = "3"
+solana-signature = "=3.4.1"
+solana-pubkey = "=4.2.0"
+solana-message = "4.2"
+solana-transaction = "4.1"
+wincode = "=0.5.5"
+zolana-mobile = { path = "../../native/zolana-mobile" }
+zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["borsh"] }
+zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["client"] }
+zolana-user-registry-interface = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+
+[dev-dependencies]
+hex = "0.4"
+zolana-prover-tee = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["test-fixtures"] }

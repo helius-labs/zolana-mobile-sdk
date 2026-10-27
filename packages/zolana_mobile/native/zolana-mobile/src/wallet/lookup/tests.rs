@@ -20,6 +20,9 @@ fn config() -> WalletConfig {
         proving_key_url: None,
         proving: None,
         prover_url: None,
+        require_prover_tee: None,
+        prover_tee_policy: None,
+        prover_sync_only: None,
         max_spend_inputs: None,
         reuse_notes_ms: None,
         mints: None,
@@ -72,6 +75,17 @@ impl Fixture {
         private: u64,
         withdrawal: u64,
         assets: &[Mint],
+    ) -> Self {
+        Self::spend_with_cache(sender, recipient, private, withdrawal, assets, false)
+    }
+
+    fn spend_with_cache(
+        sender: &MobileWallet,
+        recipient: &MobileWallet,
+        private: u64,
+        withdrawal: u64,
+        assets: &[Mint],
+        cached: bool,
     ) -> Self {
         let payer = sender.owner;
         let mut registry = AssetRegistry::default();
@@ -175,7 +189,7 @@ impl Fixture {
                 nullifier_tree_root_index: 0,
             }],
         };
-        let builder = Transact {
+        let mut builder = Transact {
             payer,
             input_trees: vec![pda::tree(0)],
             output_tree: pda::tree(tree_id),
@@ -183,11 +197,24 @@ impl Fixture {
             interface_transfer_accounts: settlements,
             data,
         };
-        let ix = builder.instruction();
+        let ix = if cached {
+            builder.data.circuit = CircuitId::ConfidentialEddsaCached(
+                inputs.input_utxos.len() as u8,
+                inputs.output_utxos.len() as u8,
+                3,
+                zolana_interface::verifying_keys::CacheAccess {
+                    read_bitmap: 1,
+                    write_slots: zolana_interface::verifying_keys::CacheAccess::NO_WRITES,
+                },
+            );
+            builder.instruction_with_cache_read(pda::cache(&payer, 9).0)
+        } else {
+            builder.instruction()
+        };
         let signature = Signature::from([12; 64]);
         let message = compile_message(
             &payer,
-            &[ix.clone()],
+            std::slice::from_ref(&ix),
             Default::default(),
             ComputeBudgetConfig::new(1_000_000),
         )
@@ -329,11 +356,20 @@ fn cold_lookup_matches_history_for_sends_withdrawals_and_multiple_assets() {
     let owner = identity(&sender);
     let recipient_wallet = identity(&recipient);
     for (private, withdrawal) in [(20, 0), (0, 100), (10, 20)] {
-        for assets in [
-            vec![Mint::SOL],
-            vec![Mint::SOL, Mint::new(Pubkey::new_unique(), 7)],
+        for (assets, cached) in [
+            (vec![Mint::SOL], false),
+            (vec![Mint::SOL], true),
+            (vec![Mint::SOL, Mint::new(Pubkey::new_unique(), 7)], false),
+            (vec![Mint::SOL, Mint::new(Pubkey::new_unique(), 7)], true),
         ] {
-            let fixture = Fixture::spend(&owner, &recipient_wallet, private, withdrawal, &assets);
+            let fixture = Fixture::spend_with_cache(
+                &owner,
+                &recipient_wallet,
+                private,
+                withdrawal,
+                &assets,
+                cached,
+            );
             let decoded = decrypt(&owner.keys, &fixture.events, &fixture.registry).unwrap();
             let mut utxos = fixture.notes.clone();
             utxos.extend(verify_owned(&owner.keys, &decoded).unwrap().utxos);

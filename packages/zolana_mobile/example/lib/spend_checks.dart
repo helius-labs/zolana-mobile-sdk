@@ -30,11 +30,17 @@ typedef PoseidonHash = Future<Uint8List> Function(List<Uint8List> inputs);
 
 /// The UI's payment request, captured before the SDK prepares a transaction.
 class SpendRequest {
-  SpendRequest({required List<Output> outputs, this.mint})
-    : outputs = List.unmodifiable(outputs);
+  SpendRequest({
+    required List<Output> outputs,
+    this.mint,
+    this.cacheAddress,
+    this.cacheSlots = const [],
+  }) : outputs = List.unmodifiable(outputs);
 
   final List<Output> outputs;
   final String? mint;
+  final String? cacheAddress;
+  final List<int> cacheSlots;
 }
 
 /// App policy for the pinned SDK's default-ring spends. Unknown formats,
@@ -70,6 +76,30 @@ class SpendChecks {
       'Unexpected spend payer',
     );
     final data = _Transact.read(spend.data, spend.accounts);
+    final expectedBitmap = request.cacheSlots.fold<BigInt>(BigInt.zero, (
+      bits,
+      slot,
+    ) {
+      _require(
+        slot >= 0 && slot < 36 && (bits & (BigInt.one << slot)) == BigInt.zero,
+        'Invalid approved cache slots',
+      );
+      return bits | (BigInt.one << slot);
+    });
+    _require(
+      data.cacheBitmap == expectedBitmap,
+      'Unexpected cached input selection',
+    );
+    _require(
+      (request.cacheAddress != null) == (data.cacheBitmap != BigInt.zero),
+      'Unexpected cache access',
+    );
+    if (request.cacheAddress != null) {
+      _require(
+        spend.accounts.last == request.cacheAddress,
+        'Unexpected cache account',
+      );
+    }
     _require(openings.length == data.outputSlots, 'Missing output openings');
     final treeId = await accounts.outputTreeId(spend.accounts[1]);
 
@@ -193,10 +223,18 @@ class SpendChecks {
     );
     _require(
       spend.accounts.length ==
-          4 + data.inputTrees + data.inputs + 1 + groupSize,
+          4 +
+              data.inputTrees +
+              data.inputs +
+              1 +
+              groupSize +
+              (request.cacheAddress == null ? 0 : 1),
       'Unexpected spend account layout',
     );
-    var offset = spend.accounts.length - groupSize;
+    var offset =
+        spend.accounts.length -
+        groupSize -
+        (request.cacheAddress == null ? 0 : 1);
     final usedCreations = <String>{};
     for (var i = 0; i < public.length; i++) {
       final wanted = public[i];
@@ -368,11 +406,13 @@ class _Transact {
     this.outputSlots,
     this.inputs,
     this.inputTrees,
+    this.cacheBitmap,
   );
   final List<Uint8List> commitments;
   final List<Uint8List> ownerTags;
   final List<_Transfer> transfers;
   final int outputSlots, inputs, inputTrees;
+  final BigInt cacheBitmap;
 
   static _Transact read(Uint8List bytes, List<String> accounts) {
     final r = _Reader(bytes);
@@ -408,7 +448,8 @@ class _Transact {
     }
     _require(r.u8() == 0, 'Unexpected transaction messages');
     r.take(32); // Private transaction hash; its preimage stays inside the SDK.
-    _require(r.uint(2) == BigInt.zero, 'Unsupported spend circuit or cache');
+    final circuit = r.uint(2).toInt();
+    _require(circuit == 0 || circuit == 4, 'Unsupported spend circuit');
     final inputs = r.u8();
     final outputSlots = r.u8();
     _require(
@@ -419,6 +460,27 @@ class _Transact {
           inputs <= 40,
       'Unsupported spend shape',
     );
+    var cacheBitmap = BigInt.zero;
+    if (circuit == 4) {
+      cacheBitmap = r.uint(8);
+      _require(
+        cacheBitmap > BigInt.zero && cacheBitmap.bitLength <= 36,
+        'Invalid cache bitmap',
+      );
+      _require(
+        cacheBitmap
+                .toRadixString(2)
+                .split('')
+                .where((bit) => bit == '1')
+                .length <=
+            inputs,
+        'Too many cache slots',
+      );
+      _require(
+        r.take(32).every((byte) => byte == 255),
+        'Unexpected cache writes',
+      );
+    }
     r.take(192); // Compressed Groth16 proof, verified by SPP.
     final publishedInputs = r.u8();
     _require(publishedInputs <= inputs, 'Unexpected input count');
@@ -434,6 +496,7 @@ class _Transact {
       outputSlots,
       publishedInputs,
       inputTrees,
+      cacheBitmap,
     );
   }
 }

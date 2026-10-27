@@ -84,6 +84,8 @@ List<OutputOpening> openings(Map example) => [
 SpendRequest request(Map example, {int amount = 100, String? recipient}) =>
     SpendRequest(
       mint: example['mint'] as String?,
+      cacheAddress: example['cacheAddress'] as String?,
+      cacheSlots: (example['cacheSlots'] as List?)?.cast<int>() ?? const [],
       outputs: [
         if (example['withdraw'] as bool)
           Output.public(
@@ -174,6 +176,8 @@ List<({int header, int accounts, int data, int length})> instructionOffsets(
 }
 
 class Pending implements PreparedTransaction {
+  @override
+  CachedOutput? get cachedOutput => null;
   Pending(this.example);
   final Map example;
   @override
@@ -257,6 +261,27 @@ void main() {
       () => verify(example),
     );
   }
+  test('cached payment rejects an unapproved address, slot or missing cache approval', () async {
+    final c = cases.firstWhere((c) => c['cacheAddress'] != null);
+    final wanted = request(c);
+    for (final altered in [
+      SpendRequest(outputs: wanted.outputs, mint: wanted.mint),
+      SpendRequest(
+        outputs: wanted.outputs,
+        mint: wanted.mint,
+        cacheAddress: fixture['sender'] as String,
+        cacheSlots: wanted.cacheSlots,
+      ),
+      SpendRequest(
+        outputs: wanted.outputs,
+        mint: wanted.mint,
+        cacheAddress: wanted.cacheAddress,
+        cacheSlots: [0, 1],
+      ),
+    ]) {
+      await expectLater(verify(c, wanted: altered), throwsStateError);
+    }
+  });
   final example = cases.first;
 
   test(

@@ -6735,8 +6735,10 @@ version = "0.1.0"
 dependencies = [
  "android_logger",
  "async-trait",
+ "bytemuck",
  "flutter_rust_bridge",
  "futures-executor",
+ "hmac 0.12.1",
  "http",
  "log",
  "memmap2",

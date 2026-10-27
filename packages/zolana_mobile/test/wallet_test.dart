@@ -54,6 +54,8 @@ class RecordingSigner implements SolanaSigner {
 }
 
 class FakePending implements PreparedTransaction {
+  @override
+  CachedOutput? get cachedOutput => null;
   FakePending(
     this.message, {
     this.signers = const [owner],
@@ -88,7 +90,85 @@ class FakePending implements PreparedTransaction {
   bool get isDisposed => false;
 }
 
+class FakeCachedOutput implements CachedOutput {
+  @override
+  bool isDisposed = false;
+
+  @override
+  void dispose() => isDisposed = true;
+
+  @override
+  CachedOutput copy() {
+    if (isDisposed) throw StateError('cached output was consumed');
+    return FakeCachedOutput();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class FakeWallet implements MobileWallet {
+  CacheTarget? cachedTarget;
+  List<CachedOutput>? cachedSpendInputs;
+  bool cacheReady = true;
+  @override
+  Future<PreparedTransaction> prepareCachedMerge({
+    required CacheTarget target,
+    String? mint,
+    int? maxInputs,
+    Proving? proving,
+    BigInt? priorityFeeLamports,
+  }) async {
+    cachedTarget = target;
+    return prepareMerge(
+      mint: mint,
+      maxInputs: maxInputs,
+      feePayer: target.sponsor,
+      proving: proving,
+      priorityFeeLamports: priorityFeeLamports,
+    );
+  }
+
+  @override
+  Future<PreparedTransaction> prepareCachedSpend({
+    required List<Output> outputs,
+    required List<CachedOutput> cachedInputs,
+    String? mint,
+    String? feePayer,
+    BigInt? priorityFeeLamports,
+  }) async {
+    cachedSpendInputs = cachedInputs;
+    for (final input in cachedInputs) {
+      input.dispose(); // The bridge takes ownership, including on failures.
+    }
+    return prepareSpend(
+      outputs: outputs,
+      mint: mint,
+      feePayer: feePayer,
+      proving: Proving.local,
+      priorityFeeLamports: priorityFeeLamports,
+    );
+  }
+
+  @override
+  Future<void> verifyCachedOutputs({
+    required List<CachedOutput> outputs,
+  }) async {
+    for (final output in outputs) {
+      output.dispose();
+    }
+    if (!cacheReady) throw const WalletError.client(message: 'cache not ready');
+  }
+
+  @override
+  Future<String> exportPreparedTransaction({
+    required PreparedTransaction pending,
+  }) async => 'snapshot';
+  @override
+  Future<PreparedTransaction> restorePreparedTransaction({
+    required String snapshot,
+  }) async => FakePending(Uint8List(1));
+
   final submitted = <(PreparedTransaction, List<Uint8List>)>[];
   final released = <PreparedTransaction>[];
   final waited = <(String, BigInt?)>[];
@@ -1221,6 +1301,65 @@ void main() {
     expect(native.submitted.single.$2.single, signature);
     expect(signer.requests, hasLength(1), reason: 'only the open was signed');
   });
+
+  test(
+    'cached merges use the sponsor and cached payments stay local',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+      native.merging = true;
+      final target = CacheTarget(
+        sponsor: 'Sponsor',
+        nonce: BigInt.one,
+        treeId: 0,
+        expiresAt: 2000000000,
+        slot: 0,
+        maxPriorityFeeLamports: BigInt.from(5000),
+        computeUnitLimit: 400000,
+      );
+      await wallet.prepareMerge(cacheTarget: target, proving: Proving.remote);
+      expect(native.cachedTarget, target);
+      await expectLater(
+        wallet.prepareMerge(cacheTarget: target, feePayer: 'Other'),
+        throwsA(isA<WalletError>()),
+      );
+      final outputs = [Output.public(recipient: owner, amount: BigInt.one)];
+      await wallet.prepareSpend(outputs: outputs, cachedInputs: const []);
+      expect(native.cachedSpendInputs, isEmpty);
+      expect(native.proved.last, Proving.local);
+      await expectLater(
+        wallet.prepareSpend(
+          outputs: outputs,
+          cachedInputs: const [],
+          proving: Proving.remote,
+        ),
+        throwsA(isA<WalletError>()),
+      );
+      final restored = await wallet.restorePreparedTransaction('snapshot');
+      expect(await wallet.exportPreparedTransaction(restored), 'snapshot');
+    },
+  );
+
+  test(
+    'cached handles survive failed checks, retries and preparation',
+    () async {
+      final (wallet, native, _, _) = await openWallet();
+      final cached = FakeCachedOutput();
+      native.cacheReady = false;
+      await expectLater(
+        wallet.verifyCachedOutputs([cached]),
+        throwsA(isA<WalletError>()),
+      );
+      expect(cached.isDisposed, isFalse);
+      native.cacheReady = true;
+      await wallet.verifyCachedOutputs([cached]);
+      await wallet.prepareSpend(
+        outputs: [Output.public(recipient: owner, amount: BigInt.one)],
+        cachedInputs: [cached],
+      );
+      expect(cached.isDisposed, isFalse);
+      await wallet.verifyCachedOutputs([cached]);
+    },
+  );
 
   test('passes the fee payer to prepare, not to the signing path', () async {
     final (wallet, native, signer, _) = await openWallet();

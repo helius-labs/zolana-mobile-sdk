@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "packages/zolana_mobile/native/zolana-mobile",
+    "packages/zolana_mobile/example/backend",
 ]
 exclude = ["tools/prove-fixtures"]
 resolver = "2"

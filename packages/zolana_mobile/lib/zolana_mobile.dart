@@ -1,6 +1,6 @@
 library;
 
-export 'src/http_transport.dart' show TransportResponseLost;
+export 'src/http_transport.dart' show HttpTransport, TransportResponseLost;
 export 'src/init.dart';
 export 'src/wallet.dart';
 export 'src/rust/frb_generated.dart' show RustLib;
