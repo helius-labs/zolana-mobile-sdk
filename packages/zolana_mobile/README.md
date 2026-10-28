@@ -440,6 +440,12 @@ final tx = await wallet.prepareSpend(
 await wallet.confirm(tx, signature); // base58 transaction signature
 ```
 
+For a new wallet, `prepareRegistration(enableMerging: true)` adds
+`set_merge_encryption(PoseidonCtrV1)` after register in the same message.
+The option defaults to `false`. An already registered wallet still returns
+`null`; use `prepareMerging(true)` for it. Enabling merges lets anyone holding
+the wallet's nullifier secret and notes combine them without moving funds.
+
 `tx.operation` has one variant per kind of transaction, each with only its own
 fields (amounts in base units, `mint` `null` for SOL). Match on it as on
 `WalletError`; the compiler checks that the switch covers every kind.

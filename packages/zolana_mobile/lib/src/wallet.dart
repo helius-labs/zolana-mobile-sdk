@@ -292,14 +292,23 @@ class ZolanaWallet {
   /// Publish [shieldedAddress] so others can send to this wallet. `null` when
   /// it is already registered. Fails with [WalletError.registrationConflict]
   /// when the registry holds other keys; the wallet never replaces them.
+  /// Set [enableMerging] to select `PoseidonCtrV1` after register in the same
+  /// message. It defaults to `false`. An existing registration still returns
+  /// `null`; use [prepareMerging] to enable merging for it. While enabled,
+  /// whoever holds this wallet's nullifier secret and notes can merge them,
+  /// as described on [prepareMerging].
   /// Every prepare method accepts a total [priorityFeeLamports] in lamports.
   /// When omitted, it uses `WalletConfig.priorityFeeLamports`. The fee is
   /// written into the v1 message header before the application signs it.
   Future<PreparedTransaction?> prepareRegistration({
+    bool enableMerging = false,
     BigInt? priorityFeeLamports,
   }) => _serial(
     () => _prepare(
-      _wallet.prepareRegistration(priorityFeeLamports: priorityFeeLamports),
+      _wallet.prepareRegistration(
+        enableMerging: enableMerging,
+        priorityFeeLamports: priorityFeeLamports,
+      ),
     ),
   );
 

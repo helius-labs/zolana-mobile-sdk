@@ -382,7 +382,7 @@ fn private_transfer(
 
 fn register(wallet: &mut MobileWallet, signer: &Keypair) {
     if let Some(pending) = wallet
-        .prepare_registration(None)
+        .prepare_registration(None, None)
         .expect("prepare registration")
     {
         submit(wallet, &[signer], pending);

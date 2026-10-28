@@ -2,6 +2,9 @@
 
 Unreleased.
 
+* Add `prepareRegistration(enableMerging: true)` to register and select
+  `PoseidonCtrV1` in the same message. The default remains register-only.
+
 * Add sponsored cache merges: `prepareMerge(cacheTarget: ...)` builds unsigned
   CreateCache + MergeTransact; `prepareSpend(cachedInputs: ...)` consumes verified
   cache slots with a local proof. The sponsor signs merges and the user signs

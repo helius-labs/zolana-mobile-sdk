@@ -64,7 +64,10 @@ use zolana_transaction::{
     select_merge, select_spend_excluding, AssetBalance, LocalShieldedKeys,
     SpendableDecryptionResult, TransactionError, WalletUtxo,
 };
-use zolana_user_registry_interface::MergeEncryptionScheme;
+use zolana_user_registry_interface::{
+    instruction::{register, RegisterData},
+    user_record_pda, MergeEncryptionScheme,
+};
 
 use crate::{
     activity::{self, ActivityEntry, TransactionLookup},
@@ -740,14 +743,38 @@ impl MobileWallet {
     /// this wallet never replaces them. `priority_fee_lamports` overrides
     /// [`WalletConfig::priority_fee_lamports`], as on every prepared
     /// transaction.
+    /// When `enable_merging` is `Some(true)`, a new registration also selects
+    /// `PoseidonCtrV1` in the same message, after register. `None` and
+    /// `Some(false)` leave merging disabled. An existing registration is
+    /// still a no-op; use [`Self::prepare_merging`] to change its scheme.
     pub fn prepare_registration(
         &self,
         priority_fee_lamports: Option<u64>,
+        enable_merging: Option<bool>,
     ) -> Result<Option<PreparedTransaction>, WalletError> {
         let message =
             build_registration_transaction_sync(&self.client, self.owner, &self.address, None)?;
         message
             .map(|message| {
+                let message = if enable_merging.unwrap_or(false) {
+                    self.message(&[
+                        register(
+                            user_record_pda(&self.owner).0,
+                            self.owner,
+                            self.owner,
+                            RegisterData {
+                                nullifier_pubkey: self.address.nullifier_pubkey,
+                                viewing_pubkey: *self.address.viewing_pubkey.as_bytes(),
+                            },
+                        ),
+                        set_merge_encryption_instruction(
+                            self.owner,
+                            MergeEncryptionScheme::PoseidonCtrV1,
+                        ),
+                    ])?
+                } else {
+                    message
+                };
                 let message = self.with_priority_fee(message, priority_fee_lamports)?;
                 self.pending(Operation::Registration, message)
             })
@@ -3057,6 +3084,140 @@ mod tests {
                 owner: owner.to_string()
             }
         );
+    }
+
+    #[test]
+    fn registration_enables_merging_only_when_requested() {
+        use zolana_user_registry_interface::{
+            instruction::discriminator, user_registry_program_id,
+        };
+
+        let signer = Keypair::new();
+        for enable_merging in [None, Some(false), Some(true)] {
+            for fee in [None, Some(7), Some(0)] {
+                let (wallet, _) = rpc_wallet_with(
+                    &signer,
+                    WalletConfig {
+                        priority_fee_lamports: Some(5),
+                        ..config()
+                    },
+                    |method| match method {
+                        "getAccountInfo" => serde_json::json!({"result": {
+                            "context": {"slot": 1}, "value": null
+                        }}),
+                        "getLatestBlockhash" => serde_json::json!({"result": {
+                            "context": {"slot": 1}, "value": {
+                                "blockhash": "11111111111111111111111111111111",
+                                "lastValidBlockHeight": 9
+                            }
+                        }}),
+                        _ => panic!("unexpected request: {method}"),
+                    },
+                );
+                let pending = wallet
+                    .prepare_registration(fee, enable_merging)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(pending.operation(), Operation::Registration);
+                assert_eq!(pending.signers(), [signer.pubkey().to_string()]);
+                assert_eq!(pending.last_valid_block_height(), 9);
+                let VersionedMessage::V1(message) = &pending.message else {
+                    panic!("not a v1 message");
+                };
+                let enabled = enable_merging.unwrap_or(false);
+                assert_eq!(message.instructions.len(), if enabled { 2 } else { 1 });
+                assert_eq!(message.config.priority_fee, Some(fee.unwrap_or(5)));
+                assert_eq!(
+                    message.config.compute_unit_limit,
+                    Some(if enabled { 400_000 } else { 200_000 })
+                );
+                let keys = &message.account_keys;
+                let register = &message.instructions[0];
+                assert_eq!(
+                    keys[usize::from(register.program_id_index)],
+                    user_registry_program_id()
+                );
+                let mut data = vec![discriminator::REGISTER];
+                data.extend_from_slice(&wallet.address.nullifier_pubkey);
+                data.extend_from_slice(wallet.address.viewing_pubkey.as_bytes());
+                assert_eq!(register.data, data);
+                let record = user_record_pda(&signer.pubkey()).0;
+                let accounts = |indices: &[u8]| {
+                    indices
+                        .iter()
+                        .map(|&i| keys[usize::from(i)])
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    accounts(&register.accounts),
+                    [record, signer.pubkey(), signer.pubkey(), Pubkey::default()]
+                );
+                assert!(pending.message.is_maybe_writable_with_reserved_addresses(
+                    usize::from(register.accounts[0]),
+                    Some(&HashSet::<Pubkey>::new()),
+                ));
+                if enabled {
+                    let merge = &message.instructions[1];
+                    assert_eq!(
+                        keys[usize::from(merge.program_id_index)],
+                        user_registry_program_id()
+                    );
+                    assert_eq!(
+                        merge.data,
+                        [
+                            discriminator::SET_MERGE_ENCRYPTION,
+                            MergeEncryptionScheme::PoseidonCtrV1 as u8
+                        ]
+                    );
+                    assert_eq!(accounts(&merge.accounts), [record, signer.pubkey()]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn registration_keeps_existing_records_and_refuses_other_keys() {
+        use zolana_user_registry_interface::{user_registry_program_id, UserRecord};
+
+        let signer = Keypair::new();
+        let address = open(&signer).unwrap().address;
+        for enable_merging in [None, Some(false), Some(true)] {
+            for scheme in [
+                MergeEncryptionScheme::Disabled,
+                MergeEncryptionScheme::PoseidonCtrV1,
+            ] {
+                for conflict in [None, Some(0), Some(32)] {
+                    // UserRecord's discriminator, owner, bump, keys and scheme.
+                    let mut data = vec![UserRecord::DISCRIMINATOR];
+                    data.extend_from_slice(signer.pubkey().as_ref());
+                    data.push(user_record_pda(&signer.pubkey()).1);
+                    let mut keys = address.nullifier_pubkey.to_vec();
+                    keys.extend_from_slice(address.viewing_pubkey.as_bytes());
+                    if let Some(index) = conflict {
+                        keys[index] ^= 1;
+                    }
+                    data.extend_from_slice(&keys);
+                    data.push(scheme as u8);
+                    let record = account(user_registry_program_id(), &data);
+                    let (wallet, asked) = rpc_wallet(&signer, move |method| {
+                        assert_eq!(method, "getAccountInfo");
+                        serde_json::json!({"result": {"context": {"slot": 1}, "value": record}})
+                    });
+                    let result = wallet.prepare_registration(None, enable_merging);
+                    if conflict.is_some() {
+                        assert_eq!(
+                            result.err(),
+                            Some(WalletError::RegistrationConflict {
+                                owner: signer.pubkey().to_string()
+                            })
+                        );
+                    } else {
+                        assert!(result.unwrap().is_none());
+                    }
+                    assert_eq!(*asked.lock().unwrap(), ["getAccountInfo"]);
+                }
+            }
+        }
     }
 
     #[test]

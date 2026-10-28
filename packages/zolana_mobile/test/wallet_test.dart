@@ -260,10 +260,14 @@ class FakeWallet implements MobileWallet {
     return lookup;
   }
 
+  final registrationMerging = <bool?>[];
+
   @override
   Future<PreparedTransaction?> prepareRegistration({
+    bool? enableMerging,
     BigInt? priorityFeeLamports,
   }) async {
+    registrationMerging.add(enableMerging);
     priorityFees.add(priorityFeeLamports);
     await holdRegistration?.future;
     return switch (status) {
@@ -1413,6 +1417,17 @@ void main() {
       ]);
     },
   );
+
+  test('registration enables merging only when requested', () async {
+    final (wallet, native, _, _) = await openWallet();
+    native.status = RegistrationStatus.notRegistered;
+
+    await wallet.prepareRegistration();
+    await wallet.prepareRegistration(enableMerging: true);
+    await wallet.prepareRegistration(enableMerging: false);
+
+    expect(native.registrationMerging, [false, true, false]);
+  });
 
   test('passes the priority fee of each call, null for the config', () async {
     final (wallet, native, _, _) = await openWallet();
