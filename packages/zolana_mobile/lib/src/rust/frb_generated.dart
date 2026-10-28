@@ -189,6 +189,7 @@ abstract class RustLibApi extends BaseApi {
   Future<PreparedTransaction?> zolanaMobileMobileWalletPrepareRegistration({
     required MobileWallet that,
     BigInt? priorityFeeLamports,
+    bool? enableMerging,
   });
 
   Future<PreparedTransaction> zolanaMobileMobileWalletPrepareSpend({
@@ -1276,6 +1277,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<PreparedTransaction?> zolanaMobileMobileWalletPrepareRegistration({
     required MobileWallet that,
     BigInt? priorityFeeLamports,
+    bool? enableMerging,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1286,6 +1288,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             serializer,
           );
           sse_encode_opt_box_autoadd_u_64(priorityFeeLamports, serializer);
+          sse_encode_opt_box_autoadd_bool(enableMerging, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -1299,7 +1302,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_wallet_error,
         ),
         constMeta: kZolanaMobileMobileWalletPrepareRegistrationConstMeta,
-        argValues: [that, priorityFeeLamports],
+        argValues: [that, priorityFeeLamports, enableMerging],
         apiImpl: this,
       ),
     );
@@ -1308,7 +1311,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kZolanaMobileMobileWalletPrepareRegistrationConstMeta =>
       const TaskConstMeta(
         debugName: "MobileWallet_prepare_registration",
-        argNames: ["that", "priorityFeeLamports"],
+        argNames: ["that", "priorityFeeLamports", "enableMerging"],
       );
 
   @override
@@ -6517,11 +6520,17 @@ class MobileWalletImpl extends RustOpaque implements MobileWallet {
   /// this wallet never replaces them. `priority_fee_lamports` overrides
   /// [`WalletConfig::priority_fee_lamports`], as on every prepared
   /// transaction.
+  /// When `enable_merging` is `Some(true)`, a new registration also selects
+  /// `PoseidonCtrV1` in the same message, after register. `None` and
+  /// `Some(false)` leave merging disabled. An existing registration is
+  /// still a no-op; use [`Self::prepare_merging`] to change its scheme.
   Future<PreparedTransaction?> prepareRegistration({
     BigInt? priorityFeeLamports,
+    bool? enableMerging,
   }) => RustLib.instance.api.zolanaMobileMobileWalletPrepareRegistration(
     that: this,
     priorityFeeLamports: priorityFeeLamports,
+    enableMerging: enableMerging,
   );
 
   /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in

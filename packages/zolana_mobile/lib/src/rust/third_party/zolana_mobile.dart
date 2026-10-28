@@ -211,8 +211,13 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// this wallet never replaces them. `priority_fee_lamports` overrides
   /// [`WalletConfig::priority_fee_lamports`], as on every prepared
   /// transaction.
+  /// When `enable_merging` is `Some(true)`, a new registration also selects
+  /// `PoseidonCtrV1` in the same message, after register. `None` and
+  /// `Some(false)` leave merging disabled. An existing registration is
+  /// still a no-op; use [`Self::prepare_merging`] to change its scheme.
   Future<PreparedTransaction?> prepareRegistration({
     BigInt? priorityFeeLamports,
+    bool? enableMerging,
   });
 
   /// Build and prove a spend of `mint` (SOL for `None`) to `outputs`, in

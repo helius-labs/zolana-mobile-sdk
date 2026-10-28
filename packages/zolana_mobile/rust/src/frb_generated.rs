@@ -1241,6 +1241,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_registration_impl(
                 flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
             >>::sse_decode(&mut deserializer);
             let api_priority_fee_lamports = <Option<u64>>::sse_decode(&mut deserializer);
+            let api_enable_merging = <Option<bool>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, zolana_mobile::WalletError>((move || {
@@ -1261,6 +1262,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_registration_impl(
                     let output_ok = zolana_mobile::MobileWallet::prepare_registration(
                         &*api_that_guard,
                         api_priority_fee_lamports,
+                        api_enable_merging,
                     )?;
                     Ok(output_ok)
                 })())
