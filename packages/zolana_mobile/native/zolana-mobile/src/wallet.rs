@@ -4033,7 +4033,7 @@ mod tests {
                             .collect(),
                         messages: vec![],
                         private_tx_hash: [0; 32],
-                        circuit: CircuitId::ConfidentialEddsa(2, 4, 3),
+                        circuit: CircuitId::ConfidentialSigner(2, 4, 3),
                         proof: TransactProof::zeroed(),
                         inputs: vec![
                             InputUtxo {
@@ -4090,7 +4090,7 @@ mod tests {
                         "tokenAccount": user_token.to_string(), "tokenProgram": token_program.to_string(),
                     }));
                     let cache = pda::cache(&payer, 42).0;
-                    builder.data.circuit = CircuitId::ConfidentialEddsaCached(
+                    builder.data.circuit = CircuitId::ConfidentialSignerCached(
                         2,
                         4,
                         3,
@@ -4117,7 +4117,7 @@ mod tests {
                     cached_case["cacheAddress"] = serde_json::json!(cache.to_string());
                     cached_case["cacheSlots"] = serde_json::json!([0, 2]);
                     cases.push(cached_case);
-                    builder.data.circuit = CircuitId::ConfidentialEddsa(2, 4, 3);
+                    builder.data.circuit = CircuitId::ConfidentialSigner(2, 4, 3);
                 }
             }
         }

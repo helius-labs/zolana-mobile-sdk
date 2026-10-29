@@ -5,8 +5,8 @@ Groth16 prover in Rust for gnark's proving keys, on the GPU where there is
 one. Android and iOS are supported. The package contains its Rust sources; it
 does not require a sibling Zolana checkout.
 
-This SDK targets **Zolana v0.6.0-alpha**, source
-`8ae430a154e22bafa819a570d383d04e2046e802`, and shielded-pool program
+This SDK pins Zolana source `5cfd7eaed15ef29dc95f6b212cd2844ed0e86860`
+([#501](https://github.com/helius-labs/zolana/pull/501)) and shielded-pool program
 `ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. Applications supply deployment
 configuration independently of the SDK:
 
@@ -659,7 +659,7 @@ payment; it rechecks cache validity but cannot renew its expiry or proof roots.
 The [runnable proxy/relayer example](example/backend/README.md) includes
 `x-sf-auth`, synchronous and queued TEE merge routes, persistent run recovery and a Flutter entry
 point (`example/lib/main_sponsored.dart`). Both use upstream
-`8ae430a154e22bafa819a570d383d04e2046e802` (v0.6.0-alpha) and the artifacts in
+`5cfd7eaed15ef29dc95f6b212cd2844ed0e86860` and the artifacts in
 this checkout. These mobile APIs are unreleased; e30b328a does not expose them.
 See the example for migration boundaries, trusted TEE policy configuration and
 the production responsibilities it intentionally leaves to the client backend.

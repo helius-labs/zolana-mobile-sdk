@@ -7,7 +7,7 @@ zopro, a Groth16 prover in Rust for gnark's keys (on the GPU where there is
 one), or through the application's backend with the proof verified on the
 device. The Solana key stays with the application's signer.
 
-Targets **Zolana v0.6.0-alpha** and shielded-pool program
+Pins Zolana commit `5cfd7eaed15ef29dc95f6b212cd2844ed0e86860` (#501) and shielded-pool program
 `ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. Applications supply indexer and
 remote prover URLs with a reviewed TEE policy.
 Remote configuration without `proverTeePolicy` fails before HTTP. Deployment

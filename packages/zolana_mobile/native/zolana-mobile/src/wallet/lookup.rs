@@ -245,8 +245,10 @@ impl MobileWallet {
             let Some(cx) = context else {
                 return Ok(Details::Incomplete);
             };
-            if !matches!(cx.data.circuit.uncached(), CircuitId::ConfidentialEddsa(..))
-                || cx.owners != [self.owner]
+            if !matches!(
+                cx.data.circuit.uncached(),
+                CircuitId::ConfidentialSigner(..)
+            ) || cx.owners != [self.owner]
             {
                 return Ok(Details::Incomplete);
             }

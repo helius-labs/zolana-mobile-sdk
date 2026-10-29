@@ -172,7 +172,12 @@ fn key_set() -> &'static str {
 /// A key this wallet proves with on the device: a confidential transfer or a
 /// merge. The lockfile also pins ring and custom-ring keys it never loads.
 fn is_wallet_key(name: &str) -> bool {
-    name.starts_with("transfer_confidential_")
+    name.strip_prefix("transfer_confidential_")
+        .and_then(|shape| shape.strip_suffix(".key"))
+        .and_then(|shape| shape.split_once('_'))
+        .is_some_and(|(inputs, outputs)| {
+            inputs.parse::<u32>().is_ok() && outputs.parse::<u32>().is_ok()
+        })
         || (name.starts_with("merge_") && name.ends_with("_1.key") && !name.contains("ring"))
 }
 
@@ -1067,6 +1072,20 @@ mod tests {
             );
             assert!(lockfile().keys.contains_key(&name), "{name} is not pinned");
         }
+    }
+
+    #[test]
+    fn status_excludes_the_upstream_eddsa_circuits_without_local_keys() {
+        let store = KeyStore::new(scratch("status"), None, unreachable());
+        let status = store.status();
+        assert_eq!(status.len(), artifacts().keys.len());
+        assert!(status
+            .iter()
+            .all(|key| artifacts().keys.contains_key(&key.name)));
+        assert!(lockfile()
+            .keys
+            .keys()
+            .any(|name| name.starts_with("transfer_confidential_eddsa_")));
     }
 
     #[test]
