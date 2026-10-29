@@ -334,7 +334,7 @@ mod tests {
             .step_by(2)
             .map(|i| u8::from_str_radix(&public_input[i..i + 2], 16).unwrap())
             .collect();
-        let circuit = CircuitId::ConfidentialEddsa(2, 2, N_PUBLIC_SLOTS as u8);
+        let circuit = CircuitId::ConfidentialSigner(2, 2, N_PUBLIC_SLOTS as u8);
         verify_proof_statement(
             proof,
             public_input.try_into().unwrap(),

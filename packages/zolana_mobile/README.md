@@ -5,29 +5,29 @@ Groth16 prover in Rust for gnark's proving keys, on the GPU where there is
 one. Android and iOS are supported. The package contains its Rust sources; it
 does not require a sibling Zolana checkout.
 
-This SDK targets **Zolana v0.6.0-alpha**, source
-`8ae430a154e22bafa819a570d383d04e2046e802`, and shielded-pool program
-`ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. `Deployment.devnet()` selects
-devnet-e; `Deployment.mainnet()` selects mainnet, including the matching trusted
-Nitro policy:
+This SDK pins Zolana source `5cfd7eaed15ef29dc95f6b212cd2844ed0e86860`
+([#501](https://github.com/helius-labs/zolana/pull/501)) and shielded-pool program
+`ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. Applications supply deployment
+configuration independently of the SDK:
 
 ```dart
-await initZolanaMobile();
-final deployment = Deployment.mainnet();
 final config = WalletConfig(
-  rpcUrl: 'https://your-mainnet-solana-rpc',
-  indexerUrl: deployment.indexerUrl,
-  proverUrl: deployment.proverUrl,
-  proverTeePolicy: deployment.proverTeePolicy,
+  rpcUrl: solanaRpcUrl,
+  indexerUrl: indexerUrl,
+  proverUrl: proverUrl,
+  proverTeePolicy: reviewedPolicyJson,
   provingKeyDir: '/persistent/private/proving-keys',
 );
 ```
 
-Photon is the indexer; supply a Solana RPC on the same network separately.
-The SDK selects the correct policy automatically for the two public Nitro
-origins. When using a proxy, pass the selected deployment's policy explicitly,
-including for a localhost proxy. Custom trusted policies still override presets.
-The bundled policies come from the reviewed v0.6.0-alpha infra manifests.
+Remote URLs require a supplied policy; `requireProverTee: true` requires one for
+loopback proxies too. Missing policy raises `WalletError.proverPolicyMissing`
+before HTTP. The URL never selects a policy, and there is no devnet fallback.
+`Deployment.devnet()` and `Deployment.mainnet()` have been removed; migrate
+presets into application configuration. Complete reviewed policy files, including
+HPKE public-key pins, live under the example's `assets/policies/`. Bundle and
+checksum-pin the chosen file independently of the SDK release. Never learn trust
+pins from the prover being verified. Local proving needs no TEE policy.
 
 Earlier programs' notes, caches and pending transactions cannot be migrated by
 changing URLs. Reconcile them using their matching SDK and deployment before
@@ -659,7 +659,7 @@ payment; it rechecks cache validity but cannot renew its expiry or proof roots.
 The [runnable proxy/relayer example](example/backend/README.md) includes
 `x-sf-auth`, synchronous and queued TEE merge routes, persistent run recovery and a Flutter entry
 point (`example/lib/main_sponsored.dart`). Both use upstream
-`8ae430a154e22bafa819a570d383d04e2046e802` (v0.6.0-alpha) and the artifacts in
+`5cfd7eaed15ef29dc95f6b212cd2844ed0e86860` and the artifacts in
 this checkout. These mobile APIs are unreleased; e30b328a does not expose them.
 See the example for migration boundaries, trusted TEE policy configuration and
 the production responsibilities it intentionally leaves to the client backend.
@@ -678,6 +678,7 @@ final wallet = await ZolanaWallet.open(
     indexerUrl: indexerUrl,
     provingKeyDir: provingKeyDir,
     proverUrl: 'https://backend.example/zolana', // your backend
+    proverTeePolicy: reviewedPolicyJson,
     proving: Proving.remote,                     // the default; optional
   ),
 );
@@ -704,15 +705,16 @@ await wallet.spend(
 - **Attestation**: from every prover but a loopback one, the Helius gateway
   included, the wallet first fetches
   `GET <proverUrl>/tee/v1/attestation?nonce=<hex>`, checks that the prover
-  matches the selected deployment's trusted policy, and encrypts every
+  matches the application's supplied policy, and encrypts every
   request body to it, with `Zolana-Tee` and `Zolana-Tee-Enc` headers.
   POST ciphertext is in the octet-stream body; encrypted GET uses the
   `Zolana-Tee-Ciphertext` header. Each request is bound to its method and
   its route below `proverUrl`. A remote prover that does not attest fails
   every remote spend: no setting sends it plaintext. Set
-  `requireProverTee: true` to enforce this for a localhost proxy too. Optional
-  `proverTeePolicy` takes trusted `TeePolicy` JSON (or a deployment pin file)
-  instead of the default deployment; it also forces TEE. Distribute that policy
+  `requireProverTee: true` to enforce this for a localhost proxy too.
+  `proverTeePolicy` is required for remote URLs and forced loopback attestation.
+  It takes trusted `TeePolicy` JSON or a deployment pin file; no policy is selected
+  automatically. Distribute that policy
   through the application's trusted configuration, never from the prover being
   verified. Verification checks vendor evidence, freshness, nonce/key binding
   and the policy's deployment measurements and key/GPU constraints.
@@ -1098,3 +1100,23 @@ proves any Zolana `/prove` request with a pinned key, and returns the
 proof and the stage timings. `tools/prove-fixtures` wrote the fixture
 requests, on trees of its own: they prove with the pinned keys and land
 nowhere.
+
+## Download catalogs
+
+`WalletConfig.provingKeyCatalog` accepts the JSON contents of the
+`/proving-keys` catalog (`keys[].artifacts[]`). Supply it from app configuration
+or fetch it separately. The SDK makes no automatic catalog or policy request.
+This option and `provingKeyUrl` are mutually exclusive.
+
+The gnark source digest and zopro checksum and size must match the bundled pins.
+Downloads use the complete zopro URL, including its prefix and query. HTTPS and
+loopback HTTP are accepted. Missing conversions fail without falling back to
+another source. The catalog describes downloads, not server routes or supported
+circuits. Proofs still report the gnark digest as `provingKeySha256`. Omit the
+catalog to use the bundled URLs.
+
+Both SDKs sync the same reviewed upstream zopro manifest, pinned by commit and
+SHA-256 in `key-catalog-source.json`. `python3 scripts/sync-key-catalog.py --check`
+checks it; omitting `--check` regenerates the snapshot. Converted artifacts keep
+their own prefix, which also identifies their local cache, independently of the
+gnark manifest's prefix. Compatibility is established by per-key digests.

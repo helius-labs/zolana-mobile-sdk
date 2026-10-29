@@ -5,6 +5,7 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
+import 'package:zolana_mobile_demo/prover_policy.dart';
 import 'package:zolana_mobile_demo/sponsored_merge.dart';
 import 'package:zolana_mobile_demo/spend_checks.dart';
 import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
@@ -89,6 +90,7 @@ void main() {
               '${(await getApplicationSupportDirectory()).path}/proving-keys',
           proverUrl: backend.proverUrl,
           requireProverTee: true,
+          proverTeePolicy: await demoProverPolicy(),
           mints: [for (final asset in demoAssets) ?asset.config],
         );
         Future<ZolanaWallet> open() => ZolanaWallet.open(

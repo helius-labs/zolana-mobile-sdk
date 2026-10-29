@@ -37,3 +37,12 @@ Use **Lock / discard** to reject a pending result. Backgrounding the app also
 locks the demo. The native proof finishes before its keys are released; unlock
 waits for that drain before creating a new session. This demonstrates lifecycle
 handling, not wallet authentication. No private witness is written to disk.
+
+## Remote prover policy
+
+The app and its live tests explicitly load `assets/policies/devnet.json` through
+`lib/prover_policy.dart`. The Network menu changes URLs while retaining this
+policy, including for a localhost proxy. Supply `--dart-define=ZOLANA_TEE_POLICY=...`
+with reviewed JSON contents to choose another policy. This configuration includes
+both Nitro measurements and the HPKE public-key pin; it is independent of SDK
+releases. Local SDK clients can omit the remote prover URL and policy entirely.

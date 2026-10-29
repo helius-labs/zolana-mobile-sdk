@@ -18,6 +18,7 @@ fn config() -> WalletConfig {
         indexer_url: "https://indexer.example".into(),
         proving_key_dir: "/unused".into(),
         proving_key_url: None,
+        proving_key_catalog: None,
         proving: None,
         prover_url: None,
         require_prover_tee: None,
@@ -169,7 +170,7 @@ impl Fixture {
             outputs: inputs.external_data.outputs.clone(),
             messages: vec![],
             private_tx_hash: [0; 32],
-            circuit: CircuitId::ConfidentialEddsa(
+            circuit: CircuitId::ConfidentialSigner(
                 inputs.input_utxos.len() as u8,
                 inputs.output_utxos.len() as u8,
                 3,
@@ -198,7 +199,7 @@ impl Fixture {
             data,
         };
         let ix = if cached {
-            builder.data.circuit = CircuitId::ConfidentialEddsaCached(
+            builder.data.circuit = CircuitId::ConfidentialSignerCached(
                 inputs.input_utxos.len() as u8,
                 inputs.output_utxos.len() as u8,
                 3,
