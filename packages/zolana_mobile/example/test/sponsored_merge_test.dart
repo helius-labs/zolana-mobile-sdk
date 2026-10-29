@@ -201,6 +201,121 @@ void main() {
       throwsA(isA<SecretBoxAuthenticationError>()),
     );
   });
+
+  test(
+    'plans by tree before requesting a run and avoids singleton rounds',
+    () async {
+      final wallet = _Wallet();
+      final backend = _Backend();
+      final store = _Store();
+      final flow = SponsoredFlow(
+        wallet,
+        _UnusedSigner(),
+        backend,
+        store,
+        _UnusedChecks(),
+      );
+      wallet.notes = [
+        for (var i = 0; i < 4; i++)
+          SpendableNote(
+            id: 'note-$i',
+            mint: null,
+            amount: BigInt.from(10),
+            treeId: i ~/ 2,
+            mergeable: true,
+          ),
+      ];
+      await expectLater(flow.start(rounds: 2, treeId: 0), throwsStateError);
+      expect(backend.runs, 0);
+      wallet.notes = [
+        for (var i = 0; i < 5; i++)
+          SpendableNote(
+            id: 'note-$i',
+            mint: null,
+            amount: BigInt.from(10),
+            treeId: 0,
+            mergeable: true,
+          ),
+        SpendableNote(
+          id: 'data',
+          mint: null,
+          amount: BigInt.one,
+          treeId: 0,
+          mergeable: false,
+        ),
+        SpendableNote(
+          id: 'other-mint',
+          mint: 'token',
+          amount: BigInt.one,
+          treeId: 0,
+          mergeable: true,
+        ),
+        SpendableNote(
+          id: 'other-tree',
+          mint: null,
+          amount: BigInt.one,
+          treeId: 1,
+          mergeable: true,
+        ),
+      ];
+      await flow.start(rounds: 2, treeId: 0, maxInputs: 4);
+      expect(store.data!['inputIds'], [
+        ['note-0', 'note-1', 'note-2'],
+        ['note-3', 'note-4'],
+      ]);
+    },
+  );
+
+  test('a saved plan survives new arrivals, restart and retry without reselection', () async {
+    final store = _Store();
+    final backend = _Backend()..failSecondRelay = true;
+    final wallet = _Wallet();
+    var flow = SponsoredFlow(
+      wallet,
+      _UnusedSigner(),
+      backend,
+      store,
+      _UnusedChecks(),
+    );
+    await flow.start(rounds: 2, treeId: 0, maxInputs: 2);
+    final plan = jsonDecode(jsonEncode(store.data!['inputIds']));
+    wallet.notes.insert(
+      0,
+      SpendableNote(
+        id: 'new-small-note',
+        mint: null,
+        amount: BigInt.one,
+        treeId: 0,
+        mergeable: true,
+      ),
+    );
+    // Restart before preparation: none of the planned inputs are reserved yet.
+    flow = SponsoredFlow(
+      wallet,
+      _UnusedSigner(),
+      backend,
+      store,
+      _UnusedChecks(),
+    );
+    await flow.restore();
+    await expectLater(flow.mergeRounds(), throwsStateError);
+    expect(wallet.selections, plan);
+    expect(store.data!['inputIds'], plan);
+    // Restart after an ambiguous handoff: reuse prepared bytes, not a new proof.
+    backend.failSecondRelay = false;
+    flow = SponsoredFlow(
+      wallet,
+      _UnusedSigner(),
+      backend,
+      store,
+      _UnusedChecks(),
+    );
+    await flow.restore();
+    await flow.mergeRounds();
+    expect(wallet.prepares, 2);
+    expect(flow.phase, 'ready');
+    expect(store.data!['inputIds'], plan);
+  });
 }
 
 class _Store implements SponsoredStore {
@@ -223,7 +338,8 @@ class _Store implements SponsoredStore {
 }
 
 class _Backend implements SponsoredBackend {
-  int relays = 0;
+  int relays = 0, runs = 0;
+  bool failSecondRelay = false;
   @override
   Uri get base => Uri.parse('https://backend.example/');
   @override
@@ -232,13 +348,14 @@ class _Backend implements SponsoredBackend {
     Map<String, dynamic>? body,
   ]) async {
     if (path == 'runs') {
+      runs++;
       return {
         'id': 'run',
-        'slots': 1,
+        'slots': body!['slots'],
         'target': {
           'sponsor': 'sponsor',
           'nonce': 1,
-          'treeId': 0,
+          'treeId': body['treeId'],
           'expiresAt': 2000000000,
           'maxPriorityFeeLamports': 10000,
           'computeUnitLimit': 400000,
@@ -246,6 +363,9 @@ class _Backend implements SponsoredBackend {
       };
     }
     expect(path, 'runs/run/merges');
+    if (failSecondRelay && body!['slot'] == 1) {
+      throw StateError('lost response');
+    }
     relays++;
     return {'signature': 'merge-signature'};
   }
@@ -258,6 +378,19 @@ class _Wallet implements ZolanaWallet {
   int prepares = 0;
   bool unknown = false, replayFails = false;
   final submissions = <List<int>>[];
+  final selections = <List<String>>[];
+  List<SpendableNote> notes = [
+    for (var i = 0; i < 4; i++)
+      SpendableNote(
+        id: 'note-$i',
+        mint: null,
+        amount: BigInt.from(10 + i),
+        treeId: 0,
+        mergeable: true,
+      ),
+  ];
+  @override
+  Future<List<SpendableNote>> spendableNotes() async => notes;
   @override
   String get solanaPublicKey => 'owner';
   @override
@@ -268,8 +401,12 @@ class _Wallet implements ZolanaWallet {
     Proving? proving,
     BigInt? priorityFeeLamports,
     CacheTarget? cacheTarget,
+    List<String>? inputIds,
   }) async {
     prepares++;
+    expect(mint, isNull);
+    expect(maxInputs, isNull);
+    selections.add(List.of(inputIds!));
     return _Transaction();
   }
 

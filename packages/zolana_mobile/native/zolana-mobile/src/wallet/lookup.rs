@@ -1,32 +1,56 @@
-//! Signature-scoped activity, using the protocol's existing readers. No
-//! transaction or nullifier history queries belong on this path.
-
-use std::collections::{BTreeMap, HashMap, HashSet};
-
-use solana_rpc_client_api::request::RpcRequest;
-use solana_transaction_status_client_types::EncodedConfirmedTransactionWithStatusMeta;
-use zolana_client::{fetch_spl_asset_registrations, rpc::solana_rpc::ConfirmedInstructionGroups};
+//! Signature-scoped activity, without scanning the wallet's history.
+use super::{
+    prepared::PreparedTransaction,
+    types::OutputOpening,
+    util::{beside, invalid},
+    MobileWallet,
+};
+use crate::{
+    activity::{self, TransactionLookup, TransactionLookupStatus as Status},
+    error::WalletError,
+};
+use solana_commitment_config::CommitmentConfig;
+use solana_pubkey::Pubkey;
+use solana_rpc_client::api::{config::RpcTransactionConfig, request::RpcRequest};
+use solana_signature::Signature;
+use solana_transaction_status_client_types::{
+    EncodedConfirmedTransactionWithStatusMeta as Confirmed, UiTransactionEncoding,
+};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    str::FromStr,
+};
+use zolana_client::{
+    fetch_spl_asset_registrations, rpc::solana_rpc::ConfirmedInstructionGroups, ClientError,
+    GetShieldedTransactionsBySignatureResponse, Rpc,
+};
 use zolana_interface::{
     event::OutputDataEncoding,
     instruction::{fetch_tag, settlement_accounts, tag, CircuitId, TransactIxData},
+    PROGRAM_ID_PUBKEY,
 };
+use zolana_keypair::PublicKey;
 use zolana_transaction::{
     decrypt, serialization::confidential::Confidential, verify_owned, AssetRegistry,
-    EncryptedScheme, HistoryEntry, HistoryKind, ShieldedKeys, ShieldedTransaction, SOL_MINT,
+    EncryptedScheme, HistoryEntry, HistoryKind, ShieldedKeys, ShieldedTransaction,
+    SppProofOutputUtxo, TransactionError, TransactionKeyRequest, SOL_MINT,
 };
-
-use super::*;
-use crate::activity::{TransactionLookup, TransactionLookupStatus as Status};
-
-type Confirmed = EncodedConfirmedTransactionWithStatusMeta;
 
 pub(super) fn transaction(
     wallet: &MobileWallet,
     signature: String,
+    prepared: Option<&PreparedTransaction>,
 ) -> Result<TransactionLookup, WalletError> {
     let signature = Signature::from_str(&signature).map_err(|_| WalletError::SignatureInvalid)?;
-    // A single confirmed RPC read, including a real `null` when unavailable.
-    // The convenience transaction fetcher polls missing signatures for 30s.
+    let (discover_assets, mut registry) = {
+        let mut assets = wallet.assets();
+        (assets.discovers(), assets.registry(&wallet.client)?.clone())
+    };
+    let lookup = Lookup {
+        keys: &wallet.keys,
+        discover_assets,
+        padding: padding_commitments(prepared.map_or(&[], |pending| pending.outputs.as_slice()))?,
+    };
     let (indexed, confirmed) = beside(
         || {
             wallet
@@ -34,93 +58,157 @@ pub(super) fn transaction(
                 .get_shielded_transactions_by_signature(signature, None)
         },
         || {
-            wallet.client.rpc().client().send::<Option<Confirmed>>(
-                RpcRequest::GetTransaction,
-                serde_json::json!([signature.to_string(), {
-                    "encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 1
-                }]),
-            )
+            // The typed Solana getter cannot represent an RPC null. Read once:
+            // missing and malformed responses must remain distinct.
+            wallet
+                .client
+                .rpc()
+                .client()
+                .send::<Option<Confirmed>>(
+                    RpcRequest::GetTransaction,
+                    serde_json::json!([
+                        signature.to_string(),
+                        RpcTransactionConfig {
+                            encoding: Some(UiTransactionEncoding::Json),
+                            commitment: Some(CommitmentConfig::confirmed()),
+                            max_supported_transaction_version: Some(1),
+                        }
+                    ]),
+                )
+                .map_err(|error| ClientError::Rpc(format!("get_transaction {signature}: {error}")))
         },
     );
-    let indexed = indexed?;
-    let confirmed = confirmed.map_err(|error| ClientError::Rpc(error.to_string()))?;
-    let mut event_ids = HashSet::new();
-    let mut transactions = Vec::with_capacity(indexed.transactions.len());
-    let slot = confirmed
-        .as_ref()
-        .map(|tx| tx.slot)
-        .or_else(|| indexed.transactions.first().map(|tx| tx.transaction.slot));
-    for event in indexed.transactions {
-        let tx = event.transaction;
-        if tx.tx_signature != signature
-            || Some(tx.slot) != slot
-            || !event_ids.insert(event.event_index)
-        {
-            return Err(ClientError::Rpc("inconsistent signature lookup response".into()).into());
-        }
-        transactions.push(tx);
-    }
-    let result = |status, entries| TransactionLookup {
-        status,
-        entries,
-        slot,
-        indexed_slot: indexed.context.slot,
-    };
-    if slot.is_none() {
-        return Ok(result(Status::NotFound, vec![]));
-    }
-    if slot.is_some_and(|slot| slot > indexed.context.slot) {
-        return Ok(result(Status::PendingIndexing, vec![]));
-    }
-    if transactions.is_empty() {
-        return Ok(result(Status::Ready, vec![]));
-    }
-    if confirmed
-        .as_ref()
-        .and_then(|tx| tx.transaction.meta.as_ref())
-        .is_some_and(|meta| meta.err.is_some())
-    {
-        return Err(ClientError::Rpc(
-            "indexer returned shielded events for a failed transaction".into(),
-        )
-        .into());
-    }
-    let (discover, mut registry) = {
-        let mut assets = wallet.assets();
-        (assets.discovers(), assets.registry(&wallet.client)?.clone())
-    };
-    let mut details = wallet.lookup_details(
+    let result = lookup.read(
+        &wallet.client,
         signature,
-        &transactions,
-        &registry,
-        discover,
-        confirmed.as_ref(),
+        &mut registry,
+        indexed?,
+        confirmed?,
     )?;
-    if matches!(details, Details::NeedAssets) && discover {
-        for mint in fetch_spl_asset_registrations(&wallet.client, slot)? {
-            if registry.asset_id(&mint.asset).ok() != Some(mint.asset_id) {
-                registry.insert(mint.asset_id, mint.asset)?;
-            }
-        }
-        details = wallet.lookup_details(
-            signature,
-            &transactions,
-            &registry,
-            false,
-            confirmed.as_ref(),
-        )?;
+    if result.status == Status::Ready {
+        wallet.assets().remember_registry(registry);
     }
-    match details {
-        Details::Complete(entries) => {
-            wallet.assets().remember_registry(registry);
-            Ok(result(Status::Ready, entries))
-        }
-        Details::Incomplete | Details::NeedAssets => Ok(result(Status::Incomplete, vec![])),
-    }
+    Ok(result)
 }
 
+fn padding_commitments(outputs: &[OutputOpening]) -> Result<HashSet<(u16, [u8; 32])>, WalletError> {
+    outputs
+        .iter()
+        .filter(|output| {
+            output.owner_signing_key.is_none()
+                && output.nullifier_key.is_none()
+                && output.amount == 0
+                && !output.compact
+        })
+        .map(|output| {
+            let blinding = output
+                .blinding
+                .as_slice()
+                .try_into()
+                .map_err(|_| invalid("invalid output blinding"))?;
+            let dummy = SppProofOutputUtxo {
+                blinding,
+                ..Default::default()
+            };
+            Ok((output.tree_id, dummy.hash(output.tree_id)?))
+        })
+        .collect()
+}
+
+// Shared context for a read and its optional asset-discovery retry.
+struct Lookup<'a> {
+    keys: &'a dyn ShieldedKeys,
+    discover_assets: bool,
+    padding: HashSet<(u16, [u8; 32])>,
+}
+
+impl Lookup<'_> {
+    fn read(
+        &self,
+        client: &impl Rpc,
+        signature: Signature,
+        registry: &mut AssetRegistry,
+        indexed: GetShieldedTransactionsBySignatureResponse,
+        confirmed: Option<Confirmed>,
+    ) -> Result<TransactionLookup, WalletError> {
+        let mut event_ids = HashSet::new();
+        let mut transactions = Vec::with_capacity(indexed.transactions.len());
+        let slot = confirmed
+            .as_ref()
+            .map(|tx| tx.slot)
+            .or_else(|| indexed.transactions.first().map(|tx| tx.transaction.slot));
+        for event in indexed.transactions {
+            let tx = event.transaction;
+            if tx.tx_signature != signature
+                || Some(tx.slot) != slot
+                || !event_ids.insert(event.event_index)
+            {
+                return Err(invalid("inconsistent signature lookup response"));
+            }
+            transactions.push(tx);
+        }
+        let result = |status, entries: Vec<HistoryEntry>, registry: &AssetRegistry| {
+            Ok(TransactionLookup {
+                status,
+                entries: entries
+                    .into_iter()
+                    .map(|entry| activity::activity_entry(entry, registry))
+                    .collect::<Result<_, _>>()?,
+                slot,
+                indexed_slot: indexed.context.slot,
+            })
+        };
+        if slot.is_none() {
+            return result(Status::NotFound, vec![], registry);
+        }
+        if slot.is_some_and(|slot| slot > indexed.context.slot) {
+            return result(Status::PendingIndexing, vec![], registry);
+        }
+        if transactions.is_empty() {
+            return result(Status::Ready, vec![], registry);
+        }
+        if confirmed
+            .as_ref()
+            .and_then(|tx| tx.transaction.meta.as_ref())
+            .is_some_and(|meta| meta.err.is_some())
+        {
+            return Err(invalid(
+                "indexer returned shielded events for a failed transaction",
+            ));
+        }
+        let mut details = self.lookup_details(
+            client,
+            signature,
+            &transactions,
+            registry,
+            self.discover_assets,
+            confirmed.as_ref(),
+        )?;
+        if matches!(details, Details::NeedAssets) && self.discover_assets {
+            for mint in fetch_spl_asset_registrations(client, slot)? {
+                if registry.asset_id(&mint.asset).ok() != Some(mint.asset_id) {
+                    registry.insert(mint.asset_id, mint.asset)?;
+                }
+            }
+            details = self.lookup_details(
+                client,
+                signature,
+                &transactions,
+                registry,
+                false,
+                confirmed.as_ref(),
+            )?;
+        }
+        match details {
+            Details::Complete(entries) => result(Status::Ready, entries, registry),
+            Details::Incomplete | Details::NeedAssets => {
+                result(Status::Incomplete, vec![], registry)
+            }
+        }
+    }
+}
 enum Details {
-    Complete(Vec<ActivityEntry>),
+    Complete(Vec<HistoryEntry>),
     NeedAssets,
     Incomplete,
 }
@@ -131,27 +219,31 @@ struct Movement {
     spent: u128,
 }
 
-impl MobileWallet {
-    fn lookup_details(
+impl Lookup<'_> {
+    fn lookup_details<R: Rpc + ?Sized>(
         &self,
+        client: &R,
         signature: Signature,
         transactions: &[ShieldedTransaction],
         assets: &AssetRegistry,
         discover: bool,
         confirmed: Option<&Confirmed>,
-    ) -> Result<Details, WalletError> {
-        let decoded = decrypt(&self.keys, transactions, assets)?;
+    ) -> Result<Details, ClientError> {
+        let padding = &self.padding;
+        let address = self.keys.address()?;
+        let owner = Pubkey::new_from_array(address.signing_pubkey.confidential_view_tag()?);
+        let decoded = decrypt(self.keys, transactions, assets)?;
         if discover && (!decoded.unknown_asset_ids.is_empty() || !decoded.unknown_mints.is_empty())
         {
             return Ok(Details::NeedAssets);
         }
         if !discover
-            && self.assets().discovers()
+            && self.discover_assets
             && (!decoded.unknown_asset_ids.is_empty() || !decoded.unknown_mints.is_empty())
         {
             return Ok(Details::Incomplete);
         }
-        let owned = verify_owned(&self.keys, &decoded)?;
+        let owned = verify_owned(self.keys, &decoded)?;
         let by_hash: HashMap<_, _> = owned
             .utxos
             .iter()
@@ -160,8 +252,8 @@ impl MobileWallet {
         let mut movements = BTreeMap::<Pubkey, Movement>::new();
         let mut counted = HashSet::new();
         let mut spends = HashSet::new();
-        let own_tag = self.address.signing_pubkey.confidential_view_tag()?;
-        let own_hash = self.address.owner_hash()?;
+        let own_tag = address.signing_pubkey.confidential_view_tag()?;
+        let own_hash = address.owner_hash()?;
         let mut tags: HashSet<_> = self
             .keys
             .viewing_public_keys()
@@ -187,7 +279,7 @@ impl MobileWallet {
                     }
                 } else if matches!(slot.output_data(), Some(OutputDataEncoding::Encrypted(ref blob))
                     if blob.first() == Some(&EncryptedScheme::Confidential.as_byte()) &&
-                    Confidential::embedded_viewing_pk(&blob[1..]).ok() == Some(self.address.viewing_pubkey))
+                    Confidential::embedded_viewing_pk(&blob[1..]).ok() == Some(address.viewing_pubkey))
                     || slot.proofless_output().is_some_and(|output| {
                         output.owner == own_hash
                             && assets
@@ -223,7 +315,15 @@ impl MobileWallet {
             let Some(first) = tx.nullifiers.first() else {
                 continue;
             };
-            let key = self.viewing_key.get_transaction_viewing_key(first)?;
+            let key = self
+                .keys
+                .transaction_keys(&[TransactionKeyRequest {
+                    viewing_pubkey: address.viewing_pubkey,
+                    first_nullifier: *first,
+                }])?
+                .into_iter()
+                .next()
+                .ok_or(TransactionError::IncompleteDerivation { got: 0, want: 1 })?;
             let context = groups
                 .as_ref()
                 .and_then(|groups| transact_context(tx, groups));
@@ -236,7 +336,7 @@ impl MobileWallet {
                 // needs context this bounded reader does not have.
                 if context
                     .as_ref()
-                    .is_some_and(|cx| cx.owners.contains(&self.owner))
+                    .is_some_and(|cx| cx.owners.contains(&owner))
                 {
                     return Ok(Details::Incomplete);
                 }
@@ -248,7 +348,7 @@ impl MobileWallet {
             if !matches!(
                 cx.data.circuit.uncached(),
                 CircuitId::ConfidentialSigner(..)
-            ) || cx.owners != [self.owner]
+            ) || cx.owners != [owner]
             {
                 return Ok(Details::Incomplete);
             }
@@ -266,7 +366,7 @@ impl MobileWallet {
             let records = if owners.is_empty() {
                 HashMap::new()
             } else {
-                let response = self.client.get_user_records(owners.clone(), None)?;
+                let response = client.get_user_records(owners.clone(), None)?;
                 if response.records.len() != owners.len() {
                     return Ok(Details::Incomplete);
                 }
@@ -290,7 +390,9 @@ impl MobileWallet {
                 return Ok(Details::Incomplete);
             };
             for (index, slot) in tx.output_slots.iter().enumerate() {
-                if slot.view_tag == own_tag {
+                if slot.view_tag == own_tag
+                    || padding.contains(&(slot.output_context.tree_id, slot.output_context.hash))
+                {
                     continue;
                 }
                 let Some(OutputDataEncoding::Encrypted(blob)) = slot.output_data() else {
@@ -314,9 +416,7 @@ impl MobileWallet {
                     Err(TransactionError::UnknownAsset(_)) if discover => {
                         return Ok(Details::NeedAssets)
                     }
-                    Err(TransactionError::UnknownAsset(_)) if !self.assets().discovers() => {
-                        continue
-                    }
+                    Err(TransactionError::UnknownAsset(_)) if !self.discover_assets => continue,
                     Err(_) => return Ok(Details::Incomplete),
                 };
                 if note.ring_program_id.is_some()
@@ -348,7 +448,7 @@ impl MobileWallet {
                     if discover {
                         return Ok(Details::NeedAssets);
                     }
-                    if self.assets().discovers() {
+                    if self.discover_assets {
                         return Ok(Details::Incomplete);
                     }
                     continue;
@@ -402,16 +502,13 @@ impl MobileWallet {
             }
             let amount = u64::try_from(amount)
                 .map_err(|_| ClientError::Rpc("activity amount exceeds u64".into()))?;
-            entries.push(activity::activity_entry(
-                HistoryEntry {
-                    kind,
-                    mint,
-                    amount,
-                    tx_signature: signature,
-                    slot: transactions[0].slot,
-                },
-                assets,
-            )?);
+            entries.push(HistoryEntry {
+                kind,
+                mint,
+                amount,
+                tx_signature: signature,
+                slot: transactions[0].slot,
+            });
         }
         Ok(Details::Complete(entries))
     }
@@ -493,6 +590,40 @@ fn transact_context(
         });
     }
     None
+}
+
+impl MobileWallet {
+    /// Fetch only the shielded events of `signature` and their confirmed
+    /// Solana transaction, then decrypt this wallet's rows. Does not scan or
+    /// warm the wallet's history or spendable-note cache. Asset/recipient
+    /// registry reads may be needed, but no history pages are fetched.
+    ///
+    /// A cold wallet can read its default-ring outgoing transfers and public
+    /// withdrawals using its transaction viewing key, without old input notes.
+    /// `Incomplete` reports unsupported spends or missing metadata rather than
+    /// returning an incorrect empty result. Recipient-tagged dummy padding
+    /// (possible on an exact-balance private send) is also incomplete: a cold
+    /// reader cannot authenticate it as padding without an output opening.
+    /// Use [`Self::transaction_with_prepared`] when the prepared spend was saved.
+    /// Only `Ready` with no entries means
+    /// there are no activity rows for this wallet's configured assets.
+    pub fn transaction(&self, signature: String) -> Result<TransactionLookup, WalletError> {
+        transaction(self, signature, None)
+    }
+    /// Like [`Self::transaction`], with output openings from a prepared spend
+    /// (including one restored after restart). Matching dummy commitments let
+    /// an exact-balance send be read without input-note history. Other outputs
+    /// and public settlements are verified as usual; saved amounts are not
+    /// used to infer the result. Unmatched openings cannot hide unreadable outputs.
+    ///
+    /// This reads activity details; use [`Self::confirm`] to confirm a payment.
+    pub fn transaction_with_prepared(
+        &self,
+        signature: String,
+        pending: &PreparedTransaction,
+    ) -> Result<TransactionLookup, WalletError> {
+        transaction(self, signature, Some(pending))
+    }
 }
 
 #[cfg(test)]

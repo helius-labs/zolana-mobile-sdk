@@ -69,8 +69,10 @@ final payment, plus tokens when testing a token. The sponsor pays merge network
 fees and cache creation. Never put real funds in the published demo accounts.
 
 1. Register / enable merging, then shield demo notes.
-2. Start the run. Each round uses distinct original inputs and writes a separate
-   slot in the same cache. The example creates two notes per round, so use
+2. Start the run. The app lists free mergeable notes of the selected mint/tree,
+   chooses each round's ordered input IDs, then persists that plan with the run.
+   Each round uses distinct original inputs and writes a separate slot in the
+   same cache. The example creates two notes per round, so use
    `ZOLANA_MERGE_INPUTS=2` for a deterministic multiple-round demonstration.
 3. Select a private send or public withdrawal and prepare the final payment.
    Private recipients must already be registered. Preparation downloads any
@@ -82,6 +84,16 @@ fees and cache creation. Never put real funds in the published demo accounts.
    original signature and can resend its identical signed bytes if the outcome
    is unknown. **Refresh unsigned payment** replaces an expired
    blockhash before signing without extending cache or proof validity.
+
+New notes arriving after planning are left out of this run. Restart preserves
+each round's ordered inputs; an unavailable or reserved input stops preparation
+instead of being replaced. The example reserves inputs only as it prepares
+rounds, so keep other spending flows closed while it is active. It does not lock
+another wallet session. Saved runs from an older example without an input plan
+can replay already-prepared messages; finish any unprepared rounds with that
+matching example version. This demo requests a fixed number of rounds and lets
+the user select the payment afterward. A paid production run must check the
+planned value against the intended payment before charging the user.
 
 For smoother first use, prefetch transfer keys with
 `wallet.prefetchProvingKeys(maxInputs: rounds)`. Remote merges need no merge key

@@ -260,6 +260,14 @@ class ZolanaWallet {
   /// `outputs: 4`. The limits include any application fee the spend pays.
   Future<List<native.TokenBalance>> balances() => _serial(_wallet.balances);
 
+  /// Read unreserved, nonzero default-ring notes from the indexer now.
+  /// Each note has a stable commitment ID, mint, amount, tree and [native.SpendableNote.mergeable]
+  /// flag. Unresolved assets are omitted, as in [balances]. Listing does not
+  /// reserve notes: restore pending transactions first, and prevent conflicting
+  /// spends while planning a run. Keep IDs scoped to this wallet and deployment.
+  Future<List<native.SpendableNote>> spendableNotes() =>
+      _serial(_wallet.spendableNotes);
+
   /// Spendable private balance of [mint], read from the indexer now: zero
   /// for a mint the pool has not registered.
   Future<BigInt> privateBalance({String? mint}) =>
@@ -280,8 +288,23 @@ class ZolanaWallet {
   /// rows for the wallet's configured assets. Pending indexing, unavailable
   /// transactions and incomplete details have distinct statuses; network
   /// errors throw. Row identities match [activity] and [overview].
-  Future<native.TransactionLookup> transaction(String signature) =>
-      _serial(() => _wallet.transaction(signature: signature));
+  ///
+  /// Supply [prepared], including a restored spend, to authenticate dummy
+  /// padding on exact-balance payments. Each padding commitment is verified;
+  /// saved amounts do not substitute for on-chain details. Without these
+  /// openings, an exact-balance send may return `incomplete`. This status
+  /// describes activity details, not confirmation of the payment.
+  Future<native.TransactionLookup> transaction(
+    String signature, {
+    native.PreparedTransaction? prepared,
+  }) => _serial(
+    () => prepared == null
+        ? _wallet.transaction(signature: signature)
+        : _wallet.transactionWithPrepared(
+            signature: signature,
+            pending: prepared,
+          ),
+  );
 
   /// [balances] and [activity] from one read of the indexer, which each of
   /// them makes on its own, and the assets of notes the read could not count.
@@ -334,7 +357,7 @@ class ZolanaWallet {
   );
 
   /// Combine the smallest notes of [mint] (SOL when null) on one tree into
-  /// one: at most [maxInputs], 24 when null, 54 at most. A spend takes at most
+  /// one: at most [maxInputs], 24 when null, 52 at most. A spend takes at most
   /// 40 notes, so merge when it fails with [WalletError.mergeRequired] or
   /// [WalletError.tooManyInputTrees], then prepare it again. Notes that
   /// prepared spends reserve are left out, and the merge reserves its own.
@@ -352,6 +375,15 @@ class ZolanaWallet {
   /// supplied, must match that sponsor. The returned cachedOutput can be used
   /// in [prepareSpend] after the on-chain cache has been verified. The run's
   /// priority cap and expiry are enforced before preparing the transaction.
+  ///
+  /// With [cacheTarget], [inputIds] selects exactly those 2–51 notes in that
+  /// order and infers their mint. Do not supply [mint] or [maxInputs] with IDs.
+  /// All notes must be available, unreserved, mergeable, of one mint and on the
+  /// target tree. Selection never substitutes, truncates or reorders them.
+  /// Persist this order: the first input determines the output blinding.
+  /// Rebuilding preserves the commitment, not the transaction bytes. Reconcile
+  /// an earlier attempt before releasing its reservation and rebuilding; use
+  /// its saved transaction for rebroadcasts and [refresh] for a new blockhash.
   Future<PreparedTransaction> prepareMerge({
     String? mint,
     int? maxInputs,
@@ -359,33 +391,44 @@ class ZolanaWallet {
     native.Proving? proving,
     BigInt? priorityFeeLamports,
     native.CacheTarget? cacheTarget,
-  }) => _serial(() {
-    if (cacheTarget != null) {
-      if (feePayer != null && feePayer != cacheTarget.sponsor) {
+    List<String>? inputIds,
+  }) {
+    final ids = inputIds == null ? null : List<String>.of(inputIds);
+    return _serial(() {
+      if (ids != null &&
+          (cacheTarget == null || mint != null || maxInputs != null)) {
         throw const WalletError.client(
-          message: 'feePayer must match cache sponsor',
+          message: 'inputIds requires cacheTarget and cannot be combined with mint or maxInputs',
+        );
+      }
+      if (cacheTarget != null) {
+        if (feePayer != null && feePayer != cacheTarget.sponsor) {
+          throw const WalletError.client(
+            message: 'feePayer must match cache sponsor',
+          );
+        }
+        return _prepare(
+          _wallet.prepareCachedMerge(
+            target: cacheTarget,
+            mint: mint,
+            maxInputs: maxInputs,
+            proving: proving,
+            priorityFeeLamports: priorityFeeLamports,
+            inputIds: ids,
+          ),
         );
       }
       return _prepare(
-        _wallet.prepareCachedMerge(
-          target: cacheTarget,
+        _wallet.prepareMerge(
           mint: mint,
           maxInputs: maxInputs,
+          feePayer: feePayer,
           proving: proving,
           priorityFeeLamports: priorityFeeLamports,
         ),
       );
-    }
-    return _prepare(
-      _wallet.prepareMerge(
-        mint: mint,
-        maxInputs: maxInputs,
-        feePayer: feePayer,
-        proving: proving,
-        priorityFeeLamports: priorityFeeLamports,
-      ),
-    );
-  });
+    });
+  }
 
   /// Move public funds from this account into the private balance. The
   /// deposit, its asset, its amount and this account are public.

@@ -162,9 +162,10 @@ class _SponsoredDemoState extends State<SponsoredDemo> {
         rounds: _rounds,
         treeId: _tree,
         mint: _mint.isEmpty ? null : _mint,
+        maxInputs: _maxInputs,
       );
     }
-    await flow.mergeRounds(maxInputs: _maxInputs);
+    await flow.mergeRounds();
     _status = 'Cache outputs verified. Prepare the final payment.';
   });
 

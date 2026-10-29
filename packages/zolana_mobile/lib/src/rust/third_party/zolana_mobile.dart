@@ -140,12 +140,16 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Build an unsigned [CreateCache, MergeTransact], including an idempotent
   /// cache creation in every round. Notes come from the target's one tree.
+  /// With `input_ids`, use exactly those notes in that order, infer the mint,
+  /// and reject `mint` or `max_inputs`. Missing or reserved inputs fail rather
+  /// than selecting replacements. Save the ordered IDs with the run.
   Future<PreparedTransaction> prepareCachedMerge({
     required CacheTarget target,
     String? mint,
     int? maxInputs,
     Proving? proving,
     BigInt? priorityFeeLamports,
+    List<String>? inputIds,
   });
 
   /// Spend only these cache outputs. Deliberately does not silently add tree
@@ -176,7 +180,7 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   /// Build and prove a merge of the smallest notes of `mint` (SOL for
   /// `None`) on one tree into one: at most `max_inputs` of them, 24 when
-  /// `None`, 54 at most. Notes that prepared spends reserve are left out,
+  /// `None`, 52 at most. Notes that prepared spends reserve are left out,
   /// and the merge reserves its own. Fails with
   /// [`WalletError::NothingToMerge`] below two notes, and with
   /// [`WalletError::MergingDisabled`] unless [`Self::prepare_merging`] turned
@@ -241,16 +245,16 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// public outputs none: a spend with `k` private outputs proves with
   /// `k + 1` outputs, whose keys take at most 40 notes for `k <= 1`, 24
   /// for `k <= 3`, 16 for `k <= 7` and 8 for `k <= 15`, within
-  /// [`WalletConfig::max_spend_inputs`]; past that it fails with
-  /// [`WalletError::MergeRequired`]. [`TokenBalance::limits`] says what
+  /// [`super::WalletConfig::max_spend_inputs`]; past that it fails with
+  /// [`WalletError::MergeRequired`]. [`super::TokenBalance::limits`] says what
   /// each width can take now.
   ///
   /// `fee_payer` pays the network fee, this account when `None`. The proof
   /// binds it, so it cannot change after this call. Another fee payer signs
   /// first, before this account.
   ///
-  /// `proving` says where it is proved, [`WalletConfig::proving`] when
-  /// `None`. Remote proving without [`WalletConfig::prover_url`] fails with
+  /// `proving` says where it is proved, [`super::WalletConfig::proving`] when
+  /// `None`. Remote proving without [`super::WalletConfig::prover_url`] fails with
   /// [`WalletError::RemoteProverMissing`]. The client verifies a remote
   /// proof against the pinned verifying key and the public input it computed
   /// itself before the message is built: a response that is not a proof of
@@ -304,6 +308,11 @@ abstract class MobileWallet implements RustOpaqueInterface {
 
   Future<String> shieldedAddress();
 
+  /// Read spendable notes now, excluding this wallet's reservations (including
+  /// predicted cache outputs). As with balances, unresolved assets are omitted.
+  /// Restore pending transactions before listing notes after a restart.
+  Future<List<SpendableNote>> spendableNotes();
+
   /// Attach the signatures, send, and wait as [`Self::confirm`] does.
   /// Returns the signature.
   ///
@@ -328,10 +337,23 @@ abstract class MobileWallet implements RustOpaqueInterface {
   /// `Incomplete` reports unsupported spends or missing metadata rather than
   /// returning an incorrect empty result. Recipient-tagged dummy padding
   /// (possible on an exact-balance private send) is also incomplete: a cold
-  /// reader cannot authenticate it as padding without input-note history.
+  /// reader cannot authenticate it as padding without an output opening.
+  /// Use [`Self::transaction_with_prepared`] when the prepared spend was saved.
   /// Only `Ready` with no entries means
   /// there are no activity rows for this wallet's configured assets.
   Future<TransactionLookup> transaction({required String signature});
+
+  /// Like [`Self::transaction`], with output openings from a prepared spend
+  /// (including one restored after restart). Matching dummy commitments let
+  /// an exact-balance send be read without input-note history. Other outputs
+  /// and public settlements are verified as usual; saved amounts are not
+  /// used to infer the result. Unmatched openings cannot hide unreadable outputs.
+  ///
+  /// This reads activity details; use [`Self::confirm`] to confirm a payment.
+  Future<TransactionLookup> transactionWithPrepared({
+    required String signature,
+    required PreparedTransaction pending,
+  });
 
   /// Check account owner, layout, run metadata and every expected commitment
   /// at RPC confirmed commitment. Does not wait for the indexer or a prover job.
@@ -950,6 +972,51 @@ class SpendLimit {
           amount == other.amount;
 }
 
+/// An unreserved, nonzero default-ring note from a confirmed indexer scan.
+/// This description does not reserve the note or guarantee future availability.
+class SpendableNote {
+  /// The published commitment as 64 lowercase hex characters. Stable across
+  /// scans and restarts of the same wallet on the same deployment.
+  final String id;
+
+  /// `None` for SOL; otherwise the SPL mint's base58 address.
+  final String? mint;
+
+  /// Integer base units, never a floating-point token amount.
+  final BigInt amount;
+  final int treeId;
+
+  /// Merges require plain notes, without attached data or ring bindings.
+  final bool mergeable;
+
+  const SpendableNote({
+    required this.id,
+    this.mint,
+    required this.amount,
+    required this.treeId,
+    required this.mergeable,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      mint.hashCode ^
+      amount.hashCode ^
+      treeId.hashCode ^
+      mergeable.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SpendableNote &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          mint == other.mint &&
+          amount == other.amount &&
+          treeId == other.treeId &&
+          mergeable == other.mergeable;
+}
+
 /// A spendable private balance. `mint` is `None` for SOL.
 ///
 /// `amount` is what the indexer has confirmed for this wallet, `reserved`
@@ -1194,7 +1261,7 @@ class TransportResponse {
 
 /// Assets of wallet notes that could not be resolved after refreshing the
 /// pool's registrations. Their notes are excluded from balances and activity.
-/// This also includes mints excluded by [`WalletConfig::mints`].
+/// This also includes mints excluded by [`super::WalletConfig::mints`].
 class UnresolvedAssets {
   /// Unresolved asset ids, sorted and deduplicated. These are supplied by
   /// senders and may not correspond to a registered asset.
