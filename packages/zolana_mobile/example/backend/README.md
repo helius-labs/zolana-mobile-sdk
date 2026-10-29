@@ -14,12 +14,12 @@ this example hosts them in one process.
 
 Build the app and server from the same mobile SDK checkout, including its two
 Cargo lockfiles, generated bridge and `native/zolana-mobile/zopro-keys.lock`.
-Both use Zolana **v0.5.0-alpha, ded44879b3df35482d2871bc1d0f32f2d1be2879**.
+Both use Zolana **v0.6.0-alpha, 8ae430a154e22bafa819a570d383d04e2046e802**.
 These additions are unreleased; the older mobile pin e30b328a does not expose them.
 Use the eventual reviewed mobile commit containing this example as the client
 pin; the upstream protocol revision alone is not a mobile SDK release.
 
-The v0.4 sponsored contract must be adapted to the v0.5 transaction/account
+The v0.4 sponsored contract must be adapted to the v0.6 transaction/account
 layout and cache routes. Do not mix its messages, saved runs or proving artifacts
 with this example. Finish or reconcile outstanding runs before changing versions.
 Wallet snapshots are versioned and authenticated, not a cross-version migration
@@ -36,7 +36,7 @@ From the repository root, with a funded **devnet** sponsor keypair in Solana's
 export SF_AUTH_TOKEN='replace-with-a-random-development-token'
 export SPONSOR_KEYPAIR='/absolute/path/to/devnet-sponsor.json'
 export RPC_URL='https://your-devnet-rpc'
-export PROVER_URL='https://d1unet9hn0mci0.cloudfront.net'
+export PROVER_URL='https://dd73hh473h6ha.cloudfront.net'
 export RUN_DIR="$PWD/.example-runs"
 cargo run -p zolana-example-backend
 ```
@@ -175,10 +175,10 @@ confirmation remains separate from proof-job polling.
 Attestation verification runs in the pinned SDK on the phone, not in this
 proxy: vendor evidence, nonce/key binding, deployment measurements, freshness,
 and the policy's key/GPU constraints are checked before witnesses are encrypted.
-The default policy pins the upstream devnet Nitro deployment. For another trusted
+The example pins devnet-e's policy from `Deployment.devnet()`. For another trusted
 deployment pass `WalletConfig.proverTeePolicy` (the example's `ZOLANA_TEE_POLICY`)
-as the JSON contents of a `TeePolicy` or `{ "deployment": … }` pin file from
-that exact upstream revision. Obtain reviewed measurements and the HPKE key
+as the JSON contents of a `TeePolicy` or `{ "deployment": … }` pin file for
+that deployment, such as `Deployment.mainnet().proverTeePolicy`. Obtain reviewed measurements and the HPKE key
 through your trusted deployment process; do not download a policy from the
 prover and treat it as trusted. A policy mismatch fails closed. The app is
 responsible for securely distributing and updating this policy.

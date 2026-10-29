@@ -18,6 +18,7 @@ import 'spend_limit.dart';
 import 'test_cluster_rpc.dart';
 
 const _apiKey = String.fromEnvironment('ZOLANA_API_KEY');
+const _rpcUrl = String.fromEnvironment('ZOLANA_RPC_URL');
 
 /// SOL kept public when shielding the maximum, for this account's fees.
 final _feeReserve = BigInt.from(10000000);
@@ -32,13 +33,15 @@ class Network {
   final String indexerUrl;
   final String proverUrl;
 
-  /// Zolana's devnet-d deployment: Solana RPC through Helius, keyed by the
+  /// Zolana's devnet-e deployment: Solana RPC through Helius, keyed by the
   /// Helius key from `--dart-define=ZOLANA_API_KEY=...`, and the deployment's
-  /// indexer, directly until the Helius gateway serves devnet-d.
+  /// indexer, directly until the Helius gateway serves devnet-e.
   static const devnet = Network(
-    'https://beta-devnet.helius-rpc.com/?api-key=$_apiKey',
-    'https://d21d98xh5lgv3b.cloudfront.net',
-    'https://d1unet9hn0mci0.cloudfront.net',
+    _rpcUrl == ''
+        ? 'https://beta-devnet.helius-rpc.com/?api-key=$_apiKey'
+        : _rpcUrl,
+    'https://d34xe1hqb2ibg2.cloudfront.net',
+    'https://dd73hh473h6ha.cloudfront.net',
   );
 }
 
@@ -102,9 +105,10 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       // Release the previous account before this one proves.
       await previous?.close();
-      if (identical(_network, Network.devnet) && _apiKey.isEmpty) {
-        throw 'Build with --dart-define=ZOLANA_API_KEY=... '
-            '(a Helius key) to use devnet.';
+      if (identical(_network, Network.devnet) &&
+          _apiKey.isEmpty &&
+          _rpcUrl.isEmpty) {
+        throw 'Set ZOLANA_RPC_URL or ZOLANA_API_KEY for Solana devnet.';
       }
       final signer = await DemoSigner.fromSeedHex(
         _account.seedHex,

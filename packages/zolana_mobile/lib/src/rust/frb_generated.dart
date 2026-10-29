@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1103601123;
+  int get rustContentHash => 787157610;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -320,6 +320,10 @@ abstract class RustLibApi extends BaseApi {
   Future<String> zolanaMobileCacheTargetCacheAddress({
     required CacheTarget that,
   });
+
+  Deployment zolanaMobileDeploymentDevnet();
+
+  Deployment zolanaMobileDeploymentMainnet();
 
   Future<Uint8List> zolanaMobileDerivationMessage({
     required String solanaPubkey,
@@ -2317,6 +2321,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Deployment zolanaMobileDeploymentDevnet() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 52)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_deployment,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileDeploymentDevnetConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileDeploymentDevnetConstMeta =>
+      const TaskConstMeta(debugName: "deployment_devnet", argNames: []);
+
+  @override
+  Deployment zolanaMobileDeploymentMainnet() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 53)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_deployment,
+          decodeErrorData: null,
+        ),
+        constMeta: kZolanaMobileDeploymentMainnetConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kZolanaMobileDeploymentMainnetConstMeta =>
+      const TaskConstMeta(debugName: "deployment_mainnet", argNames: []);
+
+  @override
   Future<Uint8List> zolanaMobileDerivationMessage({
     required String solanaPubkey,
   }) {
@@ -2328,7 +2376,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 52,
+            funcId: 54,
             port: port_,
           );
         },
@@ -2358,7 +2406,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 53,
+            funcId: 55,
             port: port_,
           );
         },
@@ -2388,7 +2436,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 54,
+            funcId: 56,
             port: port_,
           );
         },
@@ -2415,7 +2463,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 55,
+            funcId: 57,
             port: port_,
           );
         },
@@ -2882,6 +2930,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       slot: dco_decode_u_8(arr[4]),
       maxPriorityFeeLamports: dco_decode_u_64(arr[5]),
       computeUnitLimit: dco_decode_u_32(arr[6]),
+    );
+  }
+
+  @protected
+  Deployment dco_decode_deployment(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return Deployment(
+      indexerUrl: dco_decode_String(arr[0]),
+      proverUrl: dco_decode_String(arr[1]),
+      proverTeePolicy: dco_decode_String(arr[2]),
     );
   }
 
@@ -4010,6 +4071,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       slot: var_slot,
       maxPriorityFeeLamports: var_maxPriorityFeeLamports,
       computeUnitLimit: var_computeUnitLimit,
+    );
+  }
+
+  @protected
+  Deployment sse_decode_deployment(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_indexerUrl = sse_decode_String(deserializer);
+    var var_proverUrl = sse_decode_String(deserializer);
+    var var_proverTeePolicy = sse_decode_String(deserializer);
+    return Deployment(
+      indexerUrl: var_indexerUrl,
+      proverUrl: var_proverUrl,
+      proverTeePolicy: var_proverTeePolicy,
     );
   }
 
@@ -5407,6 +5481,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_8(self.slot, serializer);
     sse_encode_u_64(self.maxPriorityFeeLamports, serializer);
     sse_encode_u_32(self.computeUnitLimit, serializer);
+  }
+
+  @protected
+  void sse_encode_deployment(Deployment self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.indexerUrl, serializer);
+    sse_encode_String(self.proverUrl, serializer);
+    sse_encode_String(self.proverTeePolicy, serializer);
   }
 
   @protected

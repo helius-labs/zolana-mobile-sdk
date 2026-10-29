@@ -7,6 +7,13 @@ zopro, a Groth16 prover in Rust for gnark's keys (on the GPU where there is
 one), or through the application's backend with the proof verified on the
 device. The Solana key stays with the application's signer.
 
+Targets **Zolana v0.6.0-alpha** and shielded-pool program
+`ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. The public
+`Deployment.devnet()` (devnet-e) and `Deployment.mainnet()` presets include
+Photon, Nitro and their trusted attestation policies; see the
+[SDK configuration](packages/zolana_mobile/README.md). Earlier programs' notes
+and pending transactions require their matching SDK and deployment.
+
 ## Layout
 
 - `packages/zolana_mobile/native/zolana-mobile`: the native wallet, the
@@ -51,7 +58,7 @@ flutter test integration_test/devnet_wallet_test.dart -d DEVICE \
 ```
 
 `ZOLANA_API_KEY` is a Helius key: the example reaches Solana devnet RPC through
-Helius with it, and Zolana's devnet-d indexer and prover without it. It is
+Helius with it, and Zolana's devnet-e indexer and prover without it. It is
 compiled into that build only; do not commit it.
 
 The build uses the precompiled native libraries (see below). When no release
@@ -126,7 +133,7 @@ memory, and merges notes on request.
 The end-to-end wallet tests register, deposit, prove a private transfer on this
 machine, check the recipient's balance, and unshield from a second, stale
 session of the sender; merge notes; and deposit, transfer and withdraw an SPL
-token. Zolana's devnet-d deployment runs the pinned release; the demo accounts
+token. Zolana's devnet-e deployment runs the pinned release; the demo accounts
 avoid devnet airdrop limits once funded. `ZOLANA_E2E_MINT` names the token: the
 demo token `Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6`, which account A
 mints; without it the test creates a mint and registers it with the shielded
@@ -134,8 +141,8 @@ pool:
 
 ```sh
 ZOLANA_E2E_RPC_URL="https://beta-devnet.helius-rpc.com/?api-key=$API_KEY" \
-ZOLANA_E2E_INDEXER_URL="https://d21d98xh5lgv3b.cloudfront.net" \
-ZOLANA_E2E_PROVER_URL="https://d1unet9hn0mci0.cloudfront.net" \
+ZOLANA_E2E_INDEXER_URL="https://d34xe1hqb2ibg2.cloudfront.net" \
+ZOLANA_E2E_PROVER_URL="https://dd73hh473h6ha.cloudfront.net" \
 ZOLANA_E2E_SENDER_SEED=a0a60f24c56c18101be405cc2ddb750d88961c1ee781bd17cd174fe1f5ff55dd \
 ZOLANA_E2E_RECIPIENT_SEED=7138835c906af341f4eec548684b5204d5b617b19573a0dd758050982601bb67 \
 ZOLANA_E2E_MINT=Y8FDajuDMQWu7d5ES3jbZ67NzZta266WuFgQ92N4yd6 \

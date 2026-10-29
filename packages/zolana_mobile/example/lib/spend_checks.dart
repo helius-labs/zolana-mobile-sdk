@@ -5,7 +5,7 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 
 import 'encoding.dart';
 
-const shieldedPoolProgram = 'spp3CfN2Y7se74A27bBpnAkmjXyEb2YmmZafhFrC9xt';
+const shieldedPoolProgram = 'ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW';
 const registryProgram = 'regy3WAeRXMYuMYxr5iK3Bf9Arr3PcxGxyzAddbiqDQ';
 const _systemProgram = '11111111111111111111111111111111';
 const _associatedTokenProgram = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';

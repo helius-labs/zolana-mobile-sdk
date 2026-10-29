@@ -234,6 +234,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CacheTarget dco_decode_cache_target(dynamic raw);
 
   @protected
+  Deployment dco_decode_deployment(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
@@ -606,6 +609,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CacheTarget sse_decode_cache_target(SseDeserializer deserializer);
+
+  @protected
+  Deployment sse_decode_deployment(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -1053,6 +1059,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_cache_target(CacheTarget self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_deployment(Deployment self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);

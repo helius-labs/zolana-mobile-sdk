@@ -23,7 +23,7 @@
 //! ```
 //!
 //! The remote proof comes from the prover at `ZOLANA_E2E_PROVER_URL`, such as
-//! devnet-d's attested prover (`https://d1unet9hn0mci0.cloudfront.net`),
+//! devnet-e's attested prover (`https://dd73hh473h6ha.cloudfront.net`),
 //! asked through the test's transport.
 //!
 //! `ZOLANA_E2E_KEY_DIR` keeps downloaded proving keys between runs.

@@ -21,11 +21,11 @@ solana-message = "4.2"
 solana-transaction = "4.1"
 wincode = "=0.5.5"
 zolana-mobile = { path = "../../native/zolana-mobile" }
-zolana-interface = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["borsh"] }
-zolana-program = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
-zolana-client = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["client"] }
-zolana-user-registry-interface = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879" }
+zolana-interface = { package = "spr-interface", git = "https://github.com/helius-labs/zolana", rev = "8ae430a154e22bafa819a570d383d04e2046e802", features = ["borsh"] }
+zolana-program = { package = "spr-program", git = "https://github.com/helius-labs/zolana", rev = "8ae430a154e22bafa819a570d383d04e2046e802" }
+zolana-client = { package = "spr-client", git = "https://github.com/helius-labs/zolana", rev = "8ae430a154e22bafa819a570d383d04e2046e802", features = ["client"] }
+zolana-user-registry-interface = { package = "spr-user-registry-interface", git = "https://github.com/helius-labs/zolana", rev = "8ae430a154e22bafa819a570d383d04e2046e802" }
 
 [dev-dependencies]
 hex = "0.4"
-zolana-prover-tee = { git = "https://github.com/helius-labs/zolana", rev = "ded44879b3df35482d2871bc1d0f32f2d1be2879", features = ["test-fixtures"] }
+zolana-prover-tee = { package = "spr-prover-tee", git = "https://github.com/helius-labs/zolana", rev = "8ae430a154e22bafa819a570d383d04e2046e802", features = ["test-fixtures"] }

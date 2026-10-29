@@ -550,6 +550,41 @@ class CacheTarget {
           computeUnitLimit == other.computeUnitLimit;
 }
 
+/// Photon and Nitro endpoints with the trusted policy for that deployment.
+/// Supply a Solana RPC on the same network separately in WalletConfig.
+class Deployment {
+  final String indexerUrl;
+  final String proverUrl;
+  final String proverTeePolicy;
+
+  const Deployment({
+    required this.indexerUrl,
+    required this.proverUrl,
+    required this.proverTeePolicy,
+  });
+
+  /// The devnet-e deployment on Solana devnet.
+  static Deployment devnet() =>
+      RustLib.instance.api.zolanaMobileDeploymentDevnet();
+
+  /// The v0.6.0-alpha deployment on Solana mainnet-beta.
+  static Deployment mainnet() =>
+      RustLib.instance.api.zolanaMobileDeploymentMainnet();
+
+  @override
+  int get hashCode =>
+      indexerUrl.hashCode ^ proverUrl.hashCode ^ proverTeePolicy.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Deployment &&
+          runtimeType == other.runtimeType &&
+          indexerUrl == other.indexerUrl &&
+          proverUrl == other.proverUrl &&
+          proverTeePolicy == other.proverTeePolicy;
+}
+
 /// A proof by a [`LocalProver`] and where its time went, in milliseconds.
 class LocalProofResult {
   final String proofJson;
