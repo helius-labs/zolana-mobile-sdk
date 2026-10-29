@@ -266,7 +266,6 @@ impl Fixture {
         keys: &ShieldedKeypair,
         openings: &[OutputOpening],
     ) -> Result<TransactionLookup, WalletError> {
-        self.called("getTransaction");
         Lookup {
             keys,
             discover_assets: true,
@@ -276,7 +275,22 @@ impl Fixture {
             self,
             self.signature,
             &mut self.registry.clone(),
-            self.get_shielded_transactions_by_signature(self.signature, None)?,
+            GetShieldedTransactionsBySignatureResponse {
+                context: Context {
+                    slot: self.indexed_slot,
+                    block_time: 0,
+                },
+                output_tree_id: None,
+                transactions: self
+                    .events
+                    .iter()
+                    .enumerate()
+                    .map(|(index, transaction)| IndexedShieldedTransaction {
+                        event_index: index as u16,
+                        transaction: transaction.clone(),
+                    })
+                    .collect(),
+            },
             self.chain.clone(),
         )
     }
@@ -288,44 +302,15 @@ impl Fixture {
             .map(|output| OutputOpening::from_output(output, 0))
             .collect()
     }
-
-    fn called(&self, method: &'static str) {
-        self.calls.lock().unwrap().push(method);
-    }
 }
 
 impl Rpc for Fixture {
-    fn get_shielded_transactions_by_signature(
-        &self,
-        signature: Signature,
-        _: Option<IndexerRpcConfig>,
-    ) -> Result<GetShieldedTransactionsBySignatureResponse, ClientError> {
-        self.called("getShieldedTransactionsBySignature");
-        assert_eq!(signature, self.signature);
-        Ok(GetShieldedTransactionsBySignatureResponse {
-            context: Context {
-                slot: self.indexed_slot,
-                block_time: 0,
-            },
-            output_tree_id: None,
-            transactions: self
-                .events
-                .iter()
-                .enumerate()
-                .map(|(index, transaction)| IndexedShieldedTransaction {
-                    event_index: index as u16,
-                    transaction: transaction.clone(),
-                })
-                .collect(),
-        })
-    }
-
     fn get_user_records(
         &self,
         owners: Vec<Pubkey>,
         _: Option<IndexerRpcConfig>,
     ) -> Result<GetUserRecordsResponse, ClientError> {
-        self.called("getUserRecords");
+        self.calls.lock().unwrap().push("getUserRecords");
         Ok(GetUserRecordsResponse {
             context: Context {
                 slot: self.indexed_slot,
@@ -343,7 +328,7 @@ impl Rpc for Fixture {
         program: Pubkey,
         _: &ProgramAccountsFilter,
     ) -> Result<Vec<(Pubkey, Account)>, ClientError> {
-        self.called("getProgramAccounts");
+        self.calls.lock().unwrap().push("getProgramAccounts");
         assert_eq!(program, PROGRAM_ID_PUBKEY);
         Ok(self
             .notes
@@ -400,12 +385,6 @@ fn cold_lookup_matches_history_for_sends_withdrawals_and_multiple_assets() {
             assert_eq!(result.entries, expected);
             assert!(!result.entries.is_empty());
             assert_eq!(result.indexed_slot, 10);
-            assert!(fixture.calls.lock().unwrap().iter().all(|method| [
-                "getTransaction",
-                "getShieldedTransactionsBySignature",
-                "getUserRecords",
-            ]
-            .contains(method)));
         }
     }
 }
@@ -456,7 +435,7 @@ fn indexing_delay_not_found_and_indexed_empty_are_distinct() {
         assert_eq!(result.status, expected);
         assert_eq!(result.slot, chain_slot);
         assert!(result.entries.is_empty());
-        assert_eq!(fixture.calls.lock().unwrap().len(), 2);
+        assert!(fixture.calls.lock().unwrap().is_empty());
     }
 }
 

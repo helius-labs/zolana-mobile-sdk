@@ -380,5 +380,3 @@ struct SavedTransaction {
     cached_output: Option<CachedOutput>,
     cache_inputs: Vec<CachedOutput>,
 }
-
-// Use the pinned upstream verifier for the locally computed merge statement.

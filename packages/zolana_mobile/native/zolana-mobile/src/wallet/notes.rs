@@ -62,17 +62,14 @@ pub(super) fn merge_input_ids(ids: &[String]) -> Result<Vec<[u8; 32]>, WalletErr
     let mut seen = HashSet::new();
     ids.iter()
         .map(|id| {
-            if id.len() != 64
-                || !id
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            let mut hash = [0; 32];
+            if id.bytes().any(|byte| byte.is_ascii_uppercase())
+                || hex::decode_to_slice(id, &mut hash).is_err()
             {
                 return Err(invalid(
                     "note ID must be a 32-byte lowercase hex commitment",
                 ));
             }
-            let mut hash = [0; 32];
-            hex::decode_to_slice(id, &mut hash).map_err(|_| invalid("invalid note ID"))?;
             if !seen.insert(hash) {
                 return Err(invalid("duplicate merge input ID"));
             }

@@ -176,13 +176,14 @@ impl Lookup<'_> {
                 "indexer returned shielded events for a failed transaction",
             ));
         }
+        let groups = confirmed.and_then(|tx| ConfirmedInstructionGroups::try_from(tx).ok());
         let mut details = self.lookup_details(
             client,
             signature,
             &transactions,
             registry,
             self.discover_assets,
-            confirmed.as_ref(),
+            groups.as_ref(),
         )?;
         if matches!(details, Details::NeedAssets) && self.discover_assets {
             for mint in fetch_spl_asset_registrations(client, slot)? {
@@ -196,7 +197,7 @@ impl Lookup<'_> {
                 &transactions,
                 registry,
                 false,
-                confirmed.as_ref(),
+                groups.as_ref(),
             )?;
         }
         match details {
@@ -227,11 +228,11 @@ impl Lookup<'_> {
         transactions: &[ShieldedTransaction],
         assets: &AssetRegistry,
         discover: bool,
-        confirmed: Option<&Confirmed>,
+        groups: Option<&ConfirmedInstructionGroups>,
     ) -> Result<Details, ClientError> {
-        let padding = &self.padding;
         let address = self.keys.address()?;
-        let owner = Pubkey::new_from_array(address.signing_pubkey.confidential_view_tag()?);
+        let own_tag = address.signing_pubkey.confidential_view_tag()?;
+        let owner = Pubkey::new_from_array(own_tag);
         let decoded = decrypt(self.keys, transactions, assets)?;
         if discover && (!decoded.unknown_asset_ids.is_empty() || !decoded.unknown_mints.is_empty())
         {
@@ -252,7 +253,6 @@ impl Lookup<'_> {
         let mut movements = BTreeMap::<Pubkey, Movement>::new();
         let mut counted = HashSet::new();
         let mut spends = HashSet::new();
-        let own_tag = address.signing_pubkey.confidential_view_tag()?;
         let own_hash = address.owner_hash()?;
         let mut tags: HashSet<_> = self
             .keys
@@ -263,10 +263,6 @@ impl Lookup<'_> {
         tags.insert(own_tag);
         let mut pays_another = false;
         let deposit = transactions.iter().any(|tx| tx.proofless);
-        let groups = confirmed
-            .cloned()
-            .and_then(|tx| ConfirmedInstructionGroups::try_from(tx).ok());
-
         for tx in transactions {
             let mut received = BTreeMap::<Pubkey, u128>::new();
             for slot in &tx.output_slots {
@@ -324,9 +320,7 @@ impl Lookup<'_> {
                 .into_iter()
                 .next()
                 .ok_or(TransactionError::IncompleteDerivation { got: 0, want: 1 })?;
-            let context = groups
-                .as_ref()
-                .and_then(|groups| transact_context(tx, groups));
+            let context = groups.and_then(|groups| transact_context(tx, groups));
             if groups.is_some() && tx.ring_config.is_none() && context.is_none() {
                 return Ok(Details::Incomplete);
             }
@@ -391,7 +385,9 @@ impl Lookup<'_> {
             };
             for (index, slot) in tx.output_slots.iter().enumerate() {
                 if slot.view_tag == own_tag
-                    || padding.contains(&(slot.output_context.tree_id, slot.output_context.hash))
+                    || self
+                        .padding
+                        .contains(&(slot.output_context.tree_id, slot.output_context.hash))
                 {
                     continue;
                 }
