@@ -2,6 +2,23 @@
 
 Unreleased.
 
+* Split the native wallet into focused modules with separate tests. Share exact
+  note selection, cache merge construction/verification and transaction reading
+  with the Rust SDK; retain mobile reservations, snapshots and signing policies.
+  The v0.6.0-alpha protocol, artifacts and snapshot format are unchanged.
+
+* Add `transaction(signature, prepared: payment)` to authenticate dummy padding
+  from saved output openings. Exact-balance payment details can be read after
+  restoring the prepared transaction without scanning wallet history. Signature-only
+  lookup still returns `incomplete` when padding cannot be authenticated.
+
+* Add `spendableNotes()` with stable commitment IDs, mint, amount, tree ID and
+  merge eligibility, excluding zero-value and reserved notes.
+* Add exact ordered `inputIds` to `prepareMerge(cacheTarget: ...)`. Infer the
+  mint and reject missing, reserved, duplicate or incompatible inputs without
+  replacements. The sponsored example persists every round's IDs before merging
+  so new arrivals and restarts cannot change the plan.
+
 * Target Zolana v0.6.0-alpha and its new shielded-pool program. Add
   `Deployment.devnet()` (devnet-e) and `Deployment.mainnet()` with their Photon,
   Nitro and trusted attestation policies. Select the matching policy for each

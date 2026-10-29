@@ -119,9 +119,9 @@ void main() {
         SponsoredFlow flow(SponsoredStore store) =>
             SponsoredFlow(wallet, signer, backend, store, checks);
         var run = flow(_StopAfterFirstMerge(store));
-        await run.start(rounds: 2, treeId: 0, mint: asset.mint);
+        await run.start(rounds: 2, treeId: 0, mint: asset.mint, maxInputs: 2);
         await expectLater(
-          run.mergeRounds(maxInputs: 2),
+          run.mergeRounds(),
           throwsA(
             isA<StateError>().having(
               (error) => error.message,
@@ -138,7 +138,7 @@ void main() {
         store = await SponsoredStore.forWallet(directory, wallet);
         run = flow(store);
         await run.restore();
-        await run.mergeRounds(maxInputs: 2);
+        await run.mergeRounds();
         expect(run.phase, 'ready');
         expect(
           (run.state!['merges'] as List).first['signature'],

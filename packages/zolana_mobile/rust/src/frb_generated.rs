@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1103601123;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1060524219;
 
 // Section: executor
 
@@ -950,6 +950,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_cached_merge_impl(
             let api_max_inputs = <Option<u32>>::sse_decode(&mut deserializer);
             let api_proving = <Option<zolana_mobile::Proving>>::sse_decode(&mut deserializer);
             let api_priority_fee_lamports = <Option<u64>>::sse_decode(&mut deserializer);
+            let api_input_ids = <Option<Vec<String>>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, zolana_mobile::WalletError>((move || {
@@ -974,6 +975,7 @@ fn wire__zolana_mobile__MobileWallet_prepare_cached_merge_impl(
                         api_max_inputs,
                         api_proving,
                         api_priority_fee_lamports,
+                        api_input_ids,
                     )?;
                     Ok(output_ok)
                 })())
@@ -1714,6 +1716,56 @@ fn wire__zolana_mobile__MobileWallet_shielded_address_impl(
         },
     )
 }
+fn wire__zolana_mobile__MobileWallet_spendable_notes_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "MobileWallet_spendable_notes",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, zolana_mobile::WalletError>((move || {
+                    let mut api_that_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, true,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref_mut()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let mut api_that_guard = api_that_guard.unwrap();
+                    let output_ok =
+                        zolana_mobile::MobileWallet::spendable_notes(&mut *api_that_guard)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__zolana_mobile__MobileWallet_submit_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1824,6 +1876,71 @@ fn wire__zolana_mobile__MobileWallet_transaction_impl(
                     let api_that_guard = api_that_guard.unwrap();
                     let output_ok =
                         zolana_mobile::MobileWallet::transaction(&*api_that_guard, api_signature)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__zolana_mobile__MobileWallet_transaction_with_prepared_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "MobileWallet_transaction_with_prepared",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileWallet>,
+            >>::sse_decode(&mut deserializer);
+            let api_signature = <String>::sse_decode(&mut deserializer);
+            let api_pending = <RustOpaqueMoi<
+                flutter_rust_bridge::for_generated::RustAutoOpaqueInner<PreparedTransaction>,
+            >>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, zolana_mobile::WalletError>((move || {
+                    let mut api_that_guard = None;
+                    let mut api_pending_guard = None;
+                    let decode_indices_ =
+                        flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_that, 0, false,
+                            ),
+                            flutter_rust_bridge::for_generated::LockableOrderInfo::new(
+                                &api_pending,
+                                1,
+                                false,
+                            ),
+                        ]);
+                    for i in decode_indices_ {
+                        match i {
+                            0 => api_that_guard = Some(api_that.lockable_decode_sync_ref()),
+                            1 => api_pending_guard = Some(api_pending.lockable_decode_sync_ref()),
+                            _ => unreachable!(),
+                        }
+                    }
+                    let api_that_guard = api_that_guard.unwrap();
+                    let api_pending_guard = api_pending_guard.unwrap();
+                    let output_ok = zolana_mobile::MobileWallet::transaction_with_prepared(
+                        &*api_that_guard,
+                        api_signature,
+                        &*api_pending_guard,
+                    )?;
                     Ok(output_ok)
                 })())
             }
@@ -2920,6 +3037,14 @@ const _: fn() = || {
         let _: u64 = SpendLimit.amount;
     }
     {
+        let SpendableNote = None::<zolana_mobile::SpendableNote>.unwrap();
+        let _: String = SpendableNote.id;
+        let _: Option<String> = SpendableNote.mint;
+        let _: u64 = SpendableNote.amount;
+        let _: u16 = SpendableNote.tree_id;
+        let _: bool = SpendableNote.mergeable;
+    }
+    {
         let TokenBalance = None::<zolana_mobile::TokenBalance>.unwrap();
         let _: Option<String> = TokenBalance.mint;
         let _: u64 = TokenBalance.amount;
@@ -3627,6 +3752,18 @@ impl SseDecode for Vec<zolana_mobile::SpendLimit> {
     }
 }
 
+impl SseDecode for Vec<zolana_mobile::SpendableNote> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<zolana_mobile::SpendableNote>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<zolana_mobile::TokenBalance> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3840,6 +3977,17 @@ impl SseDecode for Option<u64> {
     }
 }
 
+impl SseDecode for Option<Vec<String>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<Vec<String>>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<Vec<zolana_mobile::MintConfig>> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4022,6 +4170,24 @@ impl SseDecode for zolana_mobile::SpendLimit {
         return zolana_mobile::SpendLimit {
             outputs: var_outputs,
             amount: var_amount,
+        };
+    }
+}
+
+impl SseDecode for zolana_mobile::SpendableNote {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_mint = <Option<String>>::sse_decode(deserializer);
+        let mut var_amount = <u64>::sse_decode(deserializer);
+        let mut var_treeId = <u16>::sse_decode(deserializer);
+        let mut var_mergeable = <bool>::sse_decode(deserializer);
+        return zolana_mobile::SpendableNote {
+            id: var_id,
+            mint: var_mint,
+            amount: var_amount,
+            tree_id: var_treeId,
+            mergeable: var_mergeable,
         };
     }
 }
@@ -4606,33 +4772,45 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        33 => wire__zolana_mobile__MobileWallet_submit_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__zolana_mobile__MobileWallet_transaction_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__zolana_mobile__MobileWallet_verify_cached_outputs_impl(
+        33 => wire__zolana_mobile__MobileWallet_spendable_notes_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        36 => wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
+        34 => wire__zolana_mobile__MobileWallet_submit_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__zolana_mobile__MobileWallet_transaction_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__zolana_mobile__MobileWallet_transaction_with_prepared_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        45 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
-        46 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
-        47 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
-        48 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
-        49 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
-        50 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
-        51 => {
+        37 => wire__zolana_mobile__MobileWallet_verify_cached_outputs_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        38 => wire__zolana_mobile__MobileWallet_wait_for_transaction_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        47 => wire__zolana_mobile__ProvingKeys_clear_impl(port, ptr, rust_vec_len, data_len),
+        48 => wire__zolana_mobile__ProvingKeys_needed_impl(port, ptr, rust_vec_len, data_len),
+        49 => wire__zolana_mobile__ProvingKeys_prefetch_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__zolana_mobile__ProvingKeys_prove_impl(port, ptr, rust_vec_len, data_len),
+        51 => wire__zolana_mobile__ProvingKeys_status_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__zolana_mobile__Transport_new_impl(port, ptr, rust_vec_len, data_len),
+        53 => {
             wire__zolana_mobile__cache_target_cache_address_impl(port, ptr, rust_vec_len, data_len)
         }
-        52 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
-        53 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
-        54 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
-        55 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
+        54 => wire__zolana_mobile__derivation_message_impl(port, ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__zolana_mobile__poseidon_hash_impl(port, ptr, rust_vec_len, data_len),
+        57 => wire__zolana_mobile__sdk_version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4651,24 +4829,24 @@ fn pde_ffi_dispatcher_sync_impl(
         4 => wire__zolana_mobile__CachedOutput_mint_impl(ptr, rust_vec_len, data_len),
         5 => wire__zolana_mobile__CachedOutput_target_impl(ptr, rust_vec_len, data_len),
         8 => wire__zolana_mobile__LocalProver_load_ms_impl(ptr, rust_vec_len, data_len),
-        37 => {
+        39 => {
             wire__zolana_mobile__PreparedTransaction_cached_output_impl(ptr, rust_vec_len, data_len)
         }
-        38 => wire__zolana_mobile__PreparedTransaction_fee_payer_impl(ptr, rust_vec_len, data_len),
-        39 => wire__zolana_mobile__PreparedTransaction_last_valid_block_height_impl(
+        40 => wire__zolana_mobile__PreparedTransaction_fee_payer_impl(ptr, rust_vec_len, data_len),
+        41 => wire__zolana_mobile__PreparedTransaction_last_valid_block_height_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        40 => wire__zolana_mobile__PreparedTransaction_message_impl(ptr, rust_vec_len, data_len),
-        41 => wire__zolana_mobile__PreparedTransaction_operation_impl(ptr, rust_vec_len, data_len),
-        42 => wire__zolana_mobile__PreparedTransaction_outputs_impl(ptr, rust_vec_len, data_len),
-        43 => wire__zolana_mobile__PreparedTransaction_priority_fee_lamports_impl(
+        42 => wire__zolana_mobile__PreparedTransaction_message_impl(ptr, rust_vec_len, data_len),
+        43 => wire__zolana_mobile__PreparedTransaction_operation_impl(ptr, rust_vec_len, data_len),
+        44 => wire__zolana_mobile__PreparedTransaction_outputs_impl(ptr, rust_vec_len, data_len),
+        45 => wire__zolana_mobile__PreparedTransaction_priority_fee_lamports_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        44 => wire__zolana_mobile__PreparedTransaction_signers_impl(ptr, rust_vec_len, data_len),
+        46 => wire__zolana_mobile__PreparedTransaction_signers_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -5149,6 +5327,30 @@ impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::SpendLimit>>
     for zolana_mobile::SpendLimit
 {
     fn into_into_dart(self) -> FrbWrapper<zolana_mobile::SpendLimit> {
+        self.into()
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for FrbWrapper<zolana_mobile::SpendableNote> {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.0.id.into_into_dart().into_dart(),
+            self.0.mint.into_into_dart().into_dart(),
+            self.0.amount.into_into_dart().into_dart(),
+            self.0.tree_id.into_into_dart().into_dart(),
+            self.0.mergeable.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for FrbWrapper<zolana_mobile::SpendableNote>
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<FrbWrapper<zolana_mobile::SpendableNote>>
+    for zolana_mobile::SpendableNote
+{
+    fn into_into_dart(self) -> FrbWrapper<zolana_mobile::SpendableNote> {
         self.into()
     }
 }
@@ -5932,6 +6134,16 @@ impl SseEncode for Vec<zolana_mobile::SpendLimit> {
     }
 }
 
+impl SseEncode for Vec<zolana_mobile::SpendableNote> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <zolana_mobile::SpendableNote>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<zolana_mobile::TokenBalance> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6111,6 +6323,16 @@ impl SseEncode for Option<u64> {
     }
 }
 
+impl SseEncode for Option<Vec<String>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <Vec<String>>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<Vec<zolana_mobile::MintConfig>> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6251,6 +6473,17 @@ impl SseEncode for zolana_mobile::SpendLimit {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <u64>::sse_encode(self.outputs, serializer);
         <u64>::sse_encode(self.amount, serializer);
+    }
+}
+
+impl SseEncode for zolana_mobile::SpendableNote {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <Option<String>>::sse_encode(self.mint, serializer);
+        <u64>::sse_encode(self.amount, serializer);
+        <u16>::sse_encode(self.tree_id, serializer);
+        <bool>::sse_encode(self.mergeable, serializer);
     }
 }
 

@@ -997,6 +997,14 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
             let pending = wallet.prepare_deposit(mint.clone(), SPLIT, None).unwrap();
             submit(&wallet, &[&owner], pending);
         }
+        let plan: Vec<_> = wallet
+            .spendable_notes()
+            .unwrap()
+            .into_iter()
+            .filter(|note| note.mint == mint && note.tree_id == 0 && note.mergeable)
+            .take(4)
+            .collect();
+        assert_eq!(plan.len(), 4);
         let run: serde_json::Value = http
             .post(format!("{backend}/runs"))
             .header("x-sf-auth", &token)
@@ -1018,10 +1026,16 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
             let pending = wallet
                 .prepare_cached_merge(
                     target,
-                    mint.clone(),
-                    Some(2),
+                    None,
+                    None,
                     Some(Proving::Remote),
                     Some(5_000),
+                    Some(
+                        plan[usize::from(slot) * 2..usize::from(slot) * 2 + 2]
+                            .iter()
+                            .map(|note| note.id.clone())
+                            .collect(),
+                    ),
                 )
                 .expect("prepare cached merge through authenticated TEE proxy");
             assert_eq!(pending.signers(), vec![pending.fee_payer()]);
@@ -1046,15 +1060,22 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
                 "relayer retries preserve signed bytes"
             );
             let output = pending.cached_output().unwrap();
-            let mut ready = false;
-            for _ in 0..60 {
-                if wallet.verify_cached_outputs(vec![output.clone()]).is_ok() {
-                    ready = true;
-                    break;
+            assert_eq!(
+                output.amount(),
+                plan[usize::from(slot) * 2..usize::from(slot) * 2 + 2]
+                    .iter()
+                    .map(|note| note.amount)
+                    .sum::<u64>()
+            );
+            for attempt in 0..60 {
+                match wallet.verify_cached_outputs(vec![output.clone()]) {
+                    Ok(()) => break,
+                    Err(error) if attempt == 59 => {
+                        panic!("cache commitment not ready: {error:?}; relay response: {submitted}")
+                    }
+                    Err(_) => std::thread::sleep(Duration::from_millis(500)),
                 }
-                std::thread::sleep(Duration::from_millis(500));
             }
-            assert!(ready, "expected cache commitment should land");
             snapshots.push(snapshot);
             // Reopen between rounds too: restore original-input and predicted
             // output reservations before discovering the next round's inputs.
@@ -1064,6 +1085,15 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
                 wallet
                     .restore_prepared_transaction(snapshot.clone())
                     .unwrap();
+            }
+            if slot == 0 {
+                // A smaller arrival and a fresh scan must not alter round two.
+                let pending = wallet.prepare_deposit(mint.clone(), 1, None).unwrap();
+                submit(&wallet, &[&owner], pending);
+                let available = wallet.spendable_notes().unwrap();
+                assert!(plan[2..]
+                    .iter()
+                    .all(|planned| available.iter().any(|note| note.id == planned.id)));
             }
         }
         drop(wallet);
@@ -1077,7 +1107,7 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
             .map(|pending| pending.cached_output().unwrap())
             .collect();
         let total: u64 = cached.iter().map(|output| output.amount()).sum();
-        let amount = total / 4;
+        let amount = total / 2;
         let outputs = vec![
             Output::Private {
                 recipient: recipient.pubkey().to_string(),
@@ -1085,7 +1115,7 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
             },
             Output::Public {
                 recipient: owner.pubkey().to_string(),
-                amount,
+                amount: total - amount,
             },
         ];
         let payment = wallet
@@ -1097,7 +1127,42 @@ fn sponsored_cache_rounds_restore_and_pay_locally() {
         drop(wallet);
         wallet = open(&owner);
         let payment = wallet.restore_prepared_transaction(saved).unwrap();
-        let signature = submit(&wallet, &[&owner], payment);
+        let before = wallet.private_balance(mint.clone()).unwrap();
+        let receiver_before = receiver.private_balance(mint.clone()).unwrap();
+        let signature = wallet
+            .submit(
+                &payment,
+                vec![owner.sign_message(&payment.message()).as_ref().to_vec()],
+            )
+            .expect("submit exact-cache-balance payment");
+        // A signature alone cannot authenticate recipient-tagged padding.
+        let lookup = wallet.transaction(signature.clone()).unwrap();
+        assert_eq!(lookup.status, TransactionLookupStatus::Incomplete);
+        assert!(lookup.entries.is_empty());
+        let lookup = wallet
+            .transaction_with_prepared(signature.clone(), &payment)
+            .unwrap();
+        assert_eq!(lookup.status, TransactionLookupStatus::Ready);
+        assert_eq!(lookup.entries.len(), 1);
+        assert_eq!(lookup.entries[0].signature, signature);
+        assert_eq!(lookup.entries[0].kind, ActivityKind::Sent);
+        assert_eq!(lookup.entries[0].mint, mint);
+        assert_eq!(lookup.entries[0].amount, total);
+        assert_eq!(
+            wallet.private_balance(mint.clone()).unwrap(),
+            before - total
+        );
+        assert_eq!(
+            receiver.private_balance(mint.clone()).unwrap(),
+            receiver_before + amount
+        );
+        newest_of(
+            &mut wallet,
+            &signature,
+            ActivityKind::Sent,
+            mint.as_deref(),
+            total,
+        );
         println!(
             "cached send + withdrawal confirmed for {}: {signature}",
             mint.as_deref().unwrap_or("SOL")

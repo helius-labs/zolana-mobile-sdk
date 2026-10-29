@@ -188,20 +188,56 @@ class SponsoredFlow {
     required int rounds,
     required int treeId,
     String? mint,
+    int maxInputs = 8,
   }) async {
     if (state != null && !complete) {
       throw StateError('Resume the existing run first');
+    }
+    if (rounds < 1 || rounds > 4 || maxInputs < 2 || maxInputs > 51) {
+      throw ArgumentError('Use 1–4 rounds of 2–51 notes');
+    }
+    final notes =
+        (await wallet.spendableNotes())
+            .where(
+              (note) =>
+                  note.mint == mint && note.treeId == treeId && note.mergeable,
+            )
+            .toList()
+          ..sort((a, b) {
+            final amount = a.amount.compareTo(b.amount);
+            return amount == 0 ? a.id.compareTo(b.id) : amount;
+          });
+    if (notes.length < rounds * 2) {
+      throw StateError(
+        'Not enough free notes on the selected tree for this run',
+      );
+    }
+    final count = notes.length.clamp(0, rounds * maxInputs);
+    final inputs = <List<String>>[];
+    var offset = 0;
+    for (var slot = 0; slot < rounds; slot++) {
+      // Leave at least two inputs for every remaining round.
+      final size = (count - offset - 2 * (rounds - slot - 1)).clamp(
+        2,
+        maxInputs,
+      );
+      inputs.add(notes.skip(offset).take(size).map((note) => note.id).toList());
+      offset += size;
     }
     final run = await backend.call('runs', {
       'owner': wallet.solanaPublicKey,
       'treeId': treeId,
       'slots': rounds,
     });
+    if (run['slots'] != rounds || (run['target'] as Map)['treeId'] != treeId) {
+      throw StateError('Backend run does not match the input plan');
+    }
     state = {
       'version': 1,
       'backend': backend.base.toString(),
       'run': run,
       'mint': mint,
+      'inputIds': inputs,
       'merges': <Map<String, dynamic>>[],
       'phase': 'merging',
     };
@@ -225,7 +261,7 @@ class SponsoredFlow {
     );
   }
 
-  Future<void> mergeRounds({int maxInputs = 8}) async {
+  Future<void> mergeRounds() async {
     _checkBackend();
     final run = state!['run'] as Map;
     final rounds = run['slots'] as int;
@@ -234,10 +270,15 @@ class SponsoredFlow {
     }
     for (var slot = 0; slot < rounds; slot++) {
       if (_merges.length == slot) {
+        final plan = state!['inputIds'] as List?;
+        if (plan == null) {
+          throw StateError(
+            'Run has no saved input plan; resume with its original example version',
+          );
+        }
         final prepared = await wallet.prepareMerge(
-          mint: state!['mint'] as String?,
           cacheTarget: _target(slot),
-          maxInputs: maxInputs,
+          inputIds: List<String>.from(plan[slot] as List),
           proving: Proving.remote,
           priorityFeeLamports: BigInt.from(5000),
         );

@@ -212,10 +212,27 @@ await wallet.spend(
   deposits, received notes, merges, default-ring sends with authenticatable
   recipient outputs, and public withdrawals without first scanning its input
   notes. Missing settlement metadata, unsupported spend formats, and
-  recipient-tagged dummy padding return `incomplete`. The last case can occur
-  on an exact-balance private send with no change: a cold reader cannot tell
-  that padding from an unreadable recipient note. The method does not hide
-  that limitation behind a full-history scan.
+  recipient-tagged dummy padding without an opening return `incomplete`. The
+  last case can occur on an exact-balance private send with no change: a cold
+  reader cannot tell that padding from an unreadable recipient note.
+
+  For a payment the app prepared, retain its exported snapshot and pass the
+  prepared transaction (or its restored instance) to authenticate the padding:
+
+  ```dart
+  final details = await wallet.transaction(signature, prepared: payment);
+  ```
+
+  Each dummy opening must match the published commitment and tree. Recipient
+  outputs and public settlements still undergo the normal checks; saved amounts
+  are never used to guess a result. This also works after restoring a prepared
+  payment on a fresh wallet, without a history scan. Keep snapshots private.
+
+  `incomplete` describes activity details, not payment confirmation. Use
+  `confirm(payment, signature)` or `waitForTransaction(signature)` to recover
+  confirmation; do not rebuild or repay because activity details are unavailable.
+  If the snapshot is unavailable, `activity()` can reconstruct the wallet's
+  history from its input notes at the cost of a full scan.
 
   Every `ActivityEntry` from this method, `activity()` and `overview()` has
   `{signature, slot, index}`. `index` is the pool's immutable asset id (1 for
@@ -608,13 +625,21 @@ to `prepareMerge`, then use each merge's `cachedOutput` in the final
 ordinary tree flow; changing only `feePayer` does not create a cache transaction.
 
 ```dart
+// Plan from actual unreserved notes, grouped by mint and tree. Choose enough
+// value for the payment and persist every slot's ordered IDs with the run.
+final notes = await wallet.spendableNotes();
+final inputIds = notes
+    .where((note) => note.mint == mint && note.treeId == treeId && note.mergeable)
+    .take(8)
+    .map((note) => note.id)
+    .toList();
 // Terms and slot assigned by your authenticated backend run.
 final merge = await wallet.prepareMerge(
   cacheTarget: CacheTarget(
     sponsor: sponsor, nonce: nonce, treeId: treeId, expiresAt: expiresAt,
     slot: slot, maxPriorityFeeLamports: priorityCap, computeUnitLimit: mergeCu,
   ),
-  maxInputs: 8,
+  inputIds: inputIds,
   proving: Proving.remote,
   priorityFeeLamports: BigInt.from(5000),
 );
@@ -639,6 +664,39 @@ asset. Cached merges select original notes from the target tree (24 by default,
 51 at most with CreateCache); each round writes one slot. Merge outputs are also
 published to the tree, but the cache removes the final payment's wait for their
 indexed inclusion paths. Existing input/witness discovery still uses the indexer.
+
+`spendableNotes()` scans now and returns the commitment `id` (64 lowercase hex
+characters), `mint` (`null` for SOL), `amount` (`BigInt` base units), `treeId` and
+`mergeable`. It excludes zero-value notes, ring-bound notes and this wallet's
+reservations, including predicted cache outputs. Data-bearing default-ring notes
+are marked `mergeable: false`. As with balances, unresolved assets are omitted;
+`overview().unresolvedAssets` reports them. IDs survive rescans and restarts of
+the same wallet on the same deployment. No nullifiers, keys or blindings are
+exposed. Listing does not reserve notes, and its order is not a planning contract.
+
+With `inputIds`, cached merges infer the asset and require exactly 2–51 distinct,
+available, unreserved, nonzero plain notes of that asset on the target tree.
+Do not combine IDs with `mint` or `maxInputs`, or use them without `cacheTarget`.
+The SDK never substitutes, truncates or sorts explicit inputs: the first input
+determines the merge output's blinding. Without IDs, automatic selection remains
+available. A tree's note count alone does not establish sufficient payment value;
+sum the planned amounts and check the final spend's input limit before paying
+for a run. The current mobile/backend contract uses one input/output tree.
+
+Save the ordered IDs for **all** rounds before submitting merges, and prevent
+conflicting spends until the run is settled. Prepared transactions reserve their
+inputs; unprepared rounds have no SDK reservation. This protection is local to
+the wallet instance, not a lock against another device or an authorized merger.
+After a restart, restore prepared transactions before planning more work.
+
+Retry a submitted merge with its saved bytes and reconcile its signature and
+expected cache commitment. Rebuilding with the same ordered IDs and output tree
+preserves the commitment, but encryption salts, proofs and transaction bytes can
+change. Release the earlier reservation only after reconciliation establishes
+that rebuilding is appropriate. `refresh` changes the blockhash, not proof roots
+or run expiry. Our example relayer only accepts identical retries; it rejects
+replacement messages, including refreshed ones. A production relayer must
+explicitly support reconciled replacements under the original run terms.
 
 `verifyCachedOutputs` checks the confirmed account's owner, layout, run metadata
 and exact output commitments. A not-yet-created or wrong cache fails, so wait or

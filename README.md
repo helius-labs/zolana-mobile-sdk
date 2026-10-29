@@ -102,7 +102,9 @@ request to the circuit's inputs, the arithmetic, and the proof verified and
 encoded as gnark's verifier reads it; gnark itself runs only offline, where
 the circuits are compiled and the keys made. Protocol crates `zolana-hasher`,
 `zolana-keypair`, and `zolana-transaction` are pinned to one Zolana revision,
-which must be on Zolana `main`.
+matching main at
+`5cfd7eaed15ef29dc95f6b212cd2844ed0e86860`. No additional Rust SDK changes are
+required; newer protocol changes on `main` require a separate migration.
 
 ## Precompiled binaries
 
@@ -122,6 +124,20 @@ hex. Its public key is pinned in `packages/zolana_mobile/rust/cargokit.yaml`. To
 rotate the key, run `dart run build_tool gen-key` in
 `packages/zolana_mobile/cargokit/build_tool`, then replace the secret and the
 public key together. Releases signed with the old key stop verifying.
+
+## Wallet implementation
+
+[`wallet.rs`](packages/zolana_mobile/native/zolana-mobile/src/wallet.rs) holds
+the wallet state and public re-exports.
+Its modules separate account setup, balances, note descriptions, deposits,
+spends, merges, cache run policy, prepared snapshots, submission and activity
+lookup. Unit tests live in `wallet/tests/` and module-specific `tests.rs` files.
+
+Mobile resolves ordered note IDs, builds cached merges with the pinned SDK,
+verifies cache accounts, and reads activity for a single signature. These helpers
+stay private to the wallet modules. The SDK supplies the existing transaction,
+proving and decryption primitives. The v0.6.0-alpha wire format, proving artifacts
+and prepared snapshot format are unchanged.
 
 ## Current boundary
 
