@@ -90,18 +90,24 @@ pub struct WalletConfig {
     pub proving_key_dir: String,
     /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
     pub proving_key_url: Option<String>,
+    /// Optional /proving-keys JSON catalog. Uses its complete zopro URLs only
+    /// when source and artifact digests match the bundled pins. Never fetched
+    /// automatically; mutually exclusive with proving_key_url.
+    pub proving_key_catalog: Option<String>,
     /// Where spends are proved unless a call says otherwise: on the device
     /// when `None`. [`Proving::Remote`] needs [`Self::prover_url`].
     pub proving: Option<Proving>,
     /// The prover [`Proving::Remote`] asks, through the transport: the
     /// application's backend as a proxy of the prover's routes, or a Zolana
     /// prover. It receives each spend's witness, the wallet's nullifier
-    /// secret included, encrypted to the enclave the Zolana SDK pins once the
+    /// secret included, encrypted to the enclave the supplied policy pins once the
     /// prover attests to it; only a loopback prover gets it in plaintext.
     pub prover_url: Option<String>,
     /// Require attestation even for a loopback proxy. Remote URLs always attest.
     pub require_prover_tee: Option<bool>,
     /// Trusted deployment policy JSON, supplied by the app, never by the prover.
+    /// Required for remote URLs and when require_prover_tee is true. Missing
+    /// policy fails before HTTP; no URL selects a policy automatically.
     pub prover_tee_policy: Option<String>,
     /// Refuse queue fallback and status polling for remote proofs.
     pub prover_sync_only: Option<bool>,
@@ -657,11 +663,14 @@ impl MobileWallet {
                 })
             }
         };
-        let proving_keys = Arc::new(KeyStore::new(
-            config.proving_key_dir,
-            config.proving_key_url,
-            transport.clone(),
-        ));
+        let proving_keys = Arc::new(
+            KeyStore::new(
+                config.proving_key_dir,
+                config.proving_key_url,
+                transport.clone(),
+            )
+            .with_catalog(config.proving_key_catalog.as_deref())?,
+        );
         let native_prover = NativeProver::new(Arc::clone(&proving_keys));
         // With its own prover, the client fetches every Merkle proof from the
         // indexer itself: the wallet's provers prove only complete witnesses.
@@ -2051,6 +2060,7 @@ mod tests {
             indexer_url: "https://indexer.example/v1/zolana".to_string(),
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
+            proving_key_catalog: None,
             proving: None,
             prover_url: None,
             require_prover_tee: None,
@@ -3239,6 +3249,8 @@ mod tests {
         let config = |prover_url: Option<&str>| WalletConfig {
             proving: Some(Proving::Remote),
             prover_url: prover_url.map(str::to_string),
+            prover_tee_policy: prover_url
+                .map(|_| include_str!("../../../example/assets/policies/devnet.json").to_string()),
             ..config()
         };
         let mut remote = open_with(&signer, config(None)).unwrap();
@@ -3253,19 +3265,22 @@ mod tests {
     #[test]
     fn only_a_loopback_prover_gets_plaintext_proof_requests() {
         let signer = Keypair::new();
-        let tee = |url: &str| {
+        let tee = |url: &str, policy: Option<&str>| {
             let config = WalletConfig {
                 prover_url: Some(url.to_string()),
+                prover_tee_policy: policy.map(str::to_string),
                 ..config()
             };
             let wallet = open_with(&signer, config).unwrap();
             wallet.remote_prover.as_ref().unwrap().has_tee()
         };
-        assert!(tee("https://prover.example"));
+        let policy = Some(include_str!("../../../example/assets/policies/devnet.json"));
+        assert!(tee("https://prover.example", policy));
         assert!(tee(
-            "https://beta-devnet.helius-rpc.com/v1/zolana?api-key=k"
+            "https://beta-devnet.helius-rpc.com/v1/zolana?api-key=k",
+            policy
         ));
-        assert!(!tee("http://127.0.0.1:3001"));
+        assert!(!tee("http://127.0.0.1:3001", None));
     }
 
     /// A deposit is one instruction this account pays for and signs, and the

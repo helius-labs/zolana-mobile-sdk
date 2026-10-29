@@ -9,6 +9,7 @@
       }
     ],
     "gpu": "optional",
-    "max_age_secs": 600
+    "max_age_secs": 600,
+    "hpke_public_key": "ee8289b5afa1d2e885809a91f4b28b645807dcfd5c9457ddf6a031b3ecb45878"
   }
 }

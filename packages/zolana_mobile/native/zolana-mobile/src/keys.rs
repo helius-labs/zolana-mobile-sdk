@@ -1,26 +1,13 @@
-//! Proving keys, fetched on first use or ahead of it, and pinned by the
-//! The wallet's proving keys: zopro keys, one per gnark proving key.
+//! Proving keys, downloaded on first use and checked against reviewed pins.
 //!
-//! `proving-keys.lock` is the upstream lockfile at the pinned Zolana
-//! revision: the keys' names, sizes and digests, which the client pins.
-//! `zopro-keys.lock` names the zopro key built from each, with its own size
-//! and digest; a key without one cannot be proved with on the device yet.
+//! The upstream gnark manifest identifies protocol keys. The separately pinned
+//! zopro manifest binds each converted file's checksum and size to its source
+//! gnark digest. Their publication prefixes can differ. A supplied download
+//! catalog may choose locations only for these already pinned conversions.
 //!
-//! `proving-keys.lock` is the upstream lockfile at the pinned Zolana revision,
-//! copied verbatim (`scripts/check-upstream.sh` checks it). Its version prefix
-//! and per-file `size` + `sha256` are the only trust anchor: a key is used only
-//! after the bytes on disk hash to the pinned value, and the gnark loader
-//! reads a container before it can cross-check its sections.
-//!
-//! The keys of one lockfile live in a directory of their own under the
-//! configured one, named after its prefix; opening a wallet removes the
-//! directories of other lockfiles. A key downloads in ranged parts appended to
-//! `<key>.partial`, so an interrupted download resumes where it stopped, and
-//! is moved into place once it hashes to the lockfile. `<key>.verified` then
-//! records its size and modification time, so a later process uses it without
-//! hashing it again. `<key>.solver<N>` is the kernel's solver image, written
-//! by the native prover at the first load and read at later ones; it goes
-//! with its key.
+//! The converted manifest's prefix identifies the persistent cache. Ranged
+//! downloads resume in `<key>.partial`; verified files and mapped solver images
+//! survive unrelated additions to the gnark catalog.
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -59,7 +46,6 @@ const SET_MARKER: &str = ".zolana-proving-keys";
 
 #[derive(Deserialize)]
 struct Lockfile {
-    prefix: String,
     keys: HashMap<String, KeyEntry>,
 }
 
@@ -91,6 +77,80 @@ struct LockEntry {
     key_sha256: String,
 }
 
+#[derive(Deserialize)]
+struct DownloadCatalog {
+    keys: Vec<DownloadKey>,
+}
+
+#[derive(Deserialize)]
+struct DownloadKey {
+    name: String,
+    artifacts: Vec<DownloadArtifact>,
+}
+
+#[derive(Deserialize)]
+struct DownloadArtifact {
+    format: String,
+    sha256: String,
+    size: u64,
+    url: String,
+}
+
+/// /proving-keys is discovery metadata, not a new trust anchor or a route list.
+fn catalog_urls(
+    json: &str,
+    pins: &HashMap<String, LockEntry>,
+) -> Result<HashMap<String, String>, WalletError> {
+    let catalog: DownloadCatalog =
+        serde_json::from_str(json).map_err(|_| WalletError::ProvingKeyCatalogInvalid)?;
+    let mut seen = HashSet::new();
+    let mut urls = HashMap::new();
+    for key in catalog.keys {
+        if !seen.insert(key.name.clone()) {
+            return Err(WalletError::ProvingKeyCatalogInvalid);
+        }
+        let Some(pin) = pins.get(&key.name) else {
+            continue;
+        };
+        let gnark: Vec<_> = key
+            .artifacts
+            .iter()
+            .filter(|a| a.format == "gnark")
+            .collect();
+        let zopro: Vec<_> = key
+            .artifacts
+            .iter()
+            .filter(|a| a.format == "zopro")
+            .collect();
+        if gnark.len() != 1 || zopro.len() > 1 {
+            return Err(WalletError::ProvingKeyCatalogInvalid);
+        }
+        if gnark[0].sha256 != pin.key_sha256 {
+            return Err(WalletError::ProvingKeyMismatch { name: key.name });
+        }
+        let Some(artifact) = zopro.first() else {
+            continue;
+        };
+        if artifact.sha256 != pin.sha256 || artifact.size != pin.size {
+            return Err(WalletError::ProvingKeyMismatch { name: key.name });
+        }
+        let url = reqwest::Url::parse(&artifact.url)
+            .map_err(|_| WalletError::ProvingKeyCatalogInvalid)?;
+        let loopback = url.host_str().is_some_and(|host| {
+            matches!(host, "localhost" | "127.0.0.1" | "[::1]") || host.ends_with(".localhost")
+        });
+        if (url.scheme() != "https" && !(url.scheme() == "http" && loopback))
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(WalletError::ProvingKeyCatalogInvalid);
+        }
+        urls.insert(key.name, url.to_string());
+    }
+    Ok(urls)
+}
+
 fn lockfile() -> &'static Lockfile {
     static LOCK: OnceLock<Lockfile> = OnceLock::new();
     LOCK.get_or_init(|| serde_json::from_str(LOCKFILE).expect("embedded lockfile is valid JSON"))
@@ -103,9 +163,9 @@ fn artifacts() -> &'static Artifacts {
     })
 }
 
-/// The directory name of this lockfile's keys: the last part of its prefix.
+/// The converted key set's cache directory: the last part of its prefix.
 fn key_set() -> &'static str {
-    let prefix = lockfile().prefix.trim_end_matches('/');
+    let prefix = artifacts().prefix.trim_end_matches('/');
     prefix.rsplit('/').next().unwrap_or(prefix)
 }
 
@@ -253,7 +313,8 @@ impl ProvingKeys {
 pub struct KeyStore {
     /// This lockfile's key set under the configured directory.
     dir: PathBuf,
-    base_url: String,
+    base_url: Option<String>,
+    catalog_urls: Option<HashMap<String, String>>,
     transport: Transport,
     /// [`PART`] outside tests.
     part: u64,
@@ -289,13 +350,39 @@ impl KeyStore {
         let root = root.into();
         prune(&root);
         let dir = root.join(key_set());
-        let base_url = base_url.unwrap_or_else(|| DEFAULT_PROVING_KEYS_URL.to_string());
         Self {
             shared: shared(&dir),
             dir,
-            base_url: base_url.trim_end_matches('/').to_string(),
+            base_url: base_url.map(|url| url.trim_end_matches('/').to_string()),
+            catalog_urls: None,
             transport,
             part: PART,
+        }
+    }
+
+    /// A catalog only supplies locations for the already pinned conversions.
+    pub(crate) fn with_catalog(mut self, json: Option<&str>) -> Result<Self, WalletError> {
+        if let Some(json) = json {
+            if self.base_url.is_some() {
+                return Err(WalletError::ProvingKeyCatalogInvalid);
+            }
+            self.catalog_urls = Some(catalog_urls(json, &artifacts().keys)?);
+        }
+        Ok(self)
+    }
+
+    fn download_url(&self, name: &str, entry: &LockEntry) -> Result<String, WalletError> {
+        match &self.catalog_urls {
+            Some(urls) => urls
+                .get(name)
+                .cloned()
+                .ok_or_else(|| WalletError::ProvingKeyUnknown { name: name.into() }),
+            None => Ok(format!(
+                "{}/{}/{}",
+                self.base_url.as_deref().unwrap_or(DEFAULT_PROVING_KEYS_URL),
+                artifacts().prefix,
+                entry.file
+            )),
         }
     }
 
@@ -307,6 +394,7 @@ impl KeyStore {
     pub fn ensure(&self, key: &ExpectedProvingKey) -> Result<(PathBuf, u64), WalletError> {
         let name = key.name.as_str();
         let entry = entry(name)?;
+        self.download_url(name, entry)?;
         if entry.key_sha256 != hex(&key.sha256) {
             return Err(WalletError::ProvingKeyMismatch { name: name.into() });
         }
@@ -322,6 +410,11 @@ impl KeyStore {
             .keys
             .iter()
             .filter(|(name, _)| is_wallet_key(name))
+            .filter(|(name, _)| {
+                self.catalog_urls
+                    .as_ref()
+                    .is_none_or(|urls| urls.contains_key(*name))
+            })
             .map(|(name, key)| match artifacts().keys.get(name) {
                 Some(entry) => ProvingKeyStatus {
                     name: name.clone(),
@@ -360,6 +453,7 @@ impl KeyStore {
     ) -> Result<bool, WalletError> {
         let mut pending = Vec::new();
         for &(name, entry) in keys {
+            self.download_url(name, entry)?;
             let on_disk = self.on_disk(name, entry);
             let done =
                 self.is_verified(name) || Verified::matches(&self.dir.join(&entry.file), entry);
@@ -510,7 +604,7 @@ impl KeyStore {
                 .transport
                 .send_blocking(TransportRequest {
                     method: "GET".to_string(),
-                    url: format!("{}/{}/{}", self.base_url, artifacts().prefix, entry.file),
+                    url: self.download_url(name, entry)?,
                     headers: HashMap::from([(
                         "range".to_string(),
                         format!("bytes={offset}-{end}"),
@@ -775,6 +869,141 @@ mod tests {
         (data, entry)
     }
 
+    fn catalog(name: &str, entry: &LockEntry) -> serde_json::Value {
+        serde_json::json!({"keys": [{"name": name, "artifacts": [
+            {"format": "gnark", "sha256": entry.key_sha256, "size": 1,
+             "url": "https://keys.example/new-prefix/key.key"},
+            {"format": "zopro", "sha256": entry.sha256, "size": entry.size,
+             "url": "https://mirror.example/old-prefix/key.bin?version=pinned"}
+        ]}]})
+    }
+
+    #[test]
+    fn a_catalog_download_uses_the_exact_zopro_url_and_pinned_bytes() {
+        let (bytes, entry) = key();
+        let pins = HashMap::from([("k.key".into(), entry.clone())]);
+        let urls = catalog_urls(&catalog("k.key", &entry).to_string(), &pins).unwrap();
+        let (transport, requests) = host(bytes.clone(), |_| None);
+        let root = scratch("catalog-download");
+        let store = KeyStore {
+            catalog_urls: Some(urls),
+            ..store(&root, transport)
+        };
+        store.create_dir().unwrap();
+        let path = store.dir.join("k.key");
+        assert!(store
+            .download("k.key", &entry, &path, &mut |_| true)
+            .unwrap());
+        assert_eq!(fs::read(path).unwrap(), bytes);
+        for request in requests.lock().unwrap().iter() {
+            assert_eq!(
+                request.url,
+                "https://mirror.example/old-prefix/key.bin?version=pinned"
+            );
+            assert_eq!(request.method, "GET");
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn catalog_checks_both_hashes_and_size_without_changing_trust_pins() {
+        let (_, entry) = key();
+        let pins = HashMap::from([("k.key".into(), entry.clone())]);
+        for (index, field, value) in [
+            (0, "sha256", serde_json::json!("00".repeat(32))),
+            (1, "sha256", serde_json::json!("00".repeat(32))),
+            (1, "size", serde_json::json!(entry.size + 1)),
+        ] {
+            let mut bad = catalog("k.key", &entry);
+            bad["keys"][0]["artifacts"][index][field] = value;
+            assert_eq!(
+                catalog_urls(&bad.to_string(), &pins),
+                Err(WalletError::ProvingKeyMismatch {
+                    name: "k.key".into()
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn missing_conversions_and_unknown_circuits_do_not_enable_local_downloads() {
+        let (bytes, entry) = key();
+        let pins = HashMap::from([("k.key".into(), entry.clone())]);
+        let mut value = catalog("k.key", &entry);
+        value["keys"][0]["artifacts"].as_array_mut().unwrap().pop();
+        assert!(catalog_urls(&value.to_string(), &pins).unwrap().is_empty());
+        assert!(
+            catalog_urls(&catalog("future.key", &entry).to_string(), &pins)
+                .unwrap()
+                .is_empty()
+        );
+        let root = scratch("catalog-missing");
+        let store = KeyStore::new(&root, None, unreachable())
+            .with_catalog(Some(r#"{"keys":[]}"#))
+            .unwrap();
+        assert_eq!(
+            store.download_url("k.key", &entry),
+            Err(WalletError::ProvingKeyUnknown {
+                name: "k.key".into()
+            })
+        );
+        store.create_dir().unwrap();
+        let path = store.dir.join(&entry.file);
+        fs::write(&path, bytes).unwrap();
+        Verified::record(&path, &entry);
+        assert_eq!(
+            store.prefetch(&[("k.key", &entry)], |_| true),
+            Err(WalletError::ProvingKeyUnknown {
+                name: "k.key".into()
+            })
+        );
+        assert!(
+            KeyStore::new(&root, Some("https://mirror.example".into()), unreachable())
+                .with_catalog(Some(r#"{"keys":[]}"#))
+                .is_err()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn catalog_rejects_duplicates_and_unsafe_urls() {
+        let (_, entry) = key();
+        let pins = HashMap::from([("k.key".into(), entry.clone())]);
+        for artifact in [0, 1] {
+            let mut value = catalog("k.key", &entry);
+            let duplicate = value["keys"][0]["artifacts"][artifact].clone();
+            value["keys"][0]["artifacts"]
+                .as_array_mut()
+                .unwrap()
+                .push(duplicate);
+            assert_eq!(
+                catalog_urls(&value.to_string(), &pins),
+                Err(WalletError::ProvingKeyCatalogInvalid)
+            );
+        }
+        let mut value = catalog("k.key", &entry);
+        let duplicate = value["keys"][0].clone();
+        value["keys"].as_array_mut().unwrap().push(duplicate);
+        assert_eq!(
+            catalog_urls(&value.to_string(), &pins),
+            Err(WalletError::ProvingKeyCatalogInvalid)
+        );
+        for url in [
+            "/relative/key",
+            "file:///key",
+            "http://remote.example/key",
+            "https://user:secret@host/key",
+            "https://host/key#fragment",
+        ] {
+            let mut value = catalog("k.key", &entry);
+            value["keys"][0]["artifacts"][1]["url"] = url.into();
+            assert_eq!(
+                catalog_urls(&value.to_string(), &pins),
+                Err(WalletError::ProvingKeyCatalogInvalid)
+            );
+        }
+    }
+
     fn store(root: &Path, transport: Transport) -> KeyStore {
         KeyStore {
             part: 30,
@@ -853,7 +1082,8 @@ mod tests {
     #[test]
     fn zopro_keys_are_built_from_the_pinned_keys() {
         assert!(!artifacts().keys.is_empty());
-        assert_eq!(artifacts().prefix, lockfile().prefix);
+        // Converted artifacts keep their own publication prefix when unrelated
+        // gnark circuits are added. The source digest is the compatibility pin.
         for (name, entry) in &artifacts().keys {
             let key = lockfile()
                 .keys
@@ -984,7 +1214,7 @@ mod tests {
         assert_eq!(request.method, "GET");
         assert_eq!(
             request.url,
-            format!("{DEFAULT_PROVING_KEYS_URL}/{}/k.key", lockfile().prefix)
+            format!("{DEFAULT_PROVING_KEYS_URL}/{}/k.key", artifacts().prefix)
         );
         assert_eq!(request.max_response_bytes, Some(100));
         assert!(request.body.is_empty());

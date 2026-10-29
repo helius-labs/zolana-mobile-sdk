@@ -175,10 +175,11 @@ confirmation remains separate from proof-job polling.
 Attestation verification runs in the pinned SDK on the phone, not in this
 proxy: vendor evidence, nonce/key binding, deployment measurements, freshness,
 and the policy's key/GPU constraints are checked before witnesses are encrypted.
-The example pins devnet-e's policy from `Deployment.devnet()`. For another trusted
-deployment pass `WalletConfig.proverTeePolicy` (the example's `ZOLANA_TEE_POLICY`)
-as the JSON contents of a `TeePolicy` or `{ "deployment": … }` pin file for
-that deployment, such as `Deployment.mainnet().proverTeePolicy`. Obtain reviewed measurements and the HPKE key
+The example bundles devnet-e's reviewed policy in `example/assets/policies/devnet.json`.
+For another deployment, pass its reviewed `TeePolicy` or `{ "deployment": … }`
+JSON as `WalletConfig.proverTeePolicy` (the example's `ZOLANA_TEE_POLICY`).
+`example/assets/policies/mainnet.json` provides the mainnet policy.
+Obtain reviewed measurements and the HPKE key
 through your trusted deployment process; do not download a policy from the
 prover and treat it as trusted. A policy mismatch fails closed. The app is
 responsible for securely distributing and updating this policy.

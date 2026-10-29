@@ -8,6 +8,7 @@ import 'package:zolana_mobile_demo/demo_assets.dart';
 import 'package:zolana_mobile_demo/demo_keys.dart';
 import 'package:zolana_mobile_demo/demo_signer.dart';
 import 'package:zolana_mobile_demo/merge_sheet.dart';
+import 'package:zolana_mobile_demo/prover_policy.dart';
 import 'package:zolana_mobile_demo/test_cluster_rpc.dart';
 import 'package:zolana_mobile_demo/spend_checks.dart';
 import 'package:zolana_mobile_demo/wallet_screen.dart' show Network;
@@ -52,6 +53,7 @@ void main() {
         '${(await getApplicationSupportDirectory()).path}/proving-keys',
     maxSpendInputs: 8,
     proverUrl: proverUrl,
+    proverTeePolicy: proverUrl == null ? null : await demoProverPolicy(),
     mints: [for (final asset in demoAssets) ?asset.config],
   );
 

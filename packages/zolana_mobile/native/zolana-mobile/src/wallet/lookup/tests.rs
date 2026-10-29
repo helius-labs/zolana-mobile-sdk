@@ -18,6 +18,7 @@ fn config() -> WalletConfig {
         indexer_url: "https://indexer.example".into(),
         proving_key_dir: "/unused".into(),
         proving_key_url: None,
+        proving_key_catalog: None,
         proving: None,
         prover_url: None,
         require_prover_tee: None,

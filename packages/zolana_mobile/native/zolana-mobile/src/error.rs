@@ -93,6 +93,8 @@ pub enum WalletError {
     /// The spend asked for remote proving and `WalletConfig.prover_url` is
     /// not set.
     RemoteProverMissing,
+    /// Remote proving (or forced loopback attestation) needs an app-supplied policy.
+    ProverPolicyMissing,
     /// The remote prover's response is not a proof of the pinned proving key.
     ProofMalformed,
     /// The proof does not verify against the pinned verifying key.
@@ -121,6 +123,8 @@ pub enum WalletError {
     ProverUrlInsecure { url: String },
     /// The lockfile pins no key named `name`.
     ProvingKeyUnknown { name: String },
+    /// The download catalog is malformed, ambiguous, or combined with a key URL override.
+    ProvingKeyCatalogInvalid,
     /// The lockfile pins another sha256 for `name` than the verifying key
     /// expects.
     ProvingKeyMismatch { name: String },

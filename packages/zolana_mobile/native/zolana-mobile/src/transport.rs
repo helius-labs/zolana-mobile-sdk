@@ -142,7 +142,6 @@ impl Transport {
         policy_json: Option<&str>,
         sync_only: bool,
     ) -> Result<ProverClient, WalletError> {
-        let policy_json = policy_json.or_else(|| crate::deployment::policy_for_prover(&url));
         let mut client = ProverClient::with_client(
             url,
             ProverSender {
@@ -152,11 +151,8 @@ impl Transport {
         );
         if require_tee || policy_json.is_some() || client.has_tee() {
             use zolana_client::prover::tee::TeePolicy;
-            let policy = match policy_json {
-                Some(json) => TeePolicy::from_file_json(json),
-                None => TeePolicy::from_file_json(crate::deployment::DEVNET_POLICY),
-            }
-            .map_err(|error| WalletError::Client {
+            let json = policy_json.ok_or(WalletError::ProverPolicyMissing)?;
+            let policy = TeePolicy::from_file_json(json).map_err(|error| WalletError::Client {
                 message: error.to_string(),
             })?;
             client = client.with_tee(policy);
@@ -377,6 +373,7 @@ pub(crate) mod tests {
             indexer_url: INDEXER_URL.to_string(),
             proving_key_dir: std::env::temp_dir().display().to_string(),
             proving_key_url: None,
+            proving_key_catalog: None,
             proving: None,
             prover_url: None,
             require_prover_tee: None,
@@ -601,6 +598,79 @@ mod proxy_tests {
     use super::*;
     use zolana_client::prover::{ExpectedProvingKey, ProveRequest};
     use zolana_client::{prover::Delivery, Prover};
+    const POLICY: &str = include_str!("../../../example/assets/policies/devnet.json");
+
+    #[test]
+    fn a_missing_policy_fails_before_any_http() {
+        for url in [
+            "https://dd73hh473h6ha.cloudfront.net",
+            "https://d3ky2kt0ntqxt1.cloudfront.net",
+            "https://api.example/v1/zolana?api-key=secret",
+            "https://proxy.example/zolana",
+            "http://localhost:1234/v1/zolana",
+        ] {
+            let (transport, requests) = tests::fake(|_| panic!("missing policy sent HTTP"));
+            assert!(matches!(
+                transport.configured_prover(url.into(), true, None, false),
+                Err(WalletError::ProverPolicyMissing)
+            ));
+            assert!(requests.lock().unwrap().is_empty());
+        }
+        // false only exempts loopback; it never permits an unpinned remote.
+        let (transport, requests) = tests::fake(|_| panic!("missing policy sent HTTP"));
+        assert!(matches!(
+            transport.configured_prover("https://prover.example".into(), false, None, false),
+            Err(WalletError::ProverPolicyMissing)
+        ));
+        assert!(requests.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn supplied_policy_attests_through_direct_unified_and_proxy_urls() {
+        for url in [
+            "https://prover.example",
+            "https://api.example/v1/zolana?api-key=secret",
+            "https://proxy.example/zolana",
+            "http://localhost:1234/v1/zolana",
+        ] {
+            let (transport, requests) = tests::fake(|_| {
+                Ok(TransportResponse {
+                    status: 404,
+                    headers: HashMap::new(),
+                    body: b"no attestation".to_vec(),
+                })
+            });
+            let prover = transport
+                .configured_prover(url.into(), false, Some(POLICY), false)
+                .unwrap();
+            assert!(prover.prove(&Merge).is_err());
+            let requests = requests.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            let sent = reqwest::Url::parse(&requests[0].url).unwrap();
+            let base = reqwest::Url::parse(url).unwrap();
+            assert_eq!(sent.origin(), base.origin());
+            assert_eq!(
+                sent.path(),
+                format!("{}/tee/v1/attestation", base.path().trim_end_matches('/'))
+            );
+            assert_eq!(
+                sent.query_pairs().find(|(key, _)| key == "api-key"),
+                base.query_pairs().find(|(key, _)| key == "api-key")
+            );
+            assert!(requests[0].body.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_malformed_supplied_policy_fails_before_http() {
+        let (transport, requests) = tests::fake(|_| panic!("bad policy sent HTTP"));
+        for policy in ["{}", "null", r#"{"deployment":null}"#] {
+            assert!(transport
+                .configured_prover("https://prover.example".into(), false, Some(policy), false)
+                .is_err());
+        }
+        assert!(requests.lock().unwrap().is_empty());
+    }
     struct Merge;
     impl ProveRequest for Merge {
         fn body(&self) -> Result<zeroize::Zeroizing<String>, zolana_client::ClientError> {
@@ -646,7 +716,12 @@ mod proxy_tests {
             })
         });
         let client = transport
-            .configured_prover("http://localhost:1234/v1/zolana".into(), true, None, true)
+            .configured_prover(
+                "http://localhost:1234/v1/zolana".into(),
+                true,
+                Some(POLICY),
+                true,
+            )
             .unwrap();
         assert!(client.has_tee());
         assert!(client.prove(&Merge).is_err());

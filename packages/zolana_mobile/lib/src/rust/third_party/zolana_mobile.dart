@@ -550,41 +550,6 @@ class CacheTarget {
           computeUnitLimit == other.computeUnitLimit;
 }
 
-/// Photon and Nitro endpoints with the trusted policy for that deployment.
-/// Supply a Solana RPC on the same network separately in WalletConfig.
-class Deployment {
-  final String indexerUrl;
-  final String proverUrl;
-  final String proverTeePolicy;
-
-  const Deployment({
-    required this.indexerUrl,
-    required this.proverUrl,
-    required this.proverTeePolicy,
-  });
-
-  /// The devnet-e deployment on Solana devnet.
-  static Deployment devnet() =>
-      RustLib.instance.api.zolanaMobileDeploymentDevnet();
-
-  /// The v0.6.0-alpha deployment on Solana mainnet-beta.
-  static Deployment mainnet() =>
-      RustLib.instance.api.zolanaMobileDeploymentMainnet();
-
-  @override
-  int get hashCode =>
-      indexerUrl.hashCode ^ proverUrl.hashCode ^ proverTeePolicy.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Deployment &&
-          runtimeType == other.runtimeType &&
-          indexerUrl == other.indexerUrl &&
-          proverUrl == other.proverUrl &&
-          proverTeePolicy == other.proverTeePolicy;
-}
-
 /// A proof by a [`LocalProver`] and where its time went, in milliseconds.
 class LocalProofResult {
   final String proofJson;
@@ -1263,6 +1228,11 @@ class WalletConfig {
   /// Overrides [`crate::DEFAULT_PROVING_KEYS_URL`].
   final String? provingKeyUrl;
 
+  /// Optional /proving-keys JSON catalog. Uses its complete zopro URLs only
+  /// when source and artifact digests match the bundled pins. Never fetched
+  /// automatically; mutually exclusive with proving_key_url.
+  final String? provingKeyCatalog;
+
   /// Where spends are proved unless a call says otherwise: on the device
   /// when `None`. [`Proving::Remote`] needs [`Self::prover_url`].
   final Proving? proving;
@@ -1270,7 +1240,7 @@ class WalletConfig {
   /// The prover [`Proving::Remote`] asks, through the transport: the
   /// application's backend as a proxy of the prover's routes, or a Zolana
   /// prover. It receives each spend's witness, the wallet's nullifier
-  /// secret included, encrypted to the enclave the Zolana SDK pins once the
+  /// secret included, encrypted to the enclave the supplied policy pins once the
   /// prover attests to it; only a loopback prover gets it in plaintext.
   final String? proverUrl;
 
@@ -1278,6 +1248,8 @@ class WalletConfig {
   final bool? requireProverTee;
 
   /// Trusted deployment policy JSON, supplied by the app, never by the prover.
+  /// Required for remote URLs and when require_prover_tee is true. Missing
+  /// policy fails before HTTP; no URL selects a policy automatically.
   final String? proverTeePolicy;
 
   /// Refuse queue fallback and status polling for remote proofs.
@@ -1317,6 +1289,7 @@ class WalletConfig {
     required this.indexerUrl,
     required this.provingKeyDir,
     this.provingKeyUrl,
+    this.provingKeyCatalog,
     this.proving,
     this.proverUrl,
     this.requireProverTee,
@@ -1334,6 +1307,7 @@ class WalletConfig {
       indexerUrl.hashCode ^
       provingKeyDir.hashCode ^
       provingKeyUrl.hashCode ^
+      provingKeyCatalog.hashCode ^
       proving.hashCode ^
       proverUrl.hashCode ^
       requireProverTee.hashCode ^
@@ -1353,6 +1327,7 @@ class WalletConfig {
           indexerUrl == other.indexerUrl &&
           provingKeyDir == other.provingKeyDir &&
           provingKeyUrl == other.provingKeyUrl &&
+          provingKeyCatalog == other.provingKeyCatalog &&
           proving == other.proving &&
           proverUrl == other.proverUrl &&
           requireProverTee == other.requireProverTee &&
@@ -1511,6 +1486,10 @@ sealed class WalletError with _$WalletError implements FrbException {
   const factory WalletError.remoteProverMissing() =
       WalletError_RemoteProverMissing;
 
+  /// Remote proving (or forced loopback attestation) needs an app-supplied policy.
+  const factory WalletError.proverPolicyMissing() =
+      WalletError_ProverPolicyMissing;
+
   /// The remote prover's response is not a proof of the pinned proving key.
   const factory WalletError.proofMalformed() = WalletError_ProofMalformed;
 
@@ -1557,6 +1536,10 @@ sealed class WalletError with _$WalletError implements FrbException {
   /// The lockfile pins no key named `name`.
   const factory WalletError.provingKeyUnknown({required String name}) =
       WalletError_ProvingKeyUnknown;
+
+  /// The download catalog is malformed, ambiguous, or combined with a key URL override.
+  const factory WalletError.provingKeyCatalogInvalid() =
+      WalletError_ProvingKeyCatalogInvalid;
 
   /// The lockfile pins another sha256 for `name` than the verifying key
   /// expects.

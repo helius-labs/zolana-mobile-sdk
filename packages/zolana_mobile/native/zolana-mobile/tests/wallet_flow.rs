@@ -24,7 +24,8 @@
 //!
 //! The remote proof comes from the prover at `ZOLANA_E2E_PROVER_URL`, such as
 //! devnet-e's attested prover (`https://dd73hh473h6ha.cloudfront.net`),
-//! asked through the test's transport.
+//! asked through the test's transport. For remote URLs, set
+//! `ZOLANA_E2E_TEE_POLICY` to the path of a reviewed policy JSON file.
 //!
 //! `ZOLANA_E2E_KEY_DIR` keeps downloaded proving keys between runs.
 //! `ZOLANA_E2E_PRIORITY_FEE` gives every transaction that priority fee, in
@@ -100,10 +101,13 @@ fn config() -> WalletConfig {
         indexer_url: required("ZOLANA_E2E_INDEXER_URL"),
         proving_key_dir: key_dir,
         proving_key_url: env::var("ZOLANA_E2E_KEY_URL").ok(),
+        proving_key_catalog: None,
         proving: None,
         prover_url: Some(required("ZOLANA_E2E_PROVER_URL")),
         require_prover_tee: env::var("ZOLANA_E2E_REQUIRE_TEE").ok().map(|v| v == "true"),
-        prover_tee_policy: None,
+        prover_tee_policy: env::var("ZOLANA_E2E_TEE_POLICY")
+            .ok()
+            .map(|path| std::fs::read_to_string(path).expect("TEE policy file")),
         prover_sync_only: env::var("ZOLANA_E2E_SYNC_ONLY").ok().map(|v| v == "true"),
         max_spend_inputs: None,
         reuse_notes_ms: None,
@@ -542,6 +546,8 @@ fn register_deposit_transfer_and_receive() {
     let signature = sender.sign_message(&derivation_message(pubkey.clone()).unwrap());
     let replaying = WalletConfig {
         prover_url: Some(REPLAYING_PROVER.to_string()),
+        prover_tee_policy: None,
+        require_prover_tee: None,
         ..config()
     };
     let error = MobileWallet::open(replaying, pubkey, signature.as_ref().to_vec(), transport())

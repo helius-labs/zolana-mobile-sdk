@@ -13,6 +13,7 @@ import 'demo_signer.dart';
 import 'format.dart';
 import 'main.dart' show DemoScreen;
 import 'merge_sheet.dart';
+import 'prover_policy.dart';
 import 'spend_checks.dart';
 import 'spend_limit.dart';
 import 'test_cluster_rpc.dart';
@@ -121,6 +122,7 @@ class _WalletScreenState extends State<WalletScreen> {
         rpcUrl: _network.rpcUrl,
         indexerUrl: _network.indexerUrl,
         proverUrl: _network.proverUrl,
+        proverTeePolicy: await demoProverPolicy(),
         provingKeyDir: keys,
         maxSpendInputs: 8,
         mints: [for (final asset in demoAssets) ?asset.config],

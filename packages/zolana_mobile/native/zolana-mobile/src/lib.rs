@@ -19,7 +19,6 @@ static ALLOCATOR: zopro_zolana::zopro_core::alloc::Allocator =
 
 mod activity;
 mod asset;
-mod deployment;
 mod error;
 mod keys;
 mod prover;
@@ -28,7 +27,6 @@ mod wallet;
 
 pub use activity::{ActivityEntry, ActivityKind, TransactionLookup, TransactionLookupStatus};
 pub use asset::MintConfig;
-pub use deployment::Deployment;
 pub use error::WalletError;
 pub use keys::{ProvingKeyProgress, ProvingKeyStatus, ProvingKeys, DEFAULT_PROVING_KEYS_URL};
 pub use prover::Proving;

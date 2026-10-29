@@ -6,6 +6,7 @@ import 'package:zolana_mobile/zolana_mobile.dart';
 
 import 'demo_keys.dart';
 import 'demo_signer.dart';
+import 'prover_policy.dart';
 import 'sponsored_merge.dart';
 import 'spend_checks.dart';
 import 'test_cluster_rpc.dart';
@@ -20,7 +21,6 @@ const _indexer = String.fromEnvironment(
   'ZOLANA_INDEXER_URL',
   defaultValue: 'https://d34xe1hqb2ibg2.cloudfront.net',
 );
-const _policy = String.fromEnvironment('ZOLANA_TEE_POLICY');
 const _syncOnly = bool.fromEnvironment('ZOLANA_PROVER_SYNC_ONLY');
 const _mint = String.fromEnvironment('ZOLANA_MINT');
 const _rounds = int.fromEnvironment('ZOLANA_MERGE_ROUNDS', defaultValue: 1);
@@ -76,9 +76,7 @@ class _SponsoredDemoState extends State<SponsoredDemo> {
         proverUrl: backend.proverUrl,
         requireProverTee: true,
         proverSyncOnly: _syncOnly,
-        proverTeePolicy: _policy.isEmpty
-            ? Deployment.devnet().proverTeePolicy
-            : _policy,
+        proverTeePolicy: await demoProverPolicy(),
         proving: Proving.local,
       ),
     );
