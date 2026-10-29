@@ -5,6 +5,37 @@ Groth16 prover in Rust for gnark's proving keys, on the GPU where there is
 one. Android and iOS are supported. The package contains its Rust sources; it
 does not require a sibling Zolana checkout.
 
+This SDK targets **Zolana v0.6.0-alpha**, source
+`8ae430a154e22bafa819a570d383d04e2046e802`, and shielded-pool program
+`ring1GaLCuJnkUMVkX2JeZLTTX17wKsV4fZmPVzXANW`. `Deployment.devnet()` selects
+devnet-e; `Deployment.mainnet()` selects mainnet, including the matching trusted
+Nitro policy:
+
+```dart
+await initZolanaMobile();
+final deployment = Deployment.mainnet();
+final config = WalletConfig(
+  rpcUrl: 'https://your-mainnet-solana-rpc',
+  indexerUrl: deployment.indexerUrl,
+  proverUrl: deployment.proverUrl,
+  proverTeePolicy: deployment.proverTeePolicy,
+  provingKeyDir: '/persistent/private/proving-keys',
+);
+```
+
+Photon is the indexer; supply a Solana RPC on the same network separately.
+The SDK selects the correct policy automatically for the two public Nitro
+origins. When using a proxy, pass the selected deployment's policy explicitly,
+including for a localhost proxy. Custom trusted policies still override presets.
+The bundled policies come from the reviewed v0.6.0-alpha infra manifests.
+
+Earlier programs' notes, caches and pending transactions cannot be migrated by
+changing URLs. Reconcile them using their matching SDK and deployment before
+upgrading. Prepared snapshots now use version 2 and a new authentication domain;
+old snapshots are rejected. Transfer and merge proving-key hashes are unchanged,
+so the verified local key cache can be reused. The public-seed Flutter example
+continues to use devnet-e; use your own signer for mainnet.
+
 **Performance.** The native prover at four threads on an Apple M5 Pro proves a warm spend (key loaded) in 0.17 s for one note to two outputs, 0.27 s for two, 0.55 s for four, 0.92 s for eight, 1.7 s for sixteen and 2.7 s for twenty-four; a restart adds the key's load from its mapped image (tens of milliseconds there), and the first run its download (9 MB to 180 MB). On phones, in release builds, one note proves in 0.18 s on a Samsung Galaxy S25, 0.21 s on an iPhone 17 Pro, 0.30 s to 0.35 s on an iPhone 15, an iPhone 12 and a Galaxy A56, and 1.2 s on a Galaxy A16; eight notes in 1.2 s to 2.0 s, 7.0 s on the A16; twenty-four in 3.6 s to 5.9 s, 25 s on the A16. A key loads from its image in under 0.3 s, up to 0.74 s on the A16. CI benches release builds on these six phones for every pull request and keeps the history of `main` on the [`proof-timing`](https://github.com/helius-labs/zolana-mobile-sdk/tree/proof-timing) branch; "Proof timing" below describes the harness.
 
 ## Requirements
@@ -569,7 +600,7 @@ it returns `transactionOutcomeUnknown`, even after `lastValidBlockHeight`.
 That height stops waiting early; it does not prove the payment never landed.
 The application keeps the pending signature and decides when to check again.
 
-### Sponsored cache merges (v0.5)
+### Sponsored cache merges (v0.6)
 
 For a backend that accepts `[CreateCache, MergeTransact]`, pass a `cacheTarget`
 to `prepareMerge`, then use each merge's `cachedOutput` in the final
@@ -628,7 +659,7 @@ payment; it rechecks cache validity but cannot renew its expiry or proof roots.
 The [runnable proxy/relayer example](example/backend/README.md) includes
 `x-sf-auth`, synchronous and queued TEE merge routes, persistent run recovery and a Flutter entry
 point (`example/lib/main_sponsored.dart`). Both use upstream
-`ded44879b3df35482d2871bc1d0f32f2d1be2879` (v0.5.0-alpha) and the artifacts in
+`8ae430a154e22bafa819a570d383d04e2046e802` (v0.6.0-alpha) and the artifacts in
 this checkout. These mobile APIs are unreleased; e30b328a does not expose them.
 See the example for migration boundaries, trusted TEE policy configuration and
 the production responsibilities it intentionally leaves to the client backend.
@@ -673,8 +704,7 @@ await wallet.spend(
 - **Attestation**: from every prover but a loopback one, the Helius gateway
   included, the wallet first fetches
   `GET <proverUrl>/tee/v1/attestation?nonce=<hex>`, checks that the prover
-  runs the enclave the Zolana SDK pins (devnet-d's
-  prover at `https://d1unet9hn0mci0.cloudfront.net`), and encrypts every
+  matches the selected deployment's trusted policy, and encrypts every
   request body to it, with `Zolana-Tee` and `Zolana-Tee-Enc` headers.
   POST ciphertext is in the octet-stream body; encrypted GET uses the
   `Zolana-Tee-Ciphertext` header. Each request is bound to its method and
@@ -987,8 +1017,9 @@ flutter run --release -d YOUR_DEVICE_ID --dart-define=ZOLANA_API_KEY=...
 ```
 
 `ZOLANA_API_KEY` is a Helius key: the example reaches Solana devnet RPC through
-Helius with it, and Zolana's devnet-d indexer and prover without it. It is
+Helius with it, and Zolana's devnet-e indexer and prover without it. It is
 compiled into that build only; never commit it.
+Alternatively, set `ZOLANA_RPC_URL` to your Solana devnet RPC.
 
 ### From Xcode
 

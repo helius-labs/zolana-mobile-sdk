@@ -2,6 +2,13 @@
 
 Unreleased.
 
+* Target Zolana v0.6.0-alpha and its new shielded-pool program. Add
+  `Deployment.devnet()` (devnet-e) and `Deployment.mainnet()` with their Photon,
+  Nitro and trusted attestation policies. Select the matching policy for each
+  public prover origin; explicit application policies take precedence.
+* Version prepared snapshots for the new program; earlier snapshots are
+  rejected. Transfer and merge proving-key hashes are unchanged.
+
 * Add `prepareRegistration(enableMerging: true)` to register and select
   `PoseidonCtrV1` in the same message. The default remains register-only.
 

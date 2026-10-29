@@ -18,7 +18,7 @@ const _auth = String.fromEnvironment('ZOLANA_BACKEND_AUTH');
 const _rpc = String.fromEnvironment('ZOLANA_RPC_URL');
 const _indexer = String.fromEnvironment(
   'ZOLANA_INDEXER_URL',
-  defaultValue: 'https://d21d98xh5lgv3b.cloudfront.net',
+  defaultValue: 'https://d34xe1hqb2ibg2.cloudfront.net',
 );
 const _policy = String.fromEnvironment('ZOLANA_TEE_POLICY');
 const _syncOnly = bool.fromEnvironment('ZOLANA_PROVER_SYNC_ONLY');
@@ -76,7 +76,9 @@ class _SponsoredDemoState extends State<SponsoredDemo> {
         proverUrl: backend.proverUrl,
         requireProverTee: true,
         proverSyncOnly: _syncOnly,
-        proverTeePolicy: _policy.isEmpty ? null : _policy,
+        proverTeePolicy: _policy.isEmpty
+            ? Deployment.devnet().proverTeePolicy
+            : _policy,
         proving: Proving.local,
       ),
     );

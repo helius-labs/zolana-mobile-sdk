@@ -142,6 +142,7 @@ impl Transport {
         policy_json: Option<&str>,
         sync_only: bool,
     ) -> Result<ProverClient, WalletError> {
+        let policy_json = policy_json.or_else(|| crate::deployment::policy_for_prover(&url));
         let mut client = ProverClient::with_client(
             url,
             ProverSender {
@@ -149,11 +150,11 @@ impl Transport {
                 sync_only,
             },
         );
-        if require_tee || policy_json.is_some() {
+        if require_tee || policy_json.is_some() || client.has_tee() {
             use zolana_client::prover::tee::TeePolicy;
             let policy = match policy_json {
                 Some(json) => TeePolicy::from_file_json(json),
-                None => TeePolicy::default_deployment(),
+                None => TeePolicy::from_file_json(crate::deployment::DEVNET_POLICY),
             }
             .map_err(|error| WalletError::Client {
                 message: error.to_string(),

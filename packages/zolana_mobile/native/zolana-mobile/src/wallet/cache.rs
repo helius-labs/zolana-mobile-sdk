@@ -427,7 +427,7 @@ impl MobileWallet {
         pending: &PreparedTransaction,
     ) -> Result<String, WalletError> {
         let state = SavedTransaction {
-            version: 1,
+            version: 2,
             operation: pending.operation.clone(),
             message: pending.message.serialize(),
             last_valid_block_height: pending.last_valid_block_height,
@@ -465,7 +465,7 @@ impl MobileWallet {
             .map_err(|_| invalid("snapshot authentication failed"))?;
         let state: SavedTransaction =
             serde_json::from_str(&envelope.payload).map_err(|_| invalid("invalid snapshot"))?;
-        if state.version != 1 {
+        if state.version != 2 {
             return Err(invalid("unsupported snapshot version"));
         }
         let message: VersionedMessage = wincode::deserialize_exact(&state.message)
@@ -486,7 +486,7 @@ impl MobileWallet {
     fn state_mac(&self) -> Hmac<Sha256> {
         let mut mac = Hmac::<Sha256>::new_from_slice(self.nullifier_key.secret().as_ref())
             .expect("HMAC accepts all key lengths");
-        mac.update(b"zolana-mobile/prepared/v1/ded44879");
+        mac.update(b"zolana-mobile/prepared/v2/8ae430a1");
         mac.update(&self.owner.to_bytes());
         mac.update(self.recovery_domain.as_bytes());
         mac
